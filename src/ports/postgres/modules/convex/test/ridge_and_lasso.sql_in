@@ -129,10 +129,19 @@ BEGIN
         'features',
         'price',
         4,
-        0.05,
-        0
+        0.003,
+        0,
+        15,
+        1000,
+        1e-10
         )
     INTO model_id_1;
+
+    PERFORM assert(
+        relative_error(coefficients, ARRAY[0, -0.3251, 0.02179, 1.036]) < 5e-3,
+        'LASSO with lambda = 0 (houses): Wrong results'
+    ) FROM test_lasso_model
+    WHERE test_lasso_model.id = model_id_1;
 
     PERFORM assert(
         loss < 3,
