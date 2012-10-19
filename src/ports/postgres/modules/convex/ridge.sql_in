@@ -28,8 +28,8 @@ where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$
 
 The <b>training examples</b> is expected to be of the following form:
 <pre>{TABLE|VIEW} <em>input_table</em> (
-    <em>ind_var</em>    DOUBLE PRECISION[],
-    <em>dep_var</em>    DOUBLE PRECISION
+    <em>independentVariables</em>    DOUBLE PRECISION[],
+    <em>dependentVariables</em>    DOUBLE PRECISION
 )</pre>
 
 Null values are not expected.
@@ -37,16 +37,28 @@ Null values are not expected.
 
 @usage
 
+- Get the vector of coefficients \f$ \boldsymbol w \f$:
+
+<pre>SELECT madlib.ridge_newton_run(
+    '<em>modelTableName</em>', '<em>sourceTableName</em>', '<em>independentVariables</em>', '<em>dependentVariables</em>' 
+    [, <em>independentVariableDimension</em> [, <em>lambda</em> ]]); 
+</pre>
+
+  Output:
+  <pre>      id | coefficients 
+  -------+---------------
+        ...
+  </pre>
+  The default value of \f$ \lambda \f$ is 0.1. The model table can contain multiple fits to different data sets, and each fit has a unique id number.
+- Get the prediction on a data set using the fitted model:
+<pre>
+SELECT madlib.ridge_newton_predict('<em>coefficients</em>', '<em>independentVariables</em>')
+FROM sourceTableName, modelTableName WHERE modelTableName.id=fitId;
+</pre>
+
 Please find descriptions of SQL functions in ridge.sql_in
 
-Output includes coefficients and the loss value.
-<pre>Result as (
-        coefficients    DOUBLE PRECISION[],
-        loss            DOUBLE PRECISION
-);</pre>
-
-we offer Newton's method solver (optimizer) for ridge regression.
-For ridge regression, this is a one-pass algorithm.
+we offer Newton's method solver (optimizer) for ridge regression. For ridge regression, this is a one-pass algorithm.
 Since Hessian is stored in memory, we expect the number of coefficients is less than 32767 (2^15 - 1).
 
 @examp
@@ -67,13 +79,13 @@ mydb=# INSERT INTO ridge_data values ({0.15, -1.3}, -1.3);
 \endcode   
 -# call ridge_newton_run() to learn coefficients, e.g.:  
 \code
-mydb=# SELECT madlib.ridge_newton_run('ridge_model', 'ridge_data', 'ind_var', 'dep_var', 2, 0.01, 0.1, 1000, 10, 1e-6);
+mydb=# SELECT madlib.ridge_newton_run('ridge_model', 'ridge_data', 'ind_var', 'dep_var', 2, 0.1);
 \endcode
 -# call ridge_newton_predict() to predict results. you usually need the model id output from the learning query to locate the model, assuming 1, e.g.:  
 \code
 mydb=# select madlib.ridge_newton_predict(coefficients, ind_var)
-mydb=# from ridge_data, ridge_model
-mydb=# where ridge_model.id = 1;
+mydb-# from ridge_data, ridge_model
+mydb-# where ridge_model.id = 1;
 \endcode
 
 
@@ -121,7 +133,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE AGGREGATE MADLIB_SCHEMA.ridge_newton_step(
         /*+ ind_var */          DOUBLE PRECISION[],
         /*+ dep_var */          DOUBLE PRECISION,
-        /*+ previous_state */   DOUBLE PRECISION[],
+        /*+ previous_state */  DOUBLE PRECISION[], 
         /*+ dimension */        SMALLINT,
         /*+ lambda */           DOUBLE PRECISION) (
     STYPE=DOUBLE PRECISION[],
@@ -167,7 +179,7 @@ DECLARE
     text_src        VARCHAR;
 BEGIN
     text_src = textin(regclassout(rel_source));
-    RAISE NOTICE 'Source table % to be used: dimension %', text_src, dimension;
+    /* RAISE NOTICE 'Source table % to be used: dimension %', text_src, dimension; */
 
     -- create result table if it does not exist
     BEGIN
@@ -192,10 +204,10 @@ BEGIN
     SELECT ' || model_id || ', result
     FROM (
         SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
-            ridge_newton_step(
+            MADLIB_SCHEMA.ridge_newton_step(
                 (' || text_src || '.' || col_ind_var || ')::FLOAT8[],
                 (' || text_src || '.' || col_dep_var || ')::FLOAT8, 
-                NULL,
+                (NULL)::FLOAT8[],
                 (' || dimension || ')::INT2,
                 (' || lambda || ')::FLOAT8
                 )
@@ -204,13 +216,13 @@ BEGIN
         ) subq';
 
     -- return description
-    RAISE NOTICE $notice$
+/*    RAISE NOTICE $notice$
 Finished ridge regression using Newton's method
  * table : % (%, %)
 Results:
  * view : SELECT * FROM % WHERE id = %$notice$,
     rel_source, col_ind_var, col_dep_var, rel_output, model_id;
-    
+  */
     RETURN model_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -235,7 +247,7 @@ DECLARE
     dimension INTEGER;
 BEGIN
     EXECUTE '
-    SELECT max(array_upper(' || col_ind_var || ', 1)
+    SELECT max(array_upper(' || col_ind_var || ', 1))
     FROM ' || textin(regclassout(rel_source))
     INTO dimension;
 

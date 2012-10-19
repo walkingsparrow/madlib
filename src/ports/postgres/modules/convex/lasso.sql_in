@@ -27,8 +27,10 @@ where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$
 
 The <b>training examples</b> is expected to be of the following form:
 <pre>{TABLE|VIEW} <em>input_table</em> (
-    <em>ind_var</em>    DOUBLE PRECISION[],
-    <em>dep_var</em>    DOUBLE PRECISION
+    ...
+    <em>independentVariables</em>    DOUBLE PRECISION[],
+    <em>dependentVariables</em>    DOUBLE PRECISION,
+    ...
 )</pre>
 
 Null values are not expected.
@@ -36,25 +38,38 @@ Null values are not expected.
 
 @usage
 
-Please find descriptions of SQL functions in lasso.sql_in
+- Get the vector of coefficients \f$ \boldsymbol w \f$:
 
-Output includes coefficients and the loss value.
-<pre>Result as (
-        coefficients    DOUBLE PRECISION[],
-        loss            DOUBLE PRECISION
-);</pre>
+<pre>SELECT madlib.lasso_igd_run(
+    '<em>modelTableName</em>', '<em>sourceTableName</em>', '<em>independentVariables</em>', '<em>dependentVariables</em>' 
+    [, <em>independentVariableDimension</em> [, <em>stepSize</em> [, <em>lambda</em> [, <em>totalRows</em> [, 
+    <em>numberOfIterations</em>, <em>tolerance</em> ]]]]]); 
+</pre>
 
-we offer IGD solver (optimizer) for LASSO.
-IGD is expected to be fastwhen the input data has a lot of examples.
-But IGD suffers slow convergence rate if the input features is not well-conditioned or a bad stepsize is given.
-Before functions are called, we suggest that the features got normalized to have mean (average) to be 0.0, and standard deviation to be 1.0.
+  Output:
+  <pre>      id | coefficients | loss
+  -------+--------------+--------
+        ...
+  </pre>
+  The default value of \f$ \lambda \f$ is 0.1. The model table can contain multiple fits to different data sets, and each fit has a unique id number.
+- Get the prediction on a data set using the fitted model:
+<pre>
+SELECT madlib.lasso_igd_predict('<em>coefficients</em>', '<em>independentVariables</em>')
+FROM sourceTableName, modelTableName WHERE modelTableName.id=fitId;
+</pre>
 
-<h3>Stepsize choice.</h3>
-Both solvers will output the loss value for the each iteration.
-In a simple description, a good stepsize is the maximal positive number that guarantees decreases of loss values iteration by iteration.
-Usually, users can try 0.01 first, and then follow this rule until the loss does not change much within reasonable numbers of iterations.
-If stepsize \f$\alpha\f$ is too large (loss is increasing), then \f$\alpha / 10\f$ should be tried next; otherwise \f$\alpha * 10\f$.
-The factor \f$10\f$ can be shrinked later for a more accurate stepsize if needed.
+- Input data normalization:\n
+we offer IGD solver (optimizer) for LASSO. IGD is expected to be fastwhen the input data has a lot of examples. 
+But IGD suffers slow convergence rate if the input features is not well-conditioned or a bad stepsize is given. 
+Before functions are called, we suggest that the features got normalized to have mean (average) to be 0.0, and 
+standard deviation to be 1.0.
+
+- Stepsize choice:\n
+Both solvers will output the loss value for the each iteration. In a simple description, a good stepsize is the 
+maximal positive number that guarantees decreases of loss values iteration by iteration. Usually, users can try 
+0.01 first, and then follow this rule until the loss does not change much within reasonable numbers of iterations. 
+If stepsize \f$\alpha\f$ is too large (loss is increasing), then \f$\alpha / 10\f$ should be tried next; otherwise 
+\f$\alpha * 10\f$. The factor \f$10\f$ can be shrinked later for a more accurate stepsize if needed.
 
 
 @examp
@@ -80,8 +95,8 @@ mydb=# SELECT madlib.lasso_igd_run('lasso_model', 'lasso_data', 'ind_var', 'dep_
 -# call lasso_igd_predict() to predict results. you usually need the model id output from the learning query to locate the model, assuming 1, e.g.:  
 \code
 mydb=# select madlib.lasso_igd_predict(coefficients, ind_var)
-mydb=# from lasso_data, lasso_model
-mydb=# where lasso_model.id = 1;
+mydb-# from lasso_data, lasso_model
+mydb-# where lasso_model.id = 1;
 \endcode
 
 
@@ -218,14 +233,14 @@ DECLARE
     loss            DOUBLE PRECISION;
     old_messages    VARCHAR;
 BEGIN
-    RAISE NOTICE 'Source table % to be used: dimension %', rel_source, dimension;
+    /* RAISE NOTICE 'Source table % to be used: dimension %', rel_source, dimension; */
 
     -- We first setup the argument table. Rationale: We want to avoid all data
     -- conversion between native types and Python code. Instead, we use Python
     -- as a pure driver layer.
     old_messages :=
         (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
-    EXECUTE 'SET client_min_messages TO warning';
+    EXECUTE 'SET client_min_messages TO error';
     PERFORM MADLIB_SCHEMA.create_schema_pg_temp();
     -- Unfortunately, the EXECUTE USING syntax is only available starting
     -- PostgreSQL 8.4:
@@ -243,7 +258,8 @@ BEGIN
             $6 AS tolerance;
         $sql$,
         dimension, stepsize, lambda, total_rows, num_iterations, tolerance);
-    EXECUTE 'SET client_min_messages TO ' || old_messages;
+        
+    -- EXECUTE 'SET client_min_messages TO ' || old_messages;
 
     -- Perform acutal computation.
     -- Unfortunately, Greenplum and PostgreSQL <= 8.2 do not have conversion
@@ -287,8 +303,10 @@ BEGIN
     WHERE id = ' || model_id
     INTO loss;
 
+    EXECUTE 'SET client_min_messages TO ' || old_messages;
+
     -- return description
-    RAISE NOTICE '
+/*    RAISE NOTICE '
 Finished LASSO using incremental gradient 
  * table : % (%, %)
 Results:
@@ -296,7 +314,7 @@ Results:
 Output:
  * view : SELECT * FROM % WHERE id = %',
     rel_source, col_ind_var, col_dep_var, loss, rel_output, model_id;
-    
+*/
     RETURN model_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
@@ -367,7 +385,7 @@ DECLARE
     dimension INTEGER;
 BEGIN
     EXECUTE '
-    SELECT max(array_upper(' || col_ind_var || ', 1)
+    SELECT max(array_upper(' || col_ind_var || ', 1))
     FROM ' || textin(regclassout(rel_source))
     INTO dimension;
 
