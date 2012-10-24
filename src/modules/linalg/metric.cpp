@@ -220,8 +220,13 @@ closest_columns::run(AnyType& args) {
         dbal::FunctionContext, dbal::DoNotZero, dbal::ThrowBadAlloc>(num);
     MutableArrayHandle<double> distances = allocateArray<double,
         dbal::FunctionContext, dbal::DoNotZero, dbal::ThrowBadAlloc>(num);
-    for (uint32_t i = 0; i < num; ++i)
+
+    std::ofstream of("/Users/qianh1/workspace/work/madlib-681_review/log.txt", std::ios::app);
+    for (uint32_t i = 0; i < num; ++i) {
         std::tie(indices[i], distances[i]) = result[i];
+        of << result[i] << " ";
+    }
+    of << std::endl;
 
     AnyType tuple;
     return tuple << indices << distances;
