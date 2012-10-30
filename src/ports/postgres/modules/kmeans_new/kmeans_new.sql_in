@@ -379,6 +379,8 @@ DECLARE
     proc_agg_centroid REGPROCEDURE;
     rel_filtered VARCHAR;
     centroids FLOAT8[];
+    k INTEGER;
+    num_points INTEGER;
 BEGIN
     centroids := ARRAY(SELECT unnest(initial_centroids));
     IF (SELECT MADLIB_SCHEMA.svec_elsum(centroids)) >= 'Infinity'::float THEN
@@ -387,6 +389,20 @@ BEGIN
  
     rel_filtered = MADLIB_SCHEMA.__filter_input_relation(rel_source, expr_point);
     class_rel_source := rel_filtered;
+
+    -- test whether k and num_points are valid
+    k := array_upper(initial_centroids,1);
+    IF (k <= 0) THEN
+        RAISE EXCEPTION 'Number of clusters k must be a positive integer.';
+    END IF;
+    IF (k > 32767) THEN
+	RAISE EXCEPTION 'Number of clusters k must be <= 32767 (for results to be returned in a reasonable amount of time).';
+    END IF;
+    EXECUTE $sql$ SELECT count(*) FROM $sql$ || textin(regclassout(rel_filtered)) INTO num_points;
+    IF (num_points < k) THEN
+        RAISE EXCEPTION 'Number of centroids is greater than number of points.';
+    END IF;
+
     proc_fn_dist := fn_dist
         || '(DOUBLE PRECISION[], DOUBLE PRECISION[])';
     IF (SELECT prorettype != 'DOUBLE PRECISION'::regtype OR proisagg = TRUE
@@ -576,7 +592,7 @@ BEGIN
     IF (k > 32767) THEN
 	RAISE EXCEPTION 'Number of clusters k must be <= 32767 (for results to be returned in a reasonable amount of time).';
     END IF;
-    EXECUTE $sql$ SELECT count(*) FROM $sql$ || textin(regclassout(rel_source)) INTO num_points ;
+    EXECUTE $sql$ SELECT count(*) FROM $sql$ || textin(regclassout(rel_filtered)) INTO num_points ;
     IF (num_points < k OR num_points < num_centroids) THEN
 	RAISE EXCEPTION 'Number of centroids is greater than number of points.';
     END IF;
@@ -829,7 +845,7 @@ BEGIN
     IF (k > 32767) THEN
 	RAISE EXCEPTION 'Number of clusters k must be <= 32767 (for results to be returned in a reasonable amount of time).';
     END IF;
-    EXECUTE $sql$ SELECT count(*) FROM $sql$ || textin(regclassout(rel_source)) INTO num_points;
+    EXECUTE $sql$ SELECT count(*) FROM $sql$ || textin(regclassout(rel_filtered)) INTO num_points;
     IF (num_points < k  OR num_points < num_centroids) THEN
 	RAISE EXCEPTION 'Number of centroids is greater than number of points.';
     END IF;
