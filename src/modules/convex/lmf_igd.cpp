@@ -19,6 +19,8 @@
 #include "type/model.hpp"
 #include "type/state.hpp"
 
+#include <fstream>
+
 namespace madlib {
 
 namespace modules {
@@ -123,8 +125,15 @@ lmf_igd_merge::run(AnyType &args) {
     LMFLossAlgorithm::merge(stateLeft, stateRight);
     // The following numRows update, cannot be put above, because the model
     // averaging depends on their original values
+
+	std::ofstream of;
+	of.open("/Users/qianh1/workspace/tests/madlib-756/log.txt", std::ios::app);
+	of << "Left numRows " << stateLeft.algo.numRows << ", Right numRows " << stateRight.algo.numRows << std::endl;
+	
     stateLeft.algo.numRows += stateRight.algo.numRows;
 
+	of << "Left numRows " << stateLeft.algo.numRows << ", Right numRows " << stateRight.algo.numRows << std::endl;
+	
     return stateLeft;
 }
 

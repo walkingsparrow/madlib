@@ -10,6 +10,8 @@
 #ifndef MADLIB_MODULES_CONVEX_TYPE_MODEL_HPP_
 #define MADLIB_MODULES_CONVEX_TYPE_MODEL_HPP_
 
+#include <fstream> /////////
+
 namespace madlib {
 
 namespace modules {
@@ -46,12 +48,12 @@ struct LMFModel {
         double span = rng.max() - base;
         for (rr = 0; rr < matrixU.cols(); rr ++) {
             for (i = 0; i < matrixU.rows(); i ++) {
-                matrixU(i, rr) = inScaleFactor * (rng() - base) / span;
+                matrixU(i, rr) = inScaleFactor * (rng() - base) / span; 
             }
         }
         for (rr = 0; rr < matrixV.cols(); rr ++) {
             for (j = 0; j < matrixV.rows(); j ++) {
-                matrixV(j, rr) = inScaleFactor * (rng() - base) / span;
+                matrixV(j, rr) = inScaleFactor * (rng() - base) / span; 
             }
         }
     }
@@ -60,25 +62,52 @@ struct LMFModel {
      *  Some operator wrappers for two matrices.
      */
     LMFModel &operator*=(const double &c) {
+		std::ofstream of;
+		of.open("/Users/qianh1/workspace/tests/madlib-756/log.txt", std::ios::app);
+		of << "before * " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+		
         matrixU *= c;
         matrixV *= c;
 
+		of << "after * " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+		of.close();
+		
         return *this;
     }
 
     template<class OtherHandle>
     LMFModel &operator-=(const LMFModel<OtherHandle> &inOtherModel) {
+		std::ofstream of;
+		of.open("/Users/qianh1/workspace/tests/madlib-756/log.txt", std::ios::app);
+		of << "before - " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+		
         matrixU -= inOtherModel.matrixU;
         matrixV -= inOtherModel.matrixV;
 
+		of << "after - " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+		of.close();
+		
         return *this;
     }
 
     template<class OtherHandle>
     LMFModel &operator+=(const LMFModel<OtherHandle> &inOtherModel) {
+		std::ofstream of;
+		of.open("/Users/qianh1/workspace/tests/madlib-756/log.txt", std::ios::app);
+		of << "before + " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+
         matrixU += inOtherModel.matrixU;
         matrixV += inOtherModel.matrixV;
 
+		of << "after + " << matrixU.rows() << " " << matrixU.cols() << " "
+		   << matrixV.rows() << " " << matrixV.cols() << std::endl;
+		of.close();
+		
         return *this;
     }
 
