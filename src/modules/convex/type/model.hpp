@@ -43,6 +43,7 @@ struct LMFModel {
     void initialize(const double &inScaleFactor) {
         // using madlib::dbconnector::$database::NativeRandomNumberGenerator
         NativeRandomNumberGenerator rng;
+        rng.seed(0.73); // set seed so that all segments have the same initial condition
         int i, j, rr;
         double base = rng.min();
         double span = rng.max() - base;
