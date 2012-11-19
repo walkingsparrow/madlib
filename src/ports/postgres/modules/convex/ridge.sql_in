@@ -59,6 +59,7 @@ FROM sourceTableName, modelTableName WHERE modelTableName.id=fitId;
 Please find descriptions of SQL functions in ridge.sql_in
 
 we offer Newton's method solver (optimizer) for ridge regression. For ridge regression, this is a one-pass algorithm.
+
 Since Hessian is stored in memory, we expect the number of coefficients is less than 32767 (2^15 - 1).
 
 @examp
