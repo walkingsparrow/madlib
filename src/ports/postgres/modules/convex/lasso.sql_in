@@ -10,7 +10,7 @@
  *
  *//* ----------------------------------------------------------------------- */
 
-m4_include(`SQLCommon.m4')
+m4_include(`SQLCommon.m4') --'
 
 /**
 @addtogroup grp_lasso
@@ -108,7 +108,6 @@ mydb-# where lasso_model.id = 1;
 
 */
 
-
 CREATE TYPE MADLIB_SCHEMA.lasso_result AS (
         coefficients    DOUBLE PRECISION[],
         loss            DOUBLE PRECISION
@@ -130,6 +129,7 @@ RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_merge(
         state1 DOUBLE PRECISION[],
         state2 DOUBLE PRECISION[])
@@ -137,12 +137,14 @@ RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_final(
         state DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
+------------------------------------------------------------------------
 /**
  * @internal
  * @brief Perform one iteration of the incremental gradient
@@ -163,6 +165,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.lasso_igd_step(
     INITCOND='{0,0,0,0,0,0,0,0}'
 );
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.internal_lasso_igd_distance(
     /*+ state1 */ DOUBLE PRECISION[],
     /*+ state2 */ DOUBLE PRECISION[])
@@ -170,13 +173,14 @@ RETURNS DOUBLE PRECISION AS
 'MODULE_PATHNAME'
 LANGUAGE c IMMUTABLE STRICT;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.internal_lasso_igd_result(
     /*+ state */ DOUBLE PRECISION[])
 RETURNS MADLIB_SCHEMA.lasso_result AS
 'MODULE_PATHNAME'
 LANGUAGE c IMMUTABLE STRICT;
 
-
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.internal_execute_using_lasso_igd_args(
     sql VARCHAR, INTEGER, DOUBLE PRECISION, DOUBLE PRECISION, BIGINT, 
     INTEGER, DOUBLE PRECISION)
@@ -186,6 +190,7 @@ CALLED ON NULL INPUT
 LANGUAGE c
 AS 'MODULE_PATHNAME', 'exec_sql_using';
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.internal_compute_lasso_igd(
     rel_args        VARCHAR,
     rel_state       VARCHAR,
@@ -196,6 +201,7 @@ RETURNS INTEGER
 AS $$PythonFunction(convex, lasso_igd, compute_lasso_igd)$$
 LANGUAGE plpythonu VOLATILE;
 
+------------------------------------------------------------------------
 /**
  * @brief LASSO using incremental gradient
  *
@@ -213,6 +219,7 @@ LANGUAGE plpythonu VOLATILE;
  *   @param total_rows  Number of rows of the input table
  *   @param num_iterations  Maximum number if iterations to perform regardless of convergence
  *   @param tolerance  Acceptable level of error in convergence.
+ *   @param normalization Whether to normalize the dependent variables, the result will be given in the original scale
  * 
  */
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
@@ -220,18 +227,21 @@ CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_source      REGCLASS,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
-    dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */,
-    stepsize        DOUBLE PRECISION /*+ DEFAULT 0.01 */,
-    lambda          DOUBLE PRECISION /*+ DEFAULT 0.1 */,
-    total_rows      BIGINT /*+ DEFAULT 'SELECT count(*) FROM rel_source' */,
-    num_iterations  INTEGER /*+ DEFAULT 10 */,
-    tolerance       DOUBLE PRECISION /*+ DEFAULT 0.000001 */)
+    dimension       INTEGER, /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */
+    stepsize        DOUBLE PRECISION, /*+ DEFAULT 0.01 */
+    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
+    total_rows      BIGINT, /*+ DEFAULT 'SELECT count(*) FROM rel_source' */
+    num_iterations  INTEGER, /*+ DEFAULT 10 */
+    tolerance       DOUBLE PRECISION, /*+ DEFAULT 0.000001 */
+    normalization   BOOLEAN /*+ DEFAULT f to save computation */)
 RETURNS INTEGER AS $$
 DECLARE
-    iteration_run   INTEGER;
-    model_id        INTEGER;
-    loss            DOUBLE PRECISION;
-    old_messages    VARCHAR;
+    iteration_run       INTEGER;
+    model_id            INTEGER;
+    loss                DOUBLE PRECISION;
+    old_messages        VARCHAR;
+    inter_rel_source    regclass;
+    
 BEGIN
     /* RAISE NOTICE 'Source table % to be used: dimension %', rel_source, dimension; */
 
@@ -241,6 +251,7 @@ BEGIN
     old_messages :=
         (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO error';
+
     PERFORM MADLIB_SCHEMA.create_schema_pg_temp();
     -- Unfortunately, the EXECUTE USING syntax is only available starting
     -- PostgreSQL 8.4:
@@ -258,7 +269,79 @@ BEGIN
             $6 AS tolerance;
         $sql$,
         dimension, stepsize, lambda, total_rows, num_iterations, tolerance);
-        
+
+    -- normaliza the data
+    IF normalization THEN
+       DROP TABLE IF EXISTS __lasso_igd_scales_temp_table;
+       EXECUTE '
+            CREATE TEMP TABLE __lasso_igd_scales_temp_table AS 
+            (
+                SELECT attr, avg(val) as mean, stddev(val) as std
+                FROM 
+                    (
+                        SELECT 
+                            generate_series(1, '|| dimension ||') as attr,
+                            unnest('|| col_ind_var ||') as val
+                        FROM '|| rel_source ||'
+                    ) AS
+                foo GROUP BY attr
+            )
+        ';
+        DROP TABLE IF EXISTS __lasso_igd_scales_temp_table_dep;
+        EXECUTE '
+            CREATE TEMP TABLE __lasso_igd_scales_temp_table_dep AS
+            (
+                SELECT
+                    avg('|| col_dep_var ||') as dep_avg,
+                    stddev('|| col_dep_var ||') as dep_std
+                FROM
+                    '|| rel_source ||'
+            )
+        ';
+
+        DROP TABLE IF EXISTS __lasso_igd_scaled_resulting_table;
+        EXECUTE '
+            CREATE TEMP TABLE __lasso_igd_scaled_resulting_table AS 
+            (
+                SELECT 
+                    array_agg(val ORDER BY attr) AS '|| col_ind_var ||',
+                    max('|| col_dep_var ||') AS '|| col_dep_var ||'
+                FROM 
+                    (
+                        SELECT
+                            id,
+                            foos.attr AS attr,
+                            ('|| col_dep_var ||' - dep_avg) / dep_std AS '|| col_dep_var ||',
+                            (
+                                CASE WHEN std = 0 THEN
+                                    val - mean
+                                ELSE
+                                    (val - mean)/std 
+                                END
+                            ) AS val
+                        FROM
+                            __lasso_igd_scales_temp_table,
+                            __lasso_igd_scales_temp_table_dep,
+                            (
+                                SELECT 
+                                    row_number() OVER () as id,
+                                    '|| col_dep_var ||',
+                                    generate_series(1, '|| dimension ||') as attr,
+                                    unnest('|| col_ind_var ||') as val
+                                FROM
+                                    '|| rel_source ||'
+                            ) AS foos
+                        WHERE __lasso_igd_scales_temp_table.attr = foos.attr 
+                    ) AS foo1 
+                GROUP BY id
+            )
+        ';
+
+        inter_rel_source := '__lasso_igd_scaled_resulting_table'::regclass;
+    ELSE
+        inter_rel_source := rel_source;
+    END IF;
+
     -- EXECUTE 'SET client_min_messages TO ' || old_messages;
 
     -- Perform acutal computation.
@@ -266,7 +349,7 @@ BEGIN
     -- operators from regclass to varchar/text.
     iteration_run := MADLIB_SCHEMA.internal_compute_lasso_igd(
             '_madlib_lasso_igd_args', '_madlib_lasso_igd_state',
-            textin(regclassout(rel_source)), col_ind_var, col_dep_var);
+            textin(regclassout(inter_rel_source)), col_ind_var, col_dep_var);
 
     -- create result table if it does not exist
     BEGIN
@@ -277,48 +360,140 @@ BEGIN
             CREATE TABLE ' || rel_output || ' (
                 id              serial,
                 coefficients    DOUBLE PRECISION[],
+                intercept       DOUBLE PRECISION,
                 loss            DOUBLE PRECISION)';
     END;
 
     -- A work-around for GPDB not supporting RETURNING for INSERT
-    -- We generate an id using nextval before INSERT
+    -- We generate an id using nextval before INSERT 
     EXECUTE '
     SELECT nextval(' || quote_literal(rel_output || '_id_seq') ||'::regclass)'
     INTO model_id;
 
     -- output model
     -- Retrieve result from state table and insert it
-    EXECUTE '
-    INSERT INTO ' || rel_output || '
-    SELECT ' || model_id || ', (result).*
-    FROM (
-        SELECT MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result
-        FROM _madlib_lasso_igd_state
-        WHERE _iteration = ' || iteration_run || '
-        ) subq';
+    IF normalization THEN -- restore the original scales in the result
+        EXECUTE '
+            INSERT INTO '|| rel_output ||'
+            SELECT
+                id,
+                coefficients,
+                intercept + dep_avg as intercept,
+                loss
+            FROM
+                (
+                    SELECT 
+                        id, 
+                        array_agg(val ORDER BY attr) as coefficients,
+                        sum(intercep_tmp) as intercept,
+                        max(dep_avg) as dep_avg,
+                        max(loss) as loss
+                    FROM
+                        (
+                            SELECT
+                                id,
+                                subq2.attr,
+                                (
+                                    CASE WHEN std = 0 THEN
+                                        0.
+                                    ELSE
+                                        coef * dep_std / std
+                                    END
+                                ) AS val,
+                                (
+                                    CASE WHEN std = 0 THEN
+                                        0.
+                                    ELSE
+                                        - coef * dep_std * mean / std
+                                    END
+                                ) AS intercep_tmp,
+                                dep_avg,
+                                loss
+                            FROM
+                                __lasso_igd_scales_temp_table,
+                                __lasso_igd_scales_temp_table_dep,
+                                (
+                                    SELECT
+                                        id,
+                                        generate_series(1, array_length(coefficients,1)) as attr,
+                                        unnest(coefficients) as coef,
+                                        loss
+                                    FROM
+                                        (
+                                            SELECT 
+                                                '|| model_id ||' as id,
+                                                (result).*
+                                            FROM
+                                                (
+                                                    SELECT
+                                                        MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result    
+                                                    FROM
+                                                        _madlib_lasso_igd_state
+                                                    WHERE _iteration = '|| iteration_run ||'
+                                                ) AS subq
+                                        ) AS subq1
+                                ) AS subq2
+                            WHERE __lasso_igd_scales_temp_table.attr = subq2.attr
+                        ) AS subq3
+                    GROUP BY id
+                ) AS subq4
+        ';
+    ELSE
+        EXECUTE '
+            INSERT INTO ' || rel_output || '
+                SELECT ' || model_id || ', (result).coefficients, NULL, (result).loss
+                FROM 
+                    (
+                        SELECT MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result
+                        FROM _madlib_lasso_igd_state
+                        WHERE _iteration = ' || iteration_run || '
+                    ) subq
+        ';
+    END IF;
 
+/*
     EXECUTE '
     SELECT loss
     FROM ' || rel_output || '
     WHERE id = ' || model_id
     INTO loss;
+*/
 
     EXECUTE 'SET client_min_messages TO ' || old_messages;
 
+/*
     -- return description
-/*    RAISE NOTICE '
-Finished LASSO using incremental gradient 
- * table : % (%, %)
-Results:
- * loss = %
-Output:
- * view : SELECT * FROM % WHERE id = %',
-    rel_source, col_ind_var, col_dep_var, loss, rel_output, model_id;
+    RAISE NOTICE '
+        Finished LASSO using incremental gradient 
+            * table : % (%, %)
+        Results:
+            * loss = %
+        Output:
+            * view : SELECT * FROM % WHERE id = %',
+        rel_source, col_ind_var, col_dep_var, loss, rel_output, model_id;
 */
+
     RETURN model_id;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+------------------------------------------------------------------------
+CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
+       rel_output       VARCHAR,
+       rel_source       REGCLASS,
+       col_ind_var      VARCHAR,
+       col_dep_var      VARCHAR,
+       dimension        INTEGER,
+       stepsize         DOUBLE PRECISION,
+       lambda           DOUBLE PRECISION,
+       total_rows       BIGINT,
+       num_iterations   INTEGER,
+       tolerance        DOUBLE PRECISION)
+RETURNS INTEGER AS $$
+       SELECT MADLIB_SCHEMA.lasso_igd_run($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE);
+$$ LANGUAGE sql VOLATILE;       
+
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_output      VARCHAR,
     rel_source      REGCLASS,
@@ -332,6 +507,7 @@ RETURNS INTEGER AS $$
     SELECT MADLIB_SCHEMA.lasso_igd_run($1, $2, $3, $4, $5, $6, $7, $8, 10, 0.000001);
 $$ LANGUAGE sql VOLATILE;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_output      VARCHAR,
     rel_source      REGCLASS,
@@ -353,6 +529,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_output      VARCHAR,
     rel_source      REGCLASS,
@@ -364,6 +541,7 @@ RETURNS INTEGER AS $$
     SELECT MADLIB_SCHEMA.lasso_igd_run($1, $2, $3, $4, $5, $6, 0.1);
 $$ LANGUAGE sql VOLATILE;
 
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_output      VARCHAR,
     rel_source      REGCLASS,
@@ -374,7 +552,8 @@ RETURNS INTEGER AS $$
     -- set stepsize as default 0.01
     SELECT MADLIB_SCHEMA.lasso_igd_run($1, $2, $3, $4, $5, 0.1);
 $$ LANGUAGE sql VOLATILE;
-    
+
+------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_run(
     rel_output      VARCHAR,
     rel_source      REGCLASS,
@@ -393,7 +572,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-
+------------------------------------------------------------------------
 /**
  * @brief Prediction (real value) using learned coefficients for a given example.
  *
