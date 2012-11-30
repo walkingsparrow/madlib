@@ -202,6 +202,48 @@ AS $$PythonFunction(convex, lasso_igd, compute_lasso_igd)$$
 LANGUAGE plpythonu VOLATILE;
 
 ------------------------------------------------------------------------
+-- normalize the independent data array and dependent data
+CREATE FUNCTION MADLIB_SCHEMA.scale_ind_data(
+    rel_source      VARCHAR,
+    col_var         VARCHAR,
+    dimension       VARCHAR,
+    rel_norm_params VARCHAR)
+RETURNS INTEGER
+AS $$PythonFunction(convex, lasso_igd, scale_ind_data)$$
+LANGUAGE plpythonu VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.scale_dep_data(
+    rel_source      VARCHAR,
+    col_var         VARCHAR,
+    rel_norm_params VARCHAR)
+RETURNS INTEGER
+AS $$PythonFunction(convex, lasso_igd, scale_dep_data)$$
+LANGUAGE plpythonu VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.normalize_data(
+    rel_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    dimension       VARCHAR,
+    col_dep_var     VARCHAR,
+    ind_norms       VARCHAR,
+    dep_norms       VARCHAR,
+    resulting_table VARCHAR)
+RETURNS INTEGER
+AS $$PythonFunction(convex, lasso_igd, normalize_data)$$
+LANGUAGE plpythonu VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.restore_data_scales(
+    ind_norms       VARCHAR,
+    dimension       VARCHAR,
+    dep_norms       VARCHAR,
+    model_id        VARCHAR,
+    result_tbl      VARCHAR,
+    rel_output      VARCHAR)
+RETURNS INTEGER
+AS $$PythonFunction(convex, lasso_igd, restore_data_scales)$$
+LANGUAGE plpythonu VOLATILE;
+
+------------------------------------------------------------------------
 /**
  * @brief LASSO using incremental gradient
  *
@@ -272,71 +314,18 @@ BEGIN
 
     -- normaliza the data
     IF normalization THEN
-       DROP TABLE IF EXISTS __lasso_igd_scales_temp_table;
-       EXECUTE '
-            CREATE TEMP TABLE __lasso_igd_scales_temp_table AS 
-            (
-                SELECT attr, avg(val) as mean, stddev(val) as std
-                FROM 
-                    (
-                        SELECT 
-                            generate_series(1, '|| dimension ||') as attr,
-                            unnest('|| col_ind_var ||') as val
-                        FROM '|| rel_source ||'
-                    ) AS
-                foo GROUP BY attr
-            )
-        ';
-        DROP TABLE IF EXISTS __lasso_igd_scales_temp_table_dep;
-        EXECUTE '
-            CREATE TEMP TABLE __lasso_igd_scales_temp_table_dep AS
-            (
-                SELECT
-                    avg('|| col_dep_var ||') as dep_avg,
-                    stddev('|| col_dep_var ||') as dep_std
-                FROM
-                    '|| rel_source ||'
-            )
-        ';
+        PERFORM MADLIB_SCHEMA.scale_ind_data(textin(regclassout(rel_source)), col_ind_var,
+                                                (dimension)::VARCHAR, '__lasso_igd_scales_temp_table');
 
-        DROP TABLE IF EXISTS __lasso_igd_scaled_resulting_table;
-        EXECUTE '
-            CREATE TEMP TABLE __lasso_igd_scaled_resulting_table AS 
-            (
-                SELECT 
-                    array_agg(val ORDER BY attr) AS '|| col_ind_var ||',
-                    max('|| col_dep_var ||') AS '|| col_dep_var ||'
-                FROM 
-                    (
-                        SELECT
-                            id,
-                            foos.attr AS attr,
-                            ('|| col_dep_var ||' - dep_avg) / dep_std AS '|| col_dep_var ||',
-                            (
-                                CASE WHEN std = 0 THEN
-                                    val - mean
-                                ELSE
-                                    (val - mean)/std 
-                                END
-                            ) AS val
-                        FROM
-                            __lasso_igd_scales_temp_table,
-                            __lasso_igd_scales_temp_table_dep,
-                            (
-                                SELECT 
-                                    row_number() OVER () as id,
-                                    '|| col_dep_var ||',
-                                    generate_series(1, '|| dimension ||') as attr,
-                                    unnest('|| col_ind_var ||') as val
-                                FROM
-                                    '|| rel_source ||'
-                            ) AS foos
-                        WHERE __lasso_igd_scales_temp_table.attr = foos.attr 
-                    ) AS foo1 
-                GROUP BY id
-            )
-        ';
+        PERFORM MADLIB_SCHEMA.scale_dep_data(textin(regclassout(rel_source)), col_dep_var,
+                                          '__lasso_igd_scales_temp_table_dep');
 
+        PERFORM MADLIB_SCHEMA.normalize_data(textin(regclassout(rel_source)), col_ind_var,
+                                                     (dimension)::VARCHAR, col_dep_var,
+                                                    '__lasso_igd_scales_temp_table',
+                                                    '__lasso_igd_scales_temp_table_dep',
+                                                    '__lasso_igd_scaled_resulting_table');                                    
+      
         inter_rel_source := '__lasso_igd_scaled_resulting_table'::regclass;
     ELSE
         inter_rel_source := rel_source;
@@ -372,82 +361,28 @@ BEGIN
 
     -- output model
     -- Retrieve result from state table and insert it
+    DROP TABLE IF EXISTS __lasso_igd_results_temp_storage;
+    EXECUTE '
+        CREATE TEMP TABLE __lasso_igd_results_temp_storage AS
+        (
+            SELECT MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result
+            FROM _madlib_lasso_igd_state
+            WHERE _iteration = ' || iteration_run || '
+        );
+    ';
+    
     IF normalization THEN -- restore the original scales in the result
-        EXECUTE '
-            INSERT INTO '|| rel_output ||'
-            SELECT
-                id,
-                coefficients,
-                intercept + dep_avg as intercept,
-                loss
-            FROM
-                (
-                    SELECT 
-                        id, 
-                        array_agg(val ORDER BY attr) as coefficients,
-                        sum(intercep_tmp) as intercept,
-                        max(dep_avg) as dep_avg,
-                        max(loss) as loss
-                    FROM
-                        (
-                            SELECT
-                                id,
-                                subq2.attr,
-                                (
-                                    CASE WHEN std = 0 THEN
-                                        0.
-                                    ELSE
-                                        coef * dep_std / std
-                                    END
-                                ) AS val,
-                                (
-                                    CASE WHEN std = 0 THEN
-                                        0.
-                                    ELSE
-                                        - coef * dep_std * mean / std
-                                    END
-                                ) AS intercep_tmp,
-                                dep_avg,
-                                loss
-                            FROM
-                                __lasso_igd_scales_temp_table,
-                                __lasso_igd_scales_temp_table_dep,
-                                (
-                                    SELECT
-                                        id,
-                                        generate_series(1, array_length(coefficients,1)) as attr,
-                                        unnest(coefficients) as coef,
-                                        loss
-                                    FROM
-                                        (
-                                            SELECT 
-                                                '|| model_id ||' as id,
-                                                (result).*
-                                            FROM
-                                                (
-                                                    SELECT
-                                                        MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result    
-                                                    FROM
-                                                        _madlib_lasso_igd_state
-                                                    WHERE _iteration = '|| iteration_run ||'
-                                                ) AS subq
-                                        ) AS subq1
-                                ) AS subq2
-                            WHERE __lasso_igd_scales_temp_table.attr = subq2.attr
-                        ) AS subq3
-                    GROUP BY id
-                ) AS subq4
-        ';
+        PERFORM MADLIB_SCHEMA.restore_data_scales('__lasso_igd_scales_temp_table',
+                                                (dimension)::VARCHAR, 
+                                                '__lasso_igd_scales_temp_table_dep',
+                                                (model_id)::VARCHAR,
+                                                '__lasso_igd_results_temp_storage',
+                                                rel_output);      
     ELSE
         EXECUTE '
             INSERT INTO ' || rel_output || '
                 SELECT ' || model_id || ', (result).coefficients, NULL, (result).loss
-                FROM 
-                    (
-                        SELECT MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result
-                        FROM _madlib_lasso_igd_state
-                        WHERE _iteration = ' || iteration_run || '
-                    ) subq
+                FROM __lasso_igd_results_temp_storage
         ';
     END IF;
 
