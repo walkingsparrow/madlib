@@ -19,9 +19,32 @@ m4_include(`SQLCommon.m4') --'`
 */
 
 ------------------------------------------------------------------------
--- split the data table according to 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.split_data(
+-- split the data table according to some given ID column
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_split_data(
     rel_source      VARCHAR,    -- the original data table
+    col_id          VARCHAR,    -- a unique id for each row, it is randomly assigned, starting from 1
+    row_num         INTEGER,    -- how many rows in the original data table
     rel_train       VARCHAR,    -- split into training data
     rel_valid       VARCHAR,    -- and validation data
-    ) 
+    fold_num        INTEGER,    -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+    which_fold      INTEGER)    -- which fold of data is going to be used as validation
+RETURNS VOID AS $$
+DECLARE
+    start_row       INTEGER;    -- starts the validation data set from this row (itself included)
+    end_row         INTEGER;    -- ends the validation data set at this row (itself not included)
+    fold_row_num    INTEGER;    -- each fold's row number
+BEGIN
+    fold_row_num := floor(row_num * 1.0 / fold_num);
+    start_row := floor((which_fold - 1) * fold_row_num * 1.0) + 1;
+    IF which_fold = fold_num THEN
+        end_row :=  row_num + 1; -- the end row itself is not included
+    ELSE
+        end_row := start_row + fold_row_num;
+    END IF;
+
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_train '||;
+        CREATE TEMP TABLE '|| rel_train ||'
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
