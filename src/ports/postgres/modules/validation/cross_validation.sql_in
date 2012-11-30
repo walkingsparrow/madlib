@@ -19,5 +19,9 @@ m4_include(`SQLCommon.m4') --'`
 */
 
 ------------------------------------------------------------------------
--- split the data table according 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.split_data 
+-- split the data table according to 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.split_data(
+    rel_source      VARCHAR,    -- the original data table
+    rel_train       VARCHAR,    -- split into training data
+    rel_valid       VARCHAR,    -- and validation data
+    ) 
