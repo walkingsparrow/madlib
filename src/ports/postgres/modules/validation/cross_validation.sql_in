@@ -1,4 +1,3 @@
-
 /* ----------------------------------------------------------------------- *//** 
  *
  * @file cross_validation.sql_in
@@ -380,7 +379,7 @@ RETURNS VARCHAR AS $$
 DECLARE
     msg     VARCHAR;
 BEGIN
-    msg := 'cross_validation function now supports nothing';
+    msg := 'cross_validation function now supports Ridge linear regression';
     return msg;
 END;
 $$ LANGUAGE plpgsql STRICT;
