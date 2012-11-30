@@ -208,7 +208,7 @@ CREATE FUNCTION MADLIB_SCHEMA.scale_ind_data(
     col_var         VARCHAR,
     dimension       VARCHAR,
     rel_norm_params VARCHAR)
-RETURNS INTEGER
+RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, scale_ind_data)$$
 LANGUAGE plpythonu VOLATILE;
 
@@ -216,7 +216,7 @@ CREATE FUNCTION MADLIB_SCHEMA.scale_dep_data(
     rel_source      VARCHAR,
     col_var         VARCHAR,
     rel_norm_params VARCHAR)
-RETURNS INTEGER
+RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, scale_dep_data)$$
 LANGUAGE plpythonu VOLATILE;
 
@@ -228,7 +228,7 @@ CREATE FUNCTION MADLIB_SCHEMA.normalize_data(
     ind_norms       VARCHAR,
     dep_norms       VARCHAR,
     resulting_table VARCHAR)
-RETURNS INTEGER
+RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, normalize_data)$$
 LANGUAGE plpythonu VOLATILE;
 
@@ -239,7 +239,7 @@ CREATE FUNCTION MADLIB_SCHEMA.restore_data_scales(
     model_id        VARCHAR,
     result_tbl      VARCHAR,
     rel_output      VARCHAR)
-RETURNS INTEGER
+RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, restore_data_scales)$$
 LANGUAGE plpythonu VOLATILE;
 
