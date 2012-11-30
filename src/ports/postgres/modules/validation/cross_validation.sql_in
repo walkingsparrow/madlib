@@ -1,0 +1,23 @@
+
+m4_include(`SQLCommon.m4') --'`
+
+/**
+@addtogroup xvalid
+
+@about
+
+@input
+
+@usage
+
+@examp
+
+@literature
+
+@sa File cross_validation.sql_in documenting the SQL functions.
+
+*/
+
+------------------------------------------------------------------------
+-- split the data table according 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.split_data 
