@@ -379,7 +379,9 @@ RETURNS VARCHAR AS $$
 DECLARE
     msg     VARCHAR;
 BEGIN
-    msg := 'cross_validation function now supports Ridge linear regression';
+    msg := 'cross_validation function now supports
+Ridge linear regression,
+LASSO linear regression.';
     return msg;
 END;
 $$ LANGUAGE plpgsql STRICT;

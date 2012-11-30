@@ -8,5 +8,4 @@
 
 #include "lmf_igd.hpp"
 #include "ridge_newton.hpp"
-
-
+#include "lasso_igd.hpp"
