@@ -203,7 +203,7 @@ LANGUAGE plpythonu VOLATILE;
 
 ------------------------------------------------------------------------
 -- normalize the independent data array and dependent data
-CREATE FUNCTION MADLIB_SCHEMA.scale_ind_data(
+CREATE FUNCTION MADLIB_SCHEMA.internal_scale_ind_data(
     rel_source      VARCHAR,
     col_var         VARCHAR,
     dimension       VARCHAR,
@@ -212,7 +212,7 @@ RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, scale_ind_data)$$
 LANGUAGE plpythonu VOLATILE;
 
-CREATE FUNCTION MADLIB_SCHEMA.scale_dep_data(
+CREATE FUNCTION MADLIB_SCHEMA.internal_scale_dep_data(
     rel_source      VARCHAR,
     col_var         VARCHAR,
     rel_norm_params VARCHAR)
@@ -220,7 +220,7 @@ RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, scale_dep_data)$$
 LANGUAGE plpythonu VOLATILE;
 
-CREATE FUNCTION MADLIB_SCHEMA.normalize_data(
+CREATE FUNCTION MADLIB_SCHEMA.internal_normalize_data(
     rel_source      VARCHAR,
     col_ind_var     VARCHAR,
     dimension       VARCHAR,
@@ -232,7 +232,7 @@ RETURNS VOID
 AS $$PythonFunction(convex, lasso_igd, normalize_data)$$
 LANGUAGE plpythonu VOLATILE;
 
-CREATE FUNCTION MADLIB_SCHEMA.restore_data_scales(
+CREATE FUNCTION MADLIB_SCHEMA.internal_restore_data_scales(
     ind_norms       VARCHAR,
     dimension       VARCHAR,
     dep_norms       VARCHAR,
@@ -314,13 +314,13 @@ BEGIN
 
     -- normaliza the data
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.scale_ind_data(textin(regclassout(rel_source)), col_ind_var,
-                                                (dimension)::VARCHAR, '__lasso_igd_scales_temp_table');
+        PERFORM MADLIB_SCHEMA.internal_scale_ind_data(textin(regclassout(rel_source)), col_ind_var,
+                                                    (dimension)::VARCHAR, '__lasso_igd_scales_temp_table');
 
-        PERFORM MADLIB_SCHEMA.scale_dep_data(textin(regclassout(rel_source)), col_dep_var,
-                                          '__lasso_igd_scales_temp_table_dep');
+        PERFORM MADLIB_SCHEMA.internal_scale_dep_data(textin(regclassout(rel_source)), col_dep_var,
+                                                    '__lasso_igd_scales_temp_table_dep');
 
-        PERFORM MADLIB_SCHEMA.normalize_data(textin(regclassout(rel_source)), col_ind_var,
+        PERFORM MADLIB_SCHEMA.internal_normalize_data(textin(regclassout(rel_source)), col_ind_var,
                                                      (dimension)::VARCHAR, col_dep_var,
                                                     '__lasso_igd_scales_temp_table',
                                                     '__lasso_igd_scales_temp_table_dep',
@@ -372,12 +372,12 @@ BEGIN
     ';
     
     IF normalization THEN -- restore the original scales in the result
-        PERFORM MADLIB_SCHEMA.restore_data_scales('__lasso_igd_scales_temp_table',
-                                                (dimension)::VARCHAR, 
-                                                '__lasso_igd_scales_temp_table_dep',
-                                                (model_id)::VARCHAR,
-                                                '__lasso_igd_results_temp_storage',
-                                                rel_output);      
+        PERFORM MADLIB_SCHEMA.internal_restore_data_scales('__lasso_igd_scales_temp_table',
+                                                        (dimension)::VARCHAR, 
+                                                        '__lasso_igd_scales_temp_table_dep',
+                                                        (model_id)::VARCHAR,
+                                                        '__lasso_igd_results_temp_storage',
+                                                        rel_output);      
     ELSE
         EXECUTE '
             INSERT INTO ' || rel_output || '
