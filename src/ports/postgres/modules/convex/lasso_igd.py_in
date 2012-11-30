@@ -88,7 +88,7 @@ def scale_ind_data(**kwargs):
                     GROUP BY attr
                 )
     """.format(**kwargs))
-    return 0
+    return None
             
 # ------------------------------------------------------------------------
 # compute the dependent data scales including average and standard deviation
@@ -104,7 +104,7 @@ def scale_dep_data(**kwargs):
                     FROM {rel_source}
                 )
     """.format(**kwargs))
-    return 0
+    return None
 
 # ------------------------------------------------------------------------            
 # normalize the independent data
@@ -146,7 +146,7 @@ def normalize_data(**kwargs):
                     GROUP BY id
                 )
     """.format(**kwargs))
-    return 0
+    return None
 
 # ------------------------------------------------------------------------
 # restore the data original scales
@@ -210,5 +210,5 @@ def restore_data_scales(**kwargs):
                     GROUP BY id
                 ) subq4
     """.format(**kwargs))
-    return 0
+    return None
 
