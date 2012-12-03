@@ -25,9 +25,13 @@ template <class Container, class T>
 inline
 WeightedSampleAccumulator<Container, T>::WeightedSampleAccumulator(
     Init_type& inInitialization)
-  : Base(inInitialization) {
+	: Base(inInitialization) {
 
     this->initialize();
+	//weight_sum = 0.;
+	w_sum = 0.;
+	weight_sum.rebind(&w_sum);
+	//weight_sum() = 0.;
 }
 
 template <class Container, class T>

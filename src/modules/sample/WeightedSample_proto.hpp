@@ -45,6 +45,9 @@ public:
     double_type weight_sum;
     WeightedSampleHeader<T, isMutable> header;
     typename DynamicStructType<T, isMutable>::type sample;
+
+private:
+	double w_sum;
 };
 
 } // namespace sample
