@@ -29,9 +29,8 @@ WeightedSampleAccumulator<Container, T>::WeightedSampleAccumulator(
 
     this->initialize();
 	//weight_sum = 0.;
-	w_sum = 0.;
-	weight_sum.rebind(&w_sum);
-	//weight_sum() = 0.;
+	//w_sum = 0.;
+	// weight_sum.rebind(&w_sum);
 }
 
 template <class Container, class T>
