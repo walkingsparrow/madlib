@@ -19,22 +19,123 @@ m4_include(`SQLCommon.m4') --'`
 */
 
 ------------------------------------------------------------------------
--- split the data table according to some given ID column
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_split_data(
-    rel_source      VARCHAR,    -- the original data table
-    col_id          VARCHAR,    -- a unique id for each row, it is randomly assigned, starting from 1
-    row_num         INTEGER,    -- how many rows in the original data table
-    rel_train       VARCHAR,    -- split into training data
-    rel_valid       VARCHAR,    -- and validation data
-    fold_num        INTEGER,    -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
-    which_fold      INTEGER)    -- which fold of data is going to be used as validation
-RETURNS VOID AS $$
+/*
+    Generate random remporary names for temp table and other names
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_unique_string ()
+RETURNS VARCHAR AS $$
 DECLARE
-    start_row       INTEGER;    -- starts the validation data set from this row (itself included)
-    end_row         INTEGER;    -- ends the validation data set at this row (itself not included)
-    fold_row_num    INTEGER;    -- each fold's row number
+    name        VARCHAR;
 BEGIN
-    fold_row_num := floor(row_num * 1.0 / fold_num);
+    name := '__madlib_temp_'
+            || floor(random()*100000000)
+            || '_'
+            || round(extract(epoch from now()))
+            || '_'
+            || round(extract(epoch from now()))::INTEGER
+                % floor(random() * 100000000)::INTEGER
+            || '__';
+    return name;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    Given an array of strings, pick out the column names and form a single
+    string, so that we could select only the necessary data when copying is
+    inevitable.
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_produce_col_name_string (
+    cols        VARCHAR[]
+) RETURNS VARCHAR AS $$
+    rst = ""
+    for i in range(len(cols)):
+        rst += cols[i]
+        if i != len(cols) - 1:
+            rst += ", "
+    return rst
+$$ LANGUAGE plpythonu;
+
+------------------------------------------------------------------------
+/*
+    Create an random ID column for a given data table.
+
+    If the user provides an ID column, which can uniquely identify the rows,
+    create a table which maps the row ID to a random integer, which is
+    then used as the ID when splitting data.
+
+    If the ID provided by user is already random, then there is no need to
+    call this function.
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_generate_random_id(
+    rel_origin      VARCHAR,    -- the original data table
+    col_id          VARCHAR,    -- name of ID column provided by the user
+    rel_random_id   VARCHAR,    -- table for mapping id to random ID
+    random_id       VARCHAR,    -- column name for random ID
+    origin_id       VARCHAR     -- column name for the orginal non-random ID in table rel_random_id
+) RETURNS VOID AS $$
+BEGIN
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_random_id ||';
+        CREATE TEMP TABLE '|| rel_random_id ||' AS
+            SELECT
+                row_number() OVER (ORDER BY random()) AS '|| random_id ||',
+                '|| col_id ||' AS '|| origin_id ||'
+            FROM
+                '|| rel_origin ||'
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    If the user does not provide a ID column, the data table has to be
+    copied and at the same time create a random ID column with it.
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_copy_data_with_id(
+    rel_origin      VARCHAR,    -- the original data table
+    col_data        VARCHAR[],  -- ind & dep data column names as an array
+    rel_copied      VARCHAR,    -- the copied table together with a newly generated random ID column
+    random_id       VARCHAR     -- the name of the newly generated random ID column
+) RETURNS VOID AS $$
+DECLARE
+    col_string      VARCHAR;
+BEGIN
+    -- We want to select only the columns that will be used in the computation.
+    col_string := MADLIB_SCHEMA.internal_produce_col_name_string(col_data);
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_origin ||';
+        CREATE TEMP TABLE '|| rel_copied ||' AS
+            SELECT
+                row_number() OVER (ORDER BY random()) AS '|| random_id '||,
+                '|| col_string ||'
+            FROM
+                '|| rel_origin ||'
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    Compute the start_row and end_row of validation data
+    start_row is included, while end_row is not.
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_validation_rows(
+    row_num         INTEGER,            -- how many rows in the original data table
+    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+                                        -- double number is allowed for a more general situation
+    which_fold      INTEGER             -- which fold of data is going to be used as validation
+) RETURNS INTEGER[] AS $$
+DECLARE
+    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+    fold_row_num    INTEGER;            -- each fold's row number
+    start_end_pair  INTEGER[];
+BEGIN
+    fold_row_num := floor(row_num * 1.0 / fold_num); -- how many rows in each cross-validation fold
+
+    -- Since the ID column is already random, a consecutive part of
+    -- the ID is enough to extract a good sample of validation data.
     start_row := floor((which_fold - 1) * fold_row_num * 1.0) + 1;
     IF which_fold = fold_num THEN
         end_row :=  row_num + 1; -- the end row itself is not included
@@ -42,9 +143,256 @@ BEGIN
         end_row := start_row + fold_row_num;
     END IF;
 
+    SELECT ARRAY[start_row, end_row] INTO start_end_pair;
+
+    RETURN start_end_pair;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    Split the data table according to some given ID column
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_split_data(
+    rel_source      VARCHAR,            -- the data table with random IDs
+    col_id          VARCHAR,            -- a unique id for each row, it is randomly assigned, starting from 1
+    row_num         INTEGER,            -- how many rows in the original data table
+    rel_train       VARCHAR,            -- split into training data
+    rel_valid       VARCHAR,            -- and validation data
+    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+                                        -- double number is allowed for a more general situation
+    which_fold      INTEGER             -- which fold of data is going to be used as validation
+) RETURNS VOID AS $$
+DECLARE
+    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+BEGIN
+    -- Since the ID column is already random, a consecutive part of
+    -- the ID is enough to extract a good sample of validation data.
+    SELECT start_end_pair[1], start_end_pair[2]
+    FROM (
+        SELECT
+            MADLIB_SCHEMA.internal_validation_rows(row_num, fold_num, which_fold)) AS start_end_pair
+        ) AS t
+    INTO start_row, end_row;
+
+    -- Extract the training part of data,
+    -- which corresponds to rows outside of [start_row, end_row).
     EXECUTE '
         DROP TABLE IF EXISTS '|| rel_train '||;
-        CREATE TEMP TABLE '|| rel_train ||'
+        CREATE TEMP TABLE '|| rel_train ||' AS
+            SELECT * FROM '|| rel_source ||'
+            WHERE '|| col_id ||' < start_row
+                OR '|| col_id ||' >= end_row
     ';
+
+    -- Extract the validation part of data,
+    -- which corresponds to rows inside of [start_row, end_row).
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_valid ||';
+        CREATE TEMP TABLE '|| rel_valid ||' AS
+            SELECT * FROM '|| rel_source ||'
+            WHERE '|| col_id ||' >= start_row
+                AND '|| col_id ||' < end_row
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    Split data according to a separated ID mapping table,
+    which is generated by the function internal_generate_random_id
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_split_data(
+    rel_origin      VARCHAR,            -- original data
+    rel_random_id   VARCHAR,            -- table for mapping id to random ID
+    random_id       VARCHAR,            -- column name for random ID
+    origin_id       VARCHAR             -- column name for the original non-random ID
+    row_num         INTEGER,            -- how many rows in the original data table
+    rel_train       VARCHAR,            -- split into training data
+    rel_valid       VARCHAR,            -- and validation data
+    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+    which_fold      INTEGER             -- which fold of data is going to be used as validation
+) RETURNS VOID AS $$
+DECLARE
+    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+BEGIN
+    -- Since the ID column is already random, a consecutive part of
+    -- the ID is enough to extract a good sample of validation data.
+    SELECT start_end_pair[1], start_end_pair[2]
+    FROM (
+        SELECT
+            MADLIB_SCHEMA.internal_validation_rows(row_num, fold_num, which_fold)) AS start_end_pair
+        ) AS t
+    INTO start_row, end_row;
+
+    -- Extract the training part of data,
+    -- which corresponds to rows outside of [start_row, end_row).
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_train ||';
+        CREATE TEMP TABLE '|| rel_train ||' AS
+            SELECT
+                '|| rel_origin ||'.*
+            FROM
+                '|| rel_origin ||',
+                '|| rel_random_id ||'
+            WHERE
+                '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
+                AND
+                (
+                    '|| rel_random_id ||'.'|| random_id ||' < start_row
+                    OR
+                    '|| rel_random_id ||'.'|| random_id ||' >= end_row
+                )            
+    ';
+
+    -- Extract the training part of data,
+    -- which corresponds to rows outside of [start_row, end_row).
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| rel_valid ||';
+        CREATE TEMP TABLE '|| rel_valid ||' AS
+            SELECT
+                '|| rel_origin ||'.*
+            FROM
+                '|| rel_origin ||',
+                '|| rel_random_id ||'
+            WHERE
+                '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
+                AND
+                (
+                    '|| rel_random_id ||'.'|| random_id ||' >= start_row
+                    OR
+                    '|| rel_random_id ||'.'|| random_id ||' < end_row
+                )
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_combine_params_type(
+    params          VARCHAR[],
+    params_type     VARCHAR[],
+    param_explored  VARCHAR,
+    explore_value   VARCHAR
+) RETURNS VARCHAR AS $$
+    if len(params) != len(params_type):
+        plpy.error('Parameter number should be equal to the type number!')
+    rst = ""
+    for i in range(len(params)):
+        if params[i] != param_explored:
+            rst += params[i] + "::" + params_type[i]
+        else:
+            rst += explore_value + "::" + params_type[i]
+        if i != len(params) - 1:
+            rst = rst + ", "
+    return rst
+$$ LANGUAGE plpythonu;
+
+/*
+    Call function
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.internal_funcall(
+    func            VARCHAR,    -- the function
+    params          VARCHAR[],  -- parameters of the function
+    params_type     VARCHAR[],  -- parameter types
+    param_explored  VARCHAR,    -- which parameter is under study
+    explore_value   VARCHAR,    -- the value currently under study
+    output_tbl      VARCHAR     -- output the result of function
+) RETURNS VOID AS $$
+DECLARE
+    arguments   VARCHAR;
+BEGIN
+    arguments := MADLIB_SCHEME.internal_combine_params_type(params, params_type, param_explored, explore_value);
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| output_tbl ||';
+        CREATE TEMP TABLE '|| output_tbl ||' AS
+            SELECT '|| func ||'('|| arguments ||')
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    Perform cross validation
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
+    modelling_func          VARCHAR,    -- function for setting up the model
+    modelling_params        VARCHAR[],  -- parameters for modelling
+    modelling_params_type   VARCHAR[],  -- parameter types for modelling
+    --
+    param_explored          VARCHAR,    -- which parameter will be studied using validation
+    explore_values          VARCHAR[],  -- values that will be explored for this parameter
+    --
+    predict_func            VARCHAR,    -- function for predicting using the model
+    predict_params          VARCHAR[],  -- parameters for prediction
+    predict_params_type     VARCHAR[],  -- parameter types for prediction
+    --
+    metric_func             VARCHAR,    -- function that computes the error metric
+    
+    --
+    data_tbl                VARCHAR,    -- table containing the data, which will be split into training and validation parts
+    data_id                 VARCHAR,    -- user provide a unique ID for each row
+    id_is_random            BOOLEAN,    -- the ID provided by user is random
+    data_cols               VARCHAR[],  -- names of data columns that are going to be used
+    --
+    fold_num                DOUBLE PRECISION,    -- how many fold validation, default: 10
+    upto_fold,              INTEGER,    -- how many fold actually will be used, default: 10. If 1, it is just one validation.
+    validation_result       VARCHAR     -- store the result: param values, error, +/-
+) RETURNS TABLE(best_value VARCHAR, recommended_value VARCHAR) AS $$
+DECLARE
+    tbl_used        VARCHAR; -- table name that will be used
+    tbl_all_data    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- if need to copy the data, this is the copied table name
+    tbl_train       VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- table name for training
+    tbl_valid       VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- table name for validation
+    col_random_id   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- column name for random id
+    tbl_random_id   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- table for random ID mapping
+    row_num         INTEGER;
+    output_train    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of train process
+    output_valid    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of validation process
+    output_metric   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of measuring error metric
+BEGIN
+    IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
+        PERFORM MADLIB_SCHEMA.internal_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
+        tbl_used := tbl_all_data;
+    ELSIF id_is_random THEN -- unique ID column is given and is random
+        tbl_used := data_tbl; -- nothing needs to be done to the original data table
+    ELSE -- the provided unique ID is not random, create a table mapping the given ID to a random ID
+        PERFORM MADLIB_SCHEMA.internal_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id);
+        tbl_used := data_tbl;
+    END IF;
+
+    -- k-fold cross-validation
+    EXECUTE 'SELECT count(*) FROM '|| data_tbl ||' INTO '|| row_num;
+    IF fold_num <= 1 THEN
+        RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!'
+    END IF;
+    
+    IF upto_fold < 1 OR upto_fold > fold_num THEN
+        RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!'
+    END IF;
+
+    FOREACH explore_value IN ARRAY explore_values LOOP
+        FOR k IN 1..fold_num LOOP
+            -- split data into train and validation parts
+            IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
+                PERFORM MADLIB_SCHEMA.internal_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
+            ELSE
+                PERFORM MADLIB_SCHEMA.internal_split_data(tbl_used, tbl_random_id, col_random_id, data_id, row_num, tbl_train, tbl_valid, fold_num, k);
+            END IF;
+
+            -- validation using each explore_value
+            -- train
+            PERFORM MADLIB_SCHEMA.internal_funcall(modelling_func, modelling_params, modelling_params_type,
+                                                    param_explored, explore_value, output_train);
+            -- validate
+            PERFORM MADLIB_SCHEMA.internal_funcall(predict_func, predict_params, predict_params_type,
+                                                    param_explored, explore_value, output_valid);
+            -- measure the error of the validation part
+            PERFORM MADLIB_SCHEMA.internal_funcall(metric_func, metric_params, metric_params_type,
+                                                    param_explored, explore_value, output_metric);
+        END LOOP;
+    END LOOP;
+        
 END;
 $$ LANGUAGE plpgsql VOLATILE;
