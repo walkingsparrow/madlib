@@ -348,9 +348,9 @@ DECLARE
     col_random_id   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- column name for random id
     tbl_random_id   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- table for random ID mapping
     row_num         INTEGER;
-    output_train    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of train process
-    output_valid    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of validation process
-    output_metric   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of measuring error metric
+    tbl_output_train    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of train process
+    tbl_output_valid    VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of validation process
+    tbl_output_metric   VARCHAR := MADLIB_SCHEMA.internal_unique_string();  -- output of measuring error metric
 BEGIN
     IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
         PERFORM MADLIB_SCHEMA.internal_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
@@ -384,15 +384,24 @@ BEGIN
             -- validation using each explore_value
             -- train
             PERFORM MADLIB_SCHEMA.internal_funcall(modelling_func, modelling_params, modelling_params_type,
-                                                    param_explored, explore_value, output_train);
+                                                    param_explored, explore_value, tbl_output_train);
             -- validate
             PERFORM MADLIB_SCHEMA.internal_funcall(predict_func, predict_params, predict_params_type,
-                                                    param_explored, explore_value, output_valid);
+                                                    param_explored, explore_value, tbl_output_valid);
             -- measure the error of the validation part
             PERFORM MADLIB_SCHEMA.internal_funcall(metric_func, metric_params, metric_params_type,
-                                                    param_explored, explore_value, output_metric);
+                                                    param_explored, explore_value, tbl_output_metric);
         END LOOP;
     END LOOP;
-        
+
+    -- clean up
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_train;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_valid;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_train;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_valid;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_metric;
+    
 END;
 $$ LANGUAGE plpgsql VOLATILE;
