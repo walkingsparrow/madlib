@@ -114,6 +114,7 @@ distAngle(
     const MappedColumnVector& inX,
     const MappedColumnVector& inY) {
 
+    if (inX.norm() == 0 || inY.norm() == 0) return 3.14/2;
     double cosine = dot(inX, inY) / (inX.norm() * inY.norm());
     if (cosine > 1)
         cosine = 1;

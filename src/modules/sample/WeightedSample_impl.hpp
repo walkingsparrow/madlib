@@ -9,6 +9,8 @@
 
 #include <boost/tr1/random.hpp>
 
+#include <fstream>
+
 // Import TR1 names (currently used from boost). This can go away once we make
 // the switch to C++11.
 namespace std {
@@ -28,9 +30,18 @@ WeightedSampleAccumulator<Container, T>::WeightedSampleAccumulator(
 	: Base(inInitialization) {
 
     this->initialize();
+	//////////////////////////////
+	// std::ofstream of;
+	// of.open("/Users/qianh1/workspace/tests/madlib-768/log.txt", std::ios::app);
+	// if (weight_sum.isNull())
+	// 	of << "weight_sum is Null at the beginning!" << std::endl;
+	// else
+	// 	of << "wieght_sum has value " << weight_sum << " at the beginning"<< std::endl;
+	// of.close();
+	//////////////////////////////
 	//weight_sum = 0.;
-	//w_sum = 0.;
-	// weight_sum.rebind(&w_sum);
+	w_sum = 0.;
+	weight_sum.rebind(&w_sum);
 }
 
 template <class Container, class T>
@@ -108,6 +119,16 @@ WeightedSampleAccumulator<Container, T>::operator<<(
     const T& x = std::get<0>(inTuple);
     const double& weight = std::get<1>(inTuple);
 
+	//////////////////////////////
+	// std::ofstream of;
+	// of.open("/Users/qianh1/workspace/tests/madlib-768/log.txt", std::ios::app);
+	// if (weight_sum.isNull())
+	// 	of << "weight_sum is Null before adding!" << std::endl;
+	// else
+	// 	of << "wieght_sum has value " << weight_sum << " before adding."<< std::endl;
+	// of.close();
+	//////////////////////////////
+	
     // Instead of throwing an error, we will just ignore rows with a negative
     // weight
     if (weight > 0.) {
@@ -135,6 +156,16 @@ WeightedSampleAccumulator<Container, T>&
 WeightedSampleAccumulator<Container, T>::operator<<(
     const WeightedSampleAccumulator<OtherContainer, T>& inOther) {
 
+    ////////////////////////////////
+    // std::ofstream of;
+	// of.open("/Users/qianh1/workspace/tests/madlib-768/log.txt", std::ios::app);
+	// if (weight_sum.isNull())
+	// 	of << "weight_sum is Null in the middle!" << std::endl;
+	// else
+	// 	of << "wieght_sum has value " << weight_sum << " in the middle" << std::endl;
+	// of.close();
+    ////////////////////////////////
+    
     // Initialize if necessary
     if (weight_sum == 0) {
         *this = inOther;

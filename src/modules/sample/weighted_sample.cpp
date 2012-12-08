@@ -8,6 +8,8 @@
 
 #include <dbconnector/dbconnector.hpp>
 
+#include <fstream>
+
 #include "WeightedSample_proto.hpp"
 #include "WeightedSample_impl.hpp"
 #include "weighted_sample.hpp"
@@ -48,7 +50,18 @@ weighted_sample_transition_vector::run(AnyType& args) {
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double weight = args[2].getAs<double>();
 
+    ////////////////////////////////
+    std::ofstream of;
+    of.open("/Users/qianh1/workspace/tests/madlib-768/log.txt", std::ios::app);
+    of << "ok, and weight is " << weight << std::endl;
+    of.close();
+    ////////////////////////////////
     state << WeightedSampleColVecState::tuple_type(x, weight);
+    ////////////////////////////////
+    of.open("/Users/qianh1/workspace/tests/madlib-768/log.txt", std::ios::app);
+    of << "ok1" << std::endl;
+    of.close();
+    ////////////////////////////////
     return state.storage();
 }
 

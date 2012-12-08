@@ -9,7 +9,7 @@
  *
  *//* ----------------------------------------------------------------------- */
 
-m4_include(`SQLCommon.m4')
+m4_include(`SQLCommon.m4') --'
 
 /**
 @addtogroup grp_kmeans
@@ -223,7 +223,7 @@ sql> SELECT * from madlib.simple_silhouette('km_test_svec','points',
 @sa namespace kmeans (documenting the implementation in Python)
 @endinternal
 */
-
+    
 /*
  * @brief k-Means return type
  *
