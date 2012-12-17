@@ -7,7 +7,7 @@
  *
  *//* ----------------------------------------------------------------------- */
 
-m4_include(`SQLCommon.m4')
+m4_include(`SQLCommon.m4') --'
 
 /* Own macro definitions */
 m4_ifelse(
