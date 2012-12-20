@@ -10,7 +10,7 @@
  *
  *//* ----------------------------------------------------------------------- */
 
-m4_include(`SQLCommon.m4')
+m4_include(`SQLCommon.m4') -- '
 
 /**
 @addtogroup grp_ridge
@@ -103,25 +103,25 @@ mydb-# where ridge_model.id = 1;
 -- create SQL functions for Newton's method optimizer
 --------------------------------------------------------------------------
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_transition(
-        state           DOUBLE PRECISION[],
-        ind_var         DOUBLE PRECISION[],
-        dep_var         DOUBLE PRECISION,
-        previous_state  DOUBLE PRECISION[],
-        dimension       SMALLINT,
-        lambda          DOUBLE PRECISION)
+    state           DOUBLE PRECISION[],
+    ind_var         DOUBLE PRECISION[],
+    dep_var         DOUBLE PRECISION,
+    previous_state  DOUBLE PRECISION[],
+    dimension       SMALLINT,
+    lambda          DOUBLE PRECISION)
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_merge(
-        state1 DOUBLE PRECISION[],
-        state2 DOUBLE PRECISION[])
+    state1 DOUBLE PRECISION[],
+    state2 DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_final(
-        state DOUBLE PRECISION[])
+    state DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
@@ -132,11 +132,11 @@ LANGUAGE C IMMUTABLE STRICT;
  *        method for computing ridge regression
  */
 CREATE AGGREGATE MADLIB_SCHEMA.ridge_newton_step(
-        /*+ ind_var */          DOUBLE PRECISION[],
-        /*+ dep_var */          DOUBLE PRECISION,
-        /*+ previous_state */  DOUBLE PRECISION[], 
-        /*+ dimension */        SMALLINT,
-        /*+ lambda */           DOUBLE PRECISION) (
+    /*+ ind_var */          DOUBLE PRECISION[],
+    /*+ dep_var */          DOUBLE PRECISION,
+    /*+ previous_state */   DOUBLE PRECISION[], 
+    /*+ dimension */        SMALLINT,
+    /*+ lambda */           DOUBLE PRECISION) (
     STYPE=DOUBLE PRECISION[],
     SFUNC=MADLIB_SCHEMA.ridge_newton_transition,
     m4_ifdef(`GREENPLUM',`prefunc=MADLIB_SCHEMA.ridge_newton_merge,')
@@ -149,7 +149,6 @@ CREATE FUNCTION MADLIB_SCHEMA.internal_ridge_newton_result(
 RETURNS DOUBLE PRECISION[] AS
 'MODULE_PATHNAME'
 LANGUAGE c IMMUTABLE STRICT;
-
 
 /**
  * @brief Ridge regression using Newton's method
@@ -166,55 +165,50 @@ LANGUAGE c IMMUTABLE STRICT;
  *   @param lambda  Hyper-parameter that decides how much the L1 regularization takes effect
  * 
  */
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_run(
-    rel_output      VARCHAR,
-    rel_source      REGCLASS,
+CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
+    rel_source      VARCHAR,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
+    rel_output      VARCHAR, 
     dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */,
     lambda          DOUBLE PRECISION /*+ DEFAULT 0.1 */)
-RETURNS INTEGER AS $$
+RETURNS VOID AS $$
 DECLARE
-    model_id        INTEGER;
     old_messages    VARCHAR;
     text_src        VARCHAR;
+    coef            DOUBLE PRECISION[];
 BEGIN
     text_src = textin(regclassout(rel_source));
     /* RAISE NOTICE 'Source table % to be used: dimension %', text_src, dimension; */
 
     -- create result table if it does not exist
-    BEGIN
-        EXECUTE 'SELECT 1 FROM ' || rel_output || ' LIMIT 0';
-    EXCEPTION
-        WHEN undefined_table THEN
-            EXECUTE '
-            CREATE TABLE ' || rel_output || ' (
-                id              serial,
-                coefficients    DOUBLE PRECISION[])';
-    END;
-
-    -- A work-around for GPDB not supporting RETURNING for INSERT
-    -- We generate an id using nextval before INSERT
     EXECUTE '
-    SELECT nextval(' || quote_literal(rel_output || '_id_seq') ||'::regclass)'
-    INTO model_id;
+        DROP TABLE IF EXISTS '|| rel_output ||';
+        CREATE TABLE ' || rel_output || ' (
+            coefficients    DOUBLE PRECISION[])';
+
+    -- -- A work-around for GPDB not supporting RETURNING for INSERT
+    -- -- We generate an id using nextval before INSERT
+    -- EXECUTE '
+    --     SELECT nextval(' || quote_literal(rel_output || '_id_seq') ||'::regclass)'
+    --     INTO model_id;
 
     -- Perform acutal computation and output model
     EXECUTE '
-    INSERT INTO ' || rel_output || '
-    SELECT ' || model_id || ', result
-    FROM (
-        SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
-            MADLIB_SCHEMA.ridge_newton_step(
-                (' || text_src || '.' || col_ind_var || ')::FLOAT8[],
-                (' || text_src || '.' || col_dep_var || ')::FLOAT8, 
-                (NULL)::FLOAT8[],
-                (' || dimension || ')::INT2,
-                (' || lambda || ')::FLOAT8
-                )
-            ) AS result
-        FROM ' || text_src || ' 
-        ) subq';
+        INSERT INTO ' || rel_output || '
+        SELECT result
+        FROM (
+            SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
+                MADLIB_SCHEMA.ridge_newton_step(
+                    (' || text_src || '.' || col_ind_var || ')::FLOAT8[],
+                    (' || text_src || '.' || col_dep_var || ')::FLOAT8, 
+                    (NULL)::FLOAT8[],
+                    (' || dimension || ')::INT2,
+                    (' || lambda || ')::FLOAT8
+                    )
+                ) AS result
+            FROM ' || text_src || ' 
+            ) subq';
 
     -- return description
 /*    RAISE NOTICE $notice$
@@ -224,35 +218,37 @@ Results:
  * view : SELECT * FROM % WHERE id = %$notice$,
     rel_source, col_ind_var, col_dep_var, rel_output, model_id;
   */
-    RETURN model_id;
+    --RETURN model_id;
+    --tbl_output_metricEXECUTE 'SELECT coefficients FROM '|| rel_output ||' WHERE id = '|| model_id INTO coef;
+    --RETURN coef;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_run(
-    rel_output      VARCHAR,
-    rel_source      REGCLASS,
+CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
+    rel_source      VARCHAR,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
+    rel_output      VARCHAR,  
     dimension       INTEGER)
-RETURNS INTEGER AS $$
-    SELECT MADLIB_SCHEMA.ridge_newton_run($1, $2, $3, $4, $5, 0.1);
+RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, 0.1);
 $$ LANGUAGE sql VOLATILE;
 
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_run(
-    rel_output      VARCHAR,
-    rel_source      REGCLASS,
+CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
+    rel_source      VARCHAR,
     col_ind_var     VARCHAR,
-    col_dep_var     VARCHAR)
-RETURNS INTEGER AS $$
+    col_dep_var     VARCHAR,
+    rel_output      VARCHAR)
+RETURNS VOID AS $$
 DECLARE
     dimension INTEGER;
 BEGIN
     EXECUTE '
-    SELECT max(array_upper(' || col_ind_var || ', 1))
-    FROM ' || textin(regclassout(rel_source))
-    INTO dimension;
+        SELECT max(array_upper(' || col_ind_var || ', 1))
+        FROM ' || rel_source
+        INTO dimension;
 
-    RETURN (SELECT MADLIB_SCHEMA.ridge_newton_run($1, $2, $3, $4, dimension));
+    SELECT MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, dimension);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -263,10 +259,58 @@ $$ LANGUAGE plpgsql VOLATILE;
  * @param ind_var  Features (independent variables)
  *
  */
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
-        coefficients    DOUBLE PRECISION[],
-        ind_var         DOUBLE PRECISION[])
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_predict(
+    coefficients    DOUBLE PRECISION[],
+    ind_var         DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ridge_newton_predict'
 LANGUAGE C IMMUTABLE STRICT;
 
+-- predict multiple data points given in a table
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
+    tbl_model       VARCHAR,
+    tbl_new_data    VARCHAR,
+    ind_var         VARCHAR,
+    id_var          VARCHAR,    -- ID column
+    tbl_prediction  VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| tbl_prediction ||';
+        CREATE TABLE '|| tbl_prediction ||' AS
+            SELECT
+                '|| tbl_new_data ||'.'|| id_var ||' AS id,
+                MADLIB_SCHEMA.__ridge_newton_predict(
+                    coefficients,
+                    '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
+            FROM
+                '|| tbl_new_data ||',
+                '|| tbl_model;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- compare the prediction and actual values
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
+    tbl_prediction  VARCHAR,    -- predicted values
+    tbl_actual      VARCHAR,
+    id_actual       VARCHAR,
+    values_actual   VARCHAR,
+    tbl_error       VARCHAR
+) RETURNS VOID AS $$
+DECLARE
+    error           DOUBLE PRECISION;
+BEGIN
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| tbl_error ||';
+        CREATE TABLE '|| tbl_error ||' AS
+        SELECT
+            avg(('|| tbl_prediction ||'.prediction - '|| tbl_actual ||'.'|| values_actual ||')^2) as mean_squared_error
+        FROM
+            '|| tbl_prediction ||',
+            '|| tbl_actual ||'
+        WHERE
+            '|| tbl_prediction ||'.id = '|| tbl_actual ||'.'|| id_actual;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+    
