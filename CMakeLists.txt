@@ -13,6 +13,8 @@ set(CMAKE_GENERATOR_CXX sunCC g++)
 
 project(MADlib)
 
+
+
 # FindPostgreSQL.cmake needs at least 2.8.3. We are on the safe side and require
 # the minimum version tested, which is 2.8.4.
 cmake_minimum_required(VERSION 2.8.4 FATAL_ERROR)
@@ -196,3 +198,5 @@ include(OSXUtils)
 add_subdirectory(src)
 add_subdirectory(doc)
 add_subdirectory(deploy)
+add_subdirectory(src/modules/stats)
+

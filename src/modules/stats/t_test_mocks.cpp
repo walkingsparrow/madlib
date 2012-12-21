@@ -1,17 +1,20 @@
 #define BOOST_TEST_MODULE Mock example
 #include <boost/test/included/unit_test.hpp>
+#include <dbconnector/dbconnector.hpp>
 //#include <gtest/gtest.h>
 //#include <gmock/gmock.h>
-//#include "t_test.cpp"
+#include "t_test.hpp"
+#include "t_test_mocks.hpp"
 
-using namespace std;
+//using namespace std;
 //using namespace testing;
 //using namespace madlib::modules::stats;
-using namespace madlib::dbconnector::postgres;
+//using namespace madlib::dbconnector::postgres;
  
 namespace madlib {
 namespace modules{
 namespace stats{
+    
 /*class BoostTestAdapter: public EmptyTestEventListener {
  
     virtual void OnTestStart(const TestInfo& {
@@ -106,6 +109,5 @@ BOOST_FIXTURE_TEST_CASE(test_ttransition, AnyTypeFixture) {
 
 	//return mstate;
 }
-}
-}
-}
+
+}}}

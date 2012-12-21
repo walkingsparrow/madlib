@@ -12,6 +12,7 @@
 #include <modules/shared/HandleTraits.hpp>
 
 #include "t_test.hpp"
+#include "t_test_mocks.hpp"
 
 namespace madlib {
 
@@ -81,7 +82,7 @@ public:
  * Report STAN-CS-79-773, Department of Computer Science, Stanford University.
  * ftp://reports.stanford.edu/pub/cstr/reports/cs/tr/79/773/CS-TR-79-773.pdf
  */
-inline
+
 void
 updateCorrectedSumOfSquares(double &ioLeftWeight, double &ioLeftSum,
     double &ioLeftCorrectedSumSquares, double inRightWeight, double inRightSum,
@@ -324,3 +325,4 @@ tStatsToResult(double inT, double inDegreeOfFreedom) {
 } // namespace modules
 
 } // namespace madlib
+

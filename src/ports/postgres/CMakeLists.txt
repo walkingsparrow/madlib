@@ -245,6 +245,12 @@ macro(add_current_${PORT_LC}_version)
     endif(${PORT_UC}_${_VERSION_UNDERSCORES}_FOUND)
 endmacro(add_current_${PORT_LC}_version)
 
+#find_package(Boost COMPONENTS regex system filesystem unit_test_framework REQUIRED)
+#add_executable(t_test_mocks )
+#ADD_LIBRARY(madlib ${CMAKE_CURRENT_BINARY_DIR}/lib/libmadlib.so)
+#SET_TARGET_PROPERTIES(madlib PROPERTIES LINKER_LANGUAGE CXX)
+#TARGET_LINK_LIBRARIES(madlib ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+
 # -- Extension support
 # If the DBMS can support CREATE EXTENSION, call this function
 # after add_current_PORT_version()
@@ -359,3 +365,20 @@ foreach(VERSION ${VERSIONS})
 	add_subdirectory(${VERSION})
 endforeach(VERSION)
 
+# -----------------
+#macro(add_boost_test)
+#    set(BOOST_ROOT "...")
+#    set(BOOST_INCLUDE "...")
+#    set(BOOST_LIBRARY "...")
+#    find_package(Boost COMPONENTS unit_test_framework REQUIRED)
+#    include_directories("...")
+#    add_definitions(-DBOOST_TEST_DYN_LINK)
+#    # file(GLOB_RECURSE UnitTests_sources t_test_mocks.cpp)
+#    add_executable(UnitTests
+#        #  ${UnitTests_sources}
+#        t_test_mocks.cpp
+#        )
+#    enable_testing()
+#    add_test(UnitTests UnitTests)
+#    target_link_libraries(UnitTests unit_test_framework ${CMAKE_CURRENT_BINARY_DIR}/lib/libmadlib.so)
+#endmacro(add_boost_test)
