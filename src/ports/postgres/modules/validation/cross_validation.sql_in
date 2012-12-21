@@ -296,7 +296,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_combine_params_type_general(
         elif params[i] == "%id%":
             rst += "\'" + col_random_id + "\'::" + params_type[i]
         elif params[i] == "%error%":
-            rst += "\'" + tbl_out_data + "\'" + params_type[i]
+            rst += "\'" + tbl_out_data + "\'::" + params_type[i]
 
         if i != len(params) - 1:
             rst = rst + ", "
@@ -323,8 +323,8 @@ BEGIN
                     params, params_type, tbl_data, col_random_id,
                     param_explored, explore_value, output_tbl
                 );
-    
-    PERFORM  'SELECT '|| func ||'('|| arguments ||')';
+ 
+    EXECUTE  'SELECT '|| func ||'('|| arguments ||')';
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 

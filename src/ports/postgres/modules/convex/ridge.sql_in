@@ -231,8 +231,10 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     rel_output      VARCHAR,  
     dimension       INTEGER)
 RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, 0.1);
-$$ LANGUAGE sql VOLATILE;
+BEGIN
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, 0.1);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     rel_source      VARCHAR,
@@ -248,7 +250,7 @@ BEGIN
         FROM ' || rel_source
         INTO dimension;
 
-    SELECT MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, dimension);
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, dimension);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
