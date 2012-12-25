@@ -277,26 +277,39 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_combine_params_type_general(
     params          VARCHAR[],
     params_type     VARCHAR[],
-    tbl_in_data     VARCHAR,
+    tbl_data        VARCHAR,
     col_random_id   VARCHAR,
     param_explored  VARCHAR,
     explore_value   VARCHAR,
-    tbl_out_data    VARCHAR
+    tbl_input       VARCHAR,
+    tbl_output      VARCHAR
 ) RETURNS VARCHAR AS $$
     if len(params) != len(params_type):
         plpy.error('Parameter number should be equal to the type number!')
+        
     rst = ""
+    opts = set(["%data%", "%id%", "%error%", "%model%", "%prediction%", param_explored])
     for i in range(len(params)):
-        if params[i] != param_explored and params[i] != "%data%" and params[i] != "%id%" and params[i] != "%error%":
+        if params[i] not in opts:
             rst += "\'" + params[i] + "\'::" + params_type[i]
         elif params[i] == param_explored:
             rst += "\'" + explore_value + "\'::" + params_type[i]
         elif params[i] == "%data%":
-            rst += "\'" + tbl_in_data + "\'::" + params_type[i]
+            rst += "\'" + tbl_data + "\'::" + params_type[i]
         elif params[i] == "%id%":
             rst += "\'" + col_random_id + "\'::" + params_type[i]
-        elif params[i] == "%error%":
-            rst += "\'" + tbl_out_data + "\'::" + params_type[i]
+        elif params[i] == "%error%" :
+            rst += "\'" + tbl_output + "\'::" + params_type[i]
+        elif params[i] == "%model%":
+            if tbl_input is None:
+                rst += "\'" + tbl_output + "\'::" + params_type[i]
+            else:
+                rst += "\'" + tbl_input + "\'::" + params_type[i]
+        elif params[i] == "%prediction%":
+            if "%error%" in set(params):
+                rst += "\'" + tbl_input + "\'::" + params_type[i]
+            else:
+                rst += "\'" + tbl_output + "\'::" + params_type[i]
 
         if i != len(params) - 1:
             rst = rst + ", "
@@ -314,14 +327,15 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_funcall_general(
     col_random_id   VARCHAR,    -- ID column name
     param_explored  VARCHAR,    -- which parameter is under study
     explore_value   VARCHAR,    -- the value currently under study
-    output_tbl      VARCHAR     -- output the result of function
+    tbl_input       VARCHAR,    -- possible input table
+    tbl_output      VARCHAR     -- output the result of function
 ) RETURNS VOID AS $$
 DECLARE
     arguments   VARCHAR;
 BEGIN
     arguments := MADLIB_SCHEMA.__cv_combine_params_type_general(
                     params, params_type, tbl_data, col_random_id,
-                    param_explored, explore_value, output_tbl
+                    param_explored, explore_value, tbl_input, tbl_output
                 );
  
     EXECUTE  'SELECT '|| func ||'('|| arguments ||')';
@@ -379,6 +393,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
 */
 AS $$
 DECLARE
+    oldClientMinMessages    VARCHAR;
     tbl_used                VARCHAR; -- table name that will be used
     tbl_all_data            VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- if need to copy the data, this is the copied table name
     tbl_train               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for training
@@ -389,8 +404,14 @@ DECLARE
     explore_value           VARCHAR;
     explore_type            VARCHAR;
     accum_count             INTEGER;
+    tbl_output_model        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model information
+    tbl_output_pred         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
     tbl_output_error        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
+    tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
 BEGIN
+    oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
+
     IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
         PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
         tbl_used := tbl_all_data;
@@ -430,24 +451,27 @@ BEGIN
             -- train
             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
                 modelling_func, modelling_params, modelling_params_type,
-                tbl_train, col_random_id, param_explored, explore_value, NULL);
+                tbl_train, col_random_id, param_explored, explore_value,
+                NULL, tbl_output_model);
    
             -- validate
             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
                 predict_func, predict_params, predict_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value, NULL);
+                tbl_valid, col_random_id, param_explored, explore_value,
+                tbl_output_model, tbl_output_pred);
    
             -- measure the error of the validation part
             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
                 metric_func, metric_params, metric_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value, tbl_output_error);
+                tbl_valid, col_random_id, param_explored, explore_value,
+                tbl_output_pred, tbl_output_error);
    
             -- accumulate the measured error result
             accum_count := accum_count + 1;
             IF accum_count = 1 THEN
                 EXECUTE '
-                    DROP TABLE IF EXISTS '|| validation_result ||';
-                    CREATE TABLE '|| validation_result ||' AS
+                    DROP TABLE IF EXISTS '|| tbl_accum_error ||';
+                    CREATE TEMP TABLE '|| tbl_accum_error ||' AS
                         SELECT
                             '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
                             '|| tbl_output_error ||'.*
@@ -455,7 +479,7 @@ BEGIN
                             '|| tbl_output_error;
             ELSE
                 EXECUTE '
-                    INSERT INTO '|| validation_result ||'
+                    INSERT INTO '|| tbl_accum_error ||'
                         SELECT
                             '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
                             '|| tbl_output_error ||'.*
@@ -465,11 +489,78 @@ BEGIN
         END LOOP;
     END LOOP;
 
+    PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, param_explored);
+
     -- clean up
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data;
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_train;
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_valid;
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_model;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_pred;
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_error;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_accum_error;
+
+    EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+----------------------------------------------------------------
+/*
+    summarize the result
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_summarize_result(
+    tbl_accum_error     VARCHAR,
+    tbl_result          VARCHAR,
+    param_explored       VARCHAR
+) RETURNS VOID AS $$
+DECLARE
+    cols        VARCHAR[];
+    col         VARCHAR;
+    counts      INTEGER;
+    sizes       INTEGER;
+BEGIN
+    EXECUTE '
+        SELECT array_agg(column_name::VARCHAR)
+        FROM information_schema.columns
+        WHERE table_name = '''|| tbl_accum_error ||''''
+        INTO cols;
+        
+    counts := 0;
+    FOREACH col IN ARRAY cols LOOP
+        counts := counts + 1;
+        IF counts = 1 THEN
+            EXECUTE '
+                DROP TABLE IF EXISTS '|| tbl_result ||';
+                CREATE TABLE '|| tbl_result ||' AS
+                    SELECT '|| param_explored ||'
+                    FROM '|| tbl_accum_error ||'
+                    GROUP BY '|| param_explored ||'
+                    ORDER BY '|| param_explored;
+        ELSE
+             EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_avg DOUBLE PRECISION DEFAULT 0';
+             EXECUTE '
+                UPDATE '|| tbl_result ||' SET '|| col ||'_avg = avgs FROM (
+                         SELECT
+                             '|| param_explored ||',
+                             avg('|| col ||') as avgs
+                         FROM '|| tbl_accum_error ||'
+                         GROUP BY '|| param_explored ||'
+                     ) t
+                     WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;-- ||';
+              EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_stddev DOUBLE PRECISION DEFAULT 0';
+              EXECUTE '
+                UPDATE '|| tbl_result ||'
+                    SET '|| col ||'_stddev = stds
+                    FROM (
+                        SELECT
+                            '|| param_explored ||',
+                            stddev('|| col ||') as stds
+                        FROM '|| tbl_accum_error ||'
+                        GROUP BY '|| param_explored ||'
+                    ) t
+                    WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;
+        END IF;
+    END LOOP;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
