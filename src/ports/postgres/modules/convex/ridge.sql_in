@@ -172,7 +172,8 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     tbl_output      VARCHAR,
     lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
     normalization   BOOLEAN, -- default f to save computation amount
-    dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */
+    dimension       INTEGER, /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */
+    create_view     BOOLEAN -- whether created view, default false
 ) RETURNS VOID AS $$
 DECLARE
     tbl_inter           VARCHAR;
@@ -184,6 +185,7 @@ DECLARE
     tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    to_use_view         VARCHAR;
 BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -201,10 +203,7 @@ BEGIN
     END IF;
     
     -- create result table if it does not exist
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_inter_result ||';
-        CREATE TABLE ' || tbl_inter_result || ' (
-            coefficients    DOUBLE PRECISION[])';
+    --EXECUTE 'CREATE TEMP VIEW ' || tbl_inter_result || ' (coefficients  DOUBLE PRECISION[])';
 
     -- -- A work-around for GPDB not supporting RETURNING for INSERT
     -- -- We generate an id using nextval before INSERT
@@ -214,16 +213,16 @@ BEGIN
 
     -- Perform acutal computation and output model
     EXECUTE '
-        INSERT INTO ' || tbl_inter_result || '
-        SELECT result
+        CREATE TEMP VIEW ' || tbl_inter_result || ' AS
+        SELECT result AS coefficients
         FROM (
             SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
                 MADLIB_SCHEMA.ridge_newton_step(
-                    (' || tbl_inter || '.' || col_ind_var || ')::FLOAT8[],
-                    (' || tbl_inter || '.' || col_dep_var || ')::FLOAT8, 
+                    ('|| col_ind_var ||')::FLOAT8[],
+                    ('|| col_dep_var ||')::FLOAT8, 
                     (NULL)::FLOAT8[],
-                    (' || dimension || ')::INT2,
-                    (' || lambda || ')::FLOAT8
+                    ('|| dimension ||')::INT2,
+                    ('|| lambda ||')::FLOAT8
                     )
                 ) AS result
             FROM ' || tbl_inter || ' 
@@ -231,23 +230,42 @@ BEGIN
 
     IF normalization THEN
         PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', dimension,
-                                                                tbl_ind_scales, tbl_dep_scale, tbl_output);
-        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT TRUE';
+                                                                tbl_ind_scales, tbl_dep_scale, tbl_output, create_view);
     ELSE
+        IF create_view THEN
+            to_use_view := 'TEMP VIEW';
+            EXECUTE 'DROP VIEW IF EXISTS '|| tbl_output ||' CASCADE';
+        ELSE
+            to_use_view := 'TABLE';
+            EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output;
+        END IF;
+
         EXECUTE '
-            DROP TABLE IF EXISTS '|| tbl_output ||';
-            CREATE TABLE '|| tbl_output ||' AS
-                SELECT * FROM '|| tbl_inter_result;
-        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT FALSE';
+            CREATE '|| to_use_view ||' '|| tbl_output ||' AS
+                SELECT *, false AS normalization FROM '|| tbl_inter_result;
     END IF;
 
-    
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
-            DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
-            DROP TABLE IF EXISTS '|| tbl_data_scaled ||';
-            DROP TABLE IF EXISTS '|| tbl_inter_result;
-            
+/*
+    EXECUTE 'DROP VIEW IF EXISTS '|| tbl_ind_scales ||' CASCADE;
+            DROP VIEW IF EXISTS '|| tbl_dep_scale ||' CASCADE;
+            DROP VIEW IF EXISTS '|| tbl_data_scaled ||' CASCADE;
+            DROP VIEW IF EXISTS '|| tbl_inter_result ||' CASCADE';
+*/
     EXECUTE 'SET client_min_messages TO ' || old_messages;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
+    rel_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    col_dep_var     VARCHAR,
+    rel_output      VARCHAR,
+    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
+    normalization   BOOLEAN, -- default f to save computation amount
+    dimension       INTEGER
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, $6, $7, false);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -279,7 +297,7 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     lambda          DOUBLE PRECISION /*+ DEFAULT 0.1 */
 ) RETURNS VOID AS $$
 BEGIN
-    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, f);
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, false);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -303,35 +321,67 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
     tbl_new_data    VARCHAR,
     ind_var         VARCHAR,
     id_var          VARCHAR,    -- ID column
-    tbl_prediction  VARCHAR
+    tbl_prediction  VARCHAR,
+    create_view     BOOLEAN -- whether to create temporary result
 ) RETURNS VOID AS $$
 DECLARE
     old_messages    VARCHAR;
     normalization   BOOLEAN;
+    to_use_view     VARCHAR;
 BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
-    
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_prediction ||';
-        CREATE TABLE '|| tbl_prediction ||' AS
-            SELECT
-                '|| tbl_new_data ||'.'|| id_var ||' AS id,
-                MADLIB_SCHEMA.__ridge_newton_predict(
-                    coefficients,
-                    '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
-            FROM
-                '|| tbl_new_data ||',
-                '|| tbl_model;
+
+    IF create_view THEN
+        to_use_view := 'TEMP VIEW';
+        EXECUTE 'DROP VIEW IF EXISTS '|| tbl_prediction ||' CASCADE';
+    ELSE
+        to_use_view := 'TABLE';
+        EXECUTE 'DROP TABLE IF EXISTS '|| tbl_prediction;
+    END IF;
 
     EXECUTE 'SELECT normalization FROM '|| tbl_model INTO normalization;
+    
     IF normalization THEN
-        EXECUTE 'UPDATE '|| tbl_prediction ||' SET prediction = prediction + intercept FROM '|| tbl_model;
+        EXECUTE '
+            CREATE '|| to_use_view ||' '|| tbl_prediction ||' AS
+                SELECT
+                    '|| tbl_new_data ||'.'|| id_var ||' AS id,
+                    MADLIB_SCHEMA.__ridge_newton_predict(
+                        coefficients,
+                        '|| tbl_new_data ||'.'|| ind_var ||') + intercept AS prediction
+                FROM
+                    '|| tbl_new_data ||',
+                    '|| tbl_model;
+    ELSE
+        EXECUTE '
+            CREATE '|| to_use_view ||' '|| tbl_prediction ||' AS
+                SELECT
+                    '|| tbl_new_data ||'.'|| id_var ||' AS id,
+                    MADLIB_SCHEMA.__ridge_newton_predict(
+                        coefficients,
+                        '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
+                FROM
+                    '|| tbl_new_data ||',
+                    '|| tbl_model;
     END IF;
 
     EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
+    tbl_model       VARCHAR,
+    tbl_new_data    VARCHAR,
+    ind_var         VARCHAR,
+    id_var          VARCHAR,    -- ID column
+    tbl_prediction  VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.ridge_newton_predict($1, $2, $3, $4, $5, false);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 
 -- compare the prediction and actual values
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
@@ -339,18 +389,27 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
     tbl_actual      VARCHAR,
     id_actual       VARCHAR,
     values_actual   VARCHAR,
-    tbl_error       VARCHAR
+    tbl_error       VARCHAR,
+    create_view     BOOLEAN
 ) RETURNS VOID AS $$
 DECLARE
     error           DOUBLE PRECISION;
-    old_messages    VARCHAR; 
+    old_messages    VARCHAR;
+    to_use_view     VARCHAR;
 BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
 
+    IF create_view THEN
+        to_use_view := 'TEMP VIEW';
+        EXECUTE 'DROP VIEW IF EXISTS '|| tbl_error ||' CASCADE';
+    ELSE
+        to_use_view := 'TABLE';
+        EXECUTE 'DROP TABLE IF EXISTS '|| tbl_error;
+    END IF;
+        
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_error ||';
-        CREATE TABLE '|| tbl_error ||' AS
+        CREATE '|| to_use_view ||' '|| tbl_error ||' AS
         SELECT
             avg(('|| tbl_prediction ||'.prediction - '|| tbl_actual ||'.'|| values_actual ||')^2) as mean_squared_error
         FROM
@@ -362,6 +421,19 @@ BEGIN
     EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
+    tbl_prediction  VARCHAR,    -- predicted values
+    tbl_actual      VARCHAR,
+    id_actual       VARCHAR,
+    values_actual   VARCHAR,
+    tbl_error       VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.ridge_newton_error($1, $2, $3, $4, $5, false);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -376,8 +448,8 @@ DECLARE
     foo         VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermdediate table name
 BEGIN
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_scales ||';
-        CREATE TABLE '|| tbl_scales ||' AS
+        DROP VIEW IF EXISTS '|| tbl_scales ||' CASCADE;
+        CREATE TEMP VIEW '|| tbl_scales ||' AS
             SELECT
                 attr,
                 avg(val) AS mean,
@@ -401,8 +473,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
 ) RETURNS VOID AS $$
 BEGIN
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_scale ||';
-        CREATE TABLE '|| tbl_scale ||' AS
+        DROP VIEW IF EXISTS '|| tbl_scale ||' CASCADE;
+        CREATE TEMP VIEW '|| tbl_scale ||' AS
             SELECT
                 avg('|| col_dep_var ||') AS dep_avg,
                 stddev('|| col_dep_var ||') AS dep_std
@@ -425,9 +497,9 @@ DECLARE
     foos        VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
     goos        VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
 BEGIN
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_data_scaled;
+    EXECUTE 'DROP VIEW IF EXISTS '|| tbl_data_scaled ||' CASCADE';
     EXECUTE '
-        CREATE TABLE '|| tbl_data_scaled ||' AS
+        CREATE TEMP VIEW '|| tbl_data_scaled ||' AS
             SELECT
                 array_agg(val ORDER BY attr ) AS '|| col_ind_var ||',
                 max(dep_var) AS '|| col_dep_var ||'
@@ -471,17 +543,27 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(
     dimension       INTEGER,
     tbl_ind_scales  VARCHAR,
     tbl_dep_scale   VARCHAR,
-    tbl_origin_coef VARCHAR     -- the resulting coefficients have been restored to the original scales
+    tbl_origin_coef VARCHAR,     -- the resulting coefficients have been restored to the original scales
+    create_view     BOOLEAN
 ) RETURNS VOID AS $$
 DECLARE
     subq2   VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
+    to_use_view     VARCHAR;
 BEGIN
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_origin_coef;
+    IF create_view THEN
+        to_use_view := 'TEMP VIEW';
+        EXECUTE 'DROP VIEW IF EXISTS '|| tbl_origin_coef ||' CASCADE';
+    ELSE
+        to_use_view := 'TABLE';
+        EXECUTE 'DROP TABLE IF EXISTS '|| tbl_origin_coef;
+    END IF;
+    
     EXECUTE '
-        CREATE TABLE '|| tbl_origin_coef ||' AS
+        CREATE '|| to_use_view ||' '|| tbl_origin_coef ||' AS
             SELECT
                 coefficients AS '|| col_coef ||',
-                intercept + dep_avg AS intercept
+                intercept + dep_avg AS intercept,
+                true AS normalization
             FROM (
                 SELECT
                     array_agg(val ORDER BY attr) AS coefficients,

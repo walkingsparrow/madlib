@@ -180,8 +180,8 @@ BEGIN
     -- Extract the training part of data,
     -- which corresponds to rows outside of [start_row, end_row).
     EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_train ||';
-        CREATE TEMP TABLE '|| rel_train ||' AS
+        DROP VIEW IF EXISTS '|| rel_train ||' CASCADE;
+        CREATE TEMP VIEW '|| rel_train ||' AS
             SELECT * FROM '|| rel_source ||' -- include the ID column
             WHERE '|| col_id ||' < '|| start_row ||'
                 OR '|| col_id ||' >= '|| end_row ||'
@@ -190,8 +190,8 @@ BEGIN
     -- Extract the validation part of data,
     -- which corresponds to rows inside of [start_row, end_row).
     EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_valid ||';
-        CREATE TEMP TABLE '|| rel_valid ||' AS
+        DROP VIEW IF EXISTS '|| rel_valid ||' CASCADE;
+        CREATE TEMP VIEW '|| rel_valid ||' AS
             SELECT * FROM '|| rel_source ||' -- include the ID column
             WHERE '|| col_id ||' >= '|| start_row ||'
                 AND '|| col_id ||' < '|| end_row ||'
@@ -232,8 +232,8 @@ BEGIN
     -- Extract the training part of data,
     -- which corresponds to rows outside of [start_row, end_row).
     EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_train ||';
-        CREATE TEMP TABLE '|| rel_train ||' AS
+        DROP VIEW IF EXISTS '|| rel_train ||' CASCADE;
+        CREATE TEMP VIEW '|| rel_train ||' AS
             SELECT
                 '|| rel_random_id ||'.'|| random_id ||', -- include the random ID column
                 '|| rel_origin ||'.*
@@ -253,8 +253,8 @@ BEGIN
     -- Extract the validation part of data,
     -- which corresponds to rows outside of [start_row, end_row).
     EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_valid ||';
-        CREATE TEMP TABLE '|| rel_valid ||' AS
+        DROP VIEW IF EXISTS '|| rel_valid ||' CASCADE;
+        CREATE TEMP VIEW '|| rel_valid ||' AS
             SELECT
                 '|| rel_random_id ||'.'|| random_id ||',
                 '|| rel_origin ||'.*
@@ -436,7 +436,7 @@ BEGIN
     END IF;
  
     accum_count := 0;
-    FOR k IN 1..fold_num LOOP
+    FOR k IN 1..upto_fold LOOP
         -- split data into train and validation parts
         IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
@@ -446,7 +446,11 @@ BEGIN
         END IF;
 
         FOREACH explore_value IN ARRAY explore_values LOOP
-        
+    /*
+            tbl_output_model := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model information
+            tbl_output_pred := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
+            tbl_output_error := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
+*/
             -- try to be as general as possible
             -- validation using each explore_value
             -- train
@@ -494,14 +498,16 @@ BEGIN
     PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, param_explored);
 
     -- clean up
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_train;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_valid;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_model;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_pred;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_error;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_accum_error;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data ||' CASCADE';
+    EXECUTE 'DROP VIEW IF EXISTS '|| tbl_train ||' CASCADE';
+    EXECUTE 'DROP VIEW IF EXISTS '|| tbl_valid ||' CASCADE';
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id ||' CASCADE';
+    --EXECUTE 'DROP VIEW IF EXISTS '|| tbl_output_model ||' CASCADE';
+    --EXECUTE 'DROP VIEW IF EXISTS '|| tbl_output_pred ||' CASCADE';
+    --EXECUTE 'DROP VIEW IF EXISTS '|| tbl_output_error ||' CASCADE';
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_accum_error ||' CASCADE';
+
+    -- DISCARD TEMP;
 
     EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
 END;
