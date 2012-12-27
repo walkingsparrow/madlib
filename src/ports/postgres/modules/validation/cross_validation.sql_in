@@ -436,16 +436,17 @@ BEGIN
     END IF;
  
     accum_count := 0;
-    FOREACH explore_value IN ARRAY explore_values LOOP
-        FOR k IN 1..fold_num LOOP
-            -- split data into train and validation parts
-            IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
-                PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
-            ELSE
-                PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id, row_num,
-                                                        tbl_train, tbl_valid, fold_num, k);
-            END IF;
-   
+    FOR k IN 1..fold_num LOOP
+        -- split data into train and validation parts
+        IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
+            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
+        ELSE
+            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id, row_num,
+                                                    tbl_train, tbl_valid, fold_num, k);
+        END IF;
+
+        FOREACH explore_value IN ARRAY explore_values LOOP
+        
             -- try to be as general as possible
             -- validation using each explore_value
             -- train
@@ -486,6 +487,7 @@ BEGIN
                         FROM
                             '|| tbl_output_error;
             END IF;
+            
         END LOOP;
     END LOOP;
 
