@@ -317,6 +317,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+/*
 -- compute the independent variables scales
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_ind_var_scales(
     tbl_data        VARCHAR.
@@ -380,3 +381,4 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- column standard deviation
+*/
