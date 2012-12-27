@@ -166,25 +166,44 @@ LANGUAGE c IMMUTABLE STRICT;
  * 
  */
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
-    rel_source      VARCHAR,
+    tbl_source      VARCHAR,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
-    rel_output      VARCHAR, 
-    dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */,
-    lambda          DOUBLE PRECISION /*+ DEFAULT 0.1 */)
-RETURNS VOID AS $$
+    tbl_output      VARCHAR,
+    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
+    normalization   BOOLEAN, -- default f to save computation amount
+    dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */
+) RETURNS VOID AS $$
 DECLARE
-    old_messages    VARCHAR;
-    text_src        VARCHAR;
-    coef            DOUBLE PRECISION[];
+    tbl_inter           VARCHAR;
+    text_src            VARCHAR;
+    coef                DOUBLE PRECISION[];
+    old_messages        VARCHAR;
+    dimension           INTEGER;
+    tbl_ind_scales      VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
 BEGIN
-    text_src = textin(regclassout(rel_source));
-    /* RAISE NOTICE 'Source table % to be used: dimension %', text_src, dimension; */
+    old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
 
+    EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
+    
+    IF normalization THEN
+        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
+        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
+        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
+                                                    tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
+        tbl_inter := tbl_data_scaled;
+    ELSE
+        tbl_inter := tbl_source;
+    END IF;
+    
     -- create result table if it does not exist
     EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_output ||';
-        CREATE TABLE ' || rel_output || ' (
+        DROP TABLE IF EXISTS '|| tbl_inter_result ||';
+        CREATE TABLE ' || tbl_inter_result || ' (
             coefficients    DOUBLE PRECISION[])';
 
     -- -- A work-around for GPDB not supporting RETURNING for INSERT
@@ -195,32 +214,40 @@ BEGIN
 
     -- Perform acutal computation and output model
     EXECUTE '
-        INSERT INTO ' || rel_output || '
+        INSERT INTO ' || tbl_inter_result || '
         SELECT result
         FROM (
             SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
                 MADLIB_SCHEMA.ridge_newton_step(
-                    (' || text_src || '.' || col_ind_var || ')::FLOAT8[],
-                    (' || text_src || '.' || col_dep_var || ')::FLOAT8, 
+                    (' || tbl_inter || '.' || col_ind_var || ')::FLOAT8[],
+                    (' || tbl_inter || '.' || col_dep_var || ')::FLOAT8, 
                     (NULL)::FLOAT8[],
                     (' || dimension || ')::INT2,
                     (' || lambda || ')::FLOAT8
                     )
                 ) AS result
-            FROM ' || text_src || ' 
+            FROM ' || tbl_inter || ' 
             ) subq';
 
-    -- return description
-/*    RAISE NOTICE $notice$
-Finished ridge regression using Newton's method
- * table : % (%, %)
-Results:
- * view : SELECT * FROM % WHERE id = %$notice$,
-    rel_source, col_ind_var, col_dep_var, rel_output, model_id;
-  */
-    --RETURN model_id;
-    --tbl_output_metricEXECUTE 'SELECT coefficients FROM '|| rel_output ||' WHERE id = '|| model_id INTO coef;
-    --RETURN coef;
+    IF normalization THEN
+        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', dimension,
+                                                                tbl_ind_scales, tbl_dep_scale, tbl_output);
+        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT TRUE';
+    ELSE
+        EXECUTE '
+            DROP TABLE IF EXISTS '|| tbl_output ||';
+            CREATE TABLE '|| tbl_output ||' AS
+                SELECT * FROM '|| tbl_inter_result;
+        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT FALSE';
+    END IF;
+
+    
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
+            DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
+            DROP TABLE IF EXISTS '|| tbl_data_scaled ||';
+            DROP TABLE IF EXISTS '|| tbl_inter_result;
+            
+    EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -228,20 +255,10 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     rel_source      VARCHAR,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
-    rel_output      VARCHAR,  
-    dimension       INTEGER)
-RETURNS VOID AS $$
-BEGIN
-    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, 0.1);
-END;
-$$ LANGUAGE plpgsql VOLATILE;
-
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
-    rel_source      VARCHAR,
-    col_ind_var     VARCHAR,
-    col_dep_var     VARCHAR,
-    rel_output      VARCHAR)
-RETURNS VOID AS $$
+    rel_output      VARCHAR,
+    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
+    normalization   BOOLEAN -- default f to save computation amount
+) RETURNS VOID AS $$
 DECLARE
     dimension INTEGER;
 BEGIN
@@ -250,7 +267,19 @@ BEGIN
         FROM ' || rel_source
         INTO dimension;
 
-    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, dimension);
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, $6, dimension);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
+    rel_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    col_dep_var     VARCHAR,
+    rel_output      VARCHAR,
+    lambda          DOUBLE PRECISION /*+ DEFAULT 0.1 */
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, f);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -276,7 +305,13 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
     id_var          VARCHAR,    -- ID column
     tbl_prediction  VARCHAR
 ) RETURNS VOID AS $$
+DECLARE
+    old_messages    VARCHAR;
+    normalization   BOOLEAN;
 BEGIN
+    old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
+    
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_prediction ||';
         CREATE TABLE '|| tbl_prediction ||' AS
@@ -288,6 +323,13 @@ BEGIN
             FROM
                 '|| tbl_new_data ||',
                 '|| tbl_model;
+
+    EXECUTE 'SELECT normalization FROM '|| tbl_model INTO normalization;
+    IF normalization THEN
+        EXECUTE 'UPDATE '|| tbl_prediction ||' SET prediction = prediction + intercept FROM '|| tbl_model;
+    END IF;
+
+    EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -301,7 +343,11 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
 ) RETURNS VOID AS $$
 DECLARE
     error           DOUBLE PRECISION;
+    old_messages    VARCHAR; 
 BEGIN
+    old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
+
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_error ||';
         CREATE TABLE '|| tbl_error ||' AS
@@ -312,6 +358,8 @@ BEGIN
             '|| tbl_actual ||'
         WHERE
             '|| tbl_prediction ||'.id = '|| tbl_actual ||'.'|| id_actual;
+
+    EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -319,36 +367,35 @@ $$ LANGUAGE plpgsql VOLATILE;
 ----------------------------------------------------------------
 -- compute the independent variables scales
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_ind_var_scales(
-    tbl_data        VARCHAR.
+    tbl_data        VARCHAR,
     col_ind_var     VARCHAR,
     dimension       INTEGER,
     tbl_scales      VARCHAR
 ) RETURNS VOID AS $$
 DECLARE
-    col_attr        VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- columns for array
-    col_val         VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- column for values
+    foo         VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermdediate table name
 BEGIN
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_scales ||';
         CREATE TABLE '|| tbl_scales ||' AS
             SELECT
-                '|| col_attr ||',
-                avg('|| col_val ||') AS mean,
-                stddev('|| col_val ||') AS std
+                attr,
+                avg(val) AS mean,
+                stddev(val) AS std
             FROM (
                 SELECT
-                    generate_series(1, '|| dimension ||') as '|| col_attr ||',
-                    unnest('|| col_ind_var ||') AS '|| col_val ||'
+                    generate_series(1, '|| dimension::VARCHAR ||') as attr,
+                    unnest('|| col_ind_var ||') AS val
                 FROM
                     '|| tbl_data ||'
-                ) as foo
-            GROUP BY '|| col_attr;
+                ) AS '|| foo ||'
+            GROUP BY attr';
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- compute the dependent variable scale
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
-    tbl_data        VARCHAR.
+    tbl_data        VARCHAR,
     col_dep_var     VARCHAR,
     tbl_scale       VARCHAR     -- scale including mean and std
 ) RETURNS VOID AS $$
@@ -372,10 +419,105 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_normalize_data(
     col_dep_var     VARCHAR,    -- dependent variable column
     tbl_ind_scales  VARCHAR,    -- independent variables scales array
     tbl_dep_scale   VARCHAR,    -- dependent variable scale 
-    tbl_data_scaled VARCHAR     -- scaled data
+    tbl_data_scaled VARCHAR     -- scaled data result
 ) RETURNS VOID AS $$
+DECLARE
+    foos        VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
+    goos        VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
 BEGIN
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_data_scaled;
+    EXECUTE '
+        CREATE TABLE '|| tbl_data_scaled ||' AS
+            SELECT
+                array_agg(val ORDER BY attr ) AS '|| col_ind_var ||',
+                max(dep_var) AS '|| col_dep_var ||'
+            FROM (
+                SELECT
+                    ids,
+                    '|| foos ||'.attr AS attr,
+                    (dep_var - dep_avg) / dep_std AS dep_var,
+                    (
+                        CASE WHEN std = 0 THEN
+                            val - mean
+                        ELSE
+                            (val - mean) / std
+                        END
+                    ) AS val
+                FROM
+                    '|| tbl_ind_scales ||',
+                    '|| tbl_dep_scale ||',
+                    (
+                        SELECT
+                            row_number() OVER () AS ids,
+                            '|| col_dep_var ||' AS dep_var,
+                            generate_series(1, '|| dimension::VARCHAR ||') AS attr,
+                            unnest('|| col_ind_var ||') AS val
+                        FROM
+                            '|| tbl_data ||'
+                    ) AS '|| foos ||'
+                WHERE '|| tbl_ind_scales ||'.attr = '|| foos ||'.attr
+            ) AS '|| goos ||'
+            GROUP BY ids
+    ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
+-- restore the scales of coefficients for linear model
+-- only restore coefficients
+-- other output should be taken care of by caller
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(
+    tbl_coef        VARCHAR,    -- table contains the result of fitting
+    col_coef        VARCHAR,    -- column for coefficients
+    dimension       INTEGER,
+    tbl_ind_scales  VARCHAR,
+    tbl_dep_scale   VARCHAR,
+    tbl_origin_coef VARCHAR     -- the resulting coefficients have been restored to the original scales
+) RETURNS VOID AS $$
+DECLARE
+    subq2   VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
+BEGIN
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_origin_coef;
+    EXECUTE '
+        CREATE TABLE '|| tbl_origin_coef ||' AS
+            SELECT
+                coefficients AS '|| col_coef ||',
+                intercept + dep_avg AS intercept
+            FROM (
+                SELECT
+                    array_agg(val ORDER BY attr) AS coefficients,
+                    sum(intercept_tmp) AS intercept,
+                    max(dep_avg) AS dep_avg
+                FROM (
+                    SELECT
+                        '|| subq2 ||'.attr,
+                        (
+                            CASE WHEN std = 0 THEN
+                                0.
+                            ELSE
+                                coef * dep_std / std
+                            END
+                        ) AS val,
+                        (
+                            CASE WHEN std = 0 THEN
+                                0.
+                            ELSE
+                                - coef * dep_std * mean / std
+                            END
+                        ) AS intercept_tmp,
+                        dep_avg
+                    FROM
+                        '|| tbl_ind_scales ||',
+                        '|| tbl_dep_scale ||',
+                        (
+                            SELECT
+                                generate_series(1, '|| dimension::VARCHAR ||') AS attr,
+                                unnest('|| col_coef ||') AS coef
+                            FROM '|| tbl_coef ||'
+                        ) AS '|| subq2 ||'
+                    WHERE '|| tbl_ind_scales ||'.attr = '|| subq2 ||'.attr
+                ) AS subq3
+            ) AS subq1                
+    ';
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
