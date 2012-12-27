@@ -408,6 +408,7 @@ DECLARE
     tbl_output_pred         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
     tbl_output_error        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
     tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
+    tmp                     VARCHAR;
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -446,7 +447,15 @@ BEGIN
         END IF;
 
         FOREACH explore_value IN ARRAY explore_values LOOP
-        
+
+            BEGIN
+
+            tmp := MADLIB_SCHEMA.__cv_unique_string();
+            EXECUTE 'SELECT 1 FROM '|| tmp ||' LIMIT 0';
+
+            EXCEPTION
+
+            WHEN undefined_table THEN
             -- try to be as general as possible
             -- validation using each explore_value
             -- train
@@ -487,6 +496,8 @@ BEGIN
                         FROM
                             '|| tbl_output_error;
             END IF;
+
+            END;
             
         END LOOP;
     END LOOP;
