@@ -1,0 +1,183 @@
+
+import plpy
+
+# find the type of exploring parameter
+def __cv_param_type_explored(params, params_type, param_explored):
+    for i in range(len(params)):
+        if params[i] == param_explored:
+            return params_type[i]
+    return None
+
+def __cv_combine_params_type_general(params,
+                                     params_type,
+                                     tbl_data,
+                                     col_random_id,
+                                     param_explored,
+                                     explore_value,
+                                     tbl_input,
+                                     tbl_output,
+                                     **kwargs):
+    if len(params) != len(params_type):
+        plpy.error('Parameter number should be equal to the type number!')
+        
+    rst = ""
+    opts = set(["%data%", "%id%", "%error%", "%model%", "%prediction%", param_explored])
+    for i in range(len(params)):
+        if params[i] not in opts:
+            rst += "\'" + params[i] + "\'::" + params_type[i]
+        elif params[i] == param_explored:
+            rst += "\'" + explore_value + "\'::" + params_type[i]
+        elif params[i] == "%data%":
+            rst += "\'" + tbl_data + "\'::" + params_type[i]
+        elif params[i] == "%id%":
+            rst += "\'" + col_random_id + "\'::" + params_type[i]
+        elif params[i] == "%error%" :
+            rst += "\'" + tbl_output + "\'::" + params_type[i]
+        elif params[i] == "%model%":
+            if tbl_input is None:
+                rst += "\'" + tbl_output + "\'::" + params_type[i]
+            else:
+                rst += "\'" + tbl_input + "\'::" + params_type[i]
+        elif params[i] == "%prediction%":
+            if "%error%" in set(params):
+                rst += "\'" + tbl_input + "\'::" + params_type[i]
+            else:
+                rst += "\'" + tbl_output + "\'::" + params_type[i]
+
+        if i != len(params) - 1:
+            rst = rst + ", "
+    return rst
+    
+# call function
+def __cv_funcall_general(func,
+                         params,
+                         params_type,
+                         tbl_data,
+                         col_random_id,
+                         param_explored,
+                         explore_value,
+                         tbl_input,
+                         tbl_output,
+                         **kwargs):
+    arguments = __cv_combine_params_type_general(params, params_type, tbl_data, col_random_id, param_explored, explore_value, tbl_input, tbl_output)
+    plpy.execute("SELECT " + func + "(" + arguments +")")
+
+# Given an array of strings, pick out the column names and form a single
+# string, so that we could select only the necessary data when copying is
+# inevitable.
+def __cv_produce_col_name_string(cols):
+    rst = ""
+    for i in range(len(cols)):
+        rst += cols[i]
+        if i != len(cols) - 1:
+            rst += ", "
+    return rst
+    
+def cross_validation_general(schema_madlib,
+                             modelling_func,
+                             modelling_params,
+                             modelling_params_type,
+                             param_explored,
+                             explore_values,
+                             predict_func,
+                             predict_params,
+                             predict_params_type,
+                             metric_func,
+                             metric_params,
+                             metric_params_type,
+                             data_tbl,
+                             data_id,
+                             id_is_random,
+                             data_cols,
+                             validation_result,
+                             fold_num,
+                             upto_fold,
+                             **kwargs):
+    
+    # -- if need to copy the data, this is the copied table name
+    tbl_all_data = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table name for training
+    tbl_train = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table name for validation
+    tbl_valid = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- column name for random id
+    col_random_id = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table for random ID mapping
+    tbl_random_id = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table to store model information
+    tbl_output_model = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table to store model predictions
+    tbl_output_pred = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- table to store error for each validation
+    tbl_output_error = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+    # -- accumulate the error information
+    tbl_accum_error = plpy.execute("SELECT " + schema_madlib + ".__cv_unique_string() AS cus")[0]["cus"]
+
+    oldClientMinMessages = plpy.execute("SELECT setting FROM pg_settings WHERE name = 'client_min_messages'")[0]["setting"]
+    plpy.execute("SET client_min_messages TO warning")
+  
+    if data_id is None: # -- unique ID column is not given, has to copy the data and create the ID
+        col_string = __cv_produce_col_name_string(data_cols)
+        plpy.execute("SELECT " + schema_madlib + ".__cv_copy_data_with_id('" + data_tbl + "','" + col_string + "','" + tbl_all_data + "','" + col_random_id + "')")
+        tbl_used = tbl_all_data  
+    elif id_is_random: # -- unique ID column is given and is random
+        tbl_used = data_tbl # -- nothing needs to be done to the original data table
+    else: # -- the provided unique ID is not random, create a table mapping the given ID to a random ID
+        plpy.execute("SELECT " + schema_madlib + ".__cv_generate_random_id('" + data_tbl + "','" + data_id + "','" + tbl_random_id + "','" + col_random_id + "','" + data_id + "')")
+        tbl_used = data_tbl
+ 
+    explore_type = __cv_param_type_explored(modelling_params, modelling_params_type, param_explored)
+
+    # -- k-fold cross-validation
+    row_num = plpy.execute("SELECT count(*) AS cnt FROM " + data_tbl)[0]["cnt"]
+
+    if fold_num <= 1:
+        plpy.error("Cross validation total fold number should be larger than 1!")
+    
+    if upto_fold < 1 or upto_fold > fold_num:
+        plpy.error("Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
+    
+    accum_count = 0
+    for k in range(int(fold_num)):
+        # -- split data into train and validation parts
+        if (data_id is None) or (data_id is not None and id_is_random):
+            plpy.execute("SELECT " + schema_madlib + ".__cv_split_data('" + tbl_used + "','" + col_random_id + "'," + str(row_num) + ",'" + tbl_train + "','" + tbl_valid + "'," + str(fold_num) + "," + str(k+1) + ")")
+        else:
+            plpy.execute("SELECT " + schema_madlib + ".__cv_split_data('" + tbl_used + "','" + tbl_random_id + "','" + col_random_id + "','" + data_id + "'," + str(row_num) + ",'" + tbl_train + "','" + tbl_valid + "'," + str(fold_num) + "," + str(k+1) + ")")
+
+        for explore_value in explore_values:
+
+            # -- try to be as general as possible
+            # -- validation using each explore_value
+            # -- train
+            __cv_funcall_general(modelling_func, modelling_params, modelling_params_type, tbl_train, col_random_id, param_explored, explore_value, None, tbl_output_model)
+   
+            # -- validate
+            __cv_funcall_general(predict_func, predict_params, predict_params_type, tbl_valid, col_random_id, param_explored, explore_value, tbl_output_model, tbl_output_pred)
+   
+            # -- measure the error of the validation part
+            __cv_funcall_general(metric_func, metric_params, metric_params_type, tbl_valid, col_random_id, param_explored, explore_value, tbl_output_pred, tbl_output_error)
+
+            # -- accumulate the measured error result
+            accum_count += 1
+            if accum_count == 1:
+                plpy.execute("DROP TABLE IF EXISTS " + tbl_accum_error)
+                plpy.execute("CREATE TEMP TABLE {0} AS (SELECT {1}::{2} AS {3}, {4}.* FROM {4})".format(tbl_accum_error, explore_value, explore_type, param_explored, tbl_output_error))
+            else:
+                plpy.execute("INSERT INTO {0} (SELECT {1}::{2} AS {3}, {4}.* FROM {4})".format(tbl_accum_error, explore_value, explore_type, param_explored, tbl_output_error))
+
+    plpy.execute("SELECT " + schema_madlib + ".__cv_summarize_result('" + tbl_accum_error + "','" + validation_result + "','" + param_explored + "')")
+
+    # -- clean up
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_all_data)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_train)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_valid)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_random_id)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_output_model)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_output_pred)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_output_error)
+    plpy.execute("DROP TABLE IF EXISTS " + tbl_accum_error)
+
+    plpy.execute("SET client_min_messages TO " + oldClientMinMessages)
+
+    return None
