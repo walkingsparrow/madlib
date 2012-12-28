@@ -193,8 +193,7 @@ BEGIN
     IF normalization THEN
         PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
         PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
-        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
-                                                    tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
+        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var, tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
     ELSE
         tbl_inter := tbl_source;
@@ -230,8 +229,7 @@ BEGIN
             ) subq';
 
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', dimension,
-                                                                tbl_ind_scales, tbl_dep_scale, tbl_output);
+        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
         EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT TRUE';
     ELSE
         EXECUTE '
@@ -518,6 +516,197 @@ BEGIN
                 ) AS subq3
             ) AS subq1                
     ';
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+/*
+    cross validation for ridge only
+*/
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_cv(
+    data_tbl            VARCHAR,
+    data_id             VARCHAR,
+    id_is_random        BOOLEAN,
+    col_ind             VARCHAR,
+    col_dep             VARCHAR,
+    lambda_values       DOUBLE PRECISION[],
+    normalization       BOOLEAN,
+    fold_num            INTEGER,
+    upto_fold           INTEGER,
+    validation_result   VARCHAR
+) RETURNS VOID AS $$
+DECLARE
+    oldClientMinMessages    VARCHAR;
+    tbl_used                VARCHAR; -- table name that will be used
+    tbl_all_data            VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- if need to copy the data, this is the copied table name
+    tbl_inter               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name before normalization
+    tbl_train               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for training
+    tbl_valid               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for validation
+    col_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- column name for random id
+    tbl_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table for random ID mapping
+    tbl_coef                VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
+    row_num                 INTEGER;
+    data_cols               VARCHAR[];
+    error                   DOUBLE PRECISION;
+    lambda                  DOUBLE PRECISION;
+    dimension               INTEGER;
+    accum_count             INTEGER;
+    coef_count              INTEGER;
+BEGIN
+    oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
+
+    data_cols := array[col_ind, col_dep];
+    IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
+        PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
+        tbl_used := tbl_all_data;
+    ELSIF id_is_random THEN -- unique ID column is given and is random
+        tbl_used := data_tbl; -- nothing needs to be done to the original data table
+    ELSE -- the provided unique ID is not random, create a table mapping the given ID to a random ID
+        PERFORM MADLIB_SCHEMA.__cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id);
+        tbl_used := data_tbl;
+    END IF;
+
+    -- k-fold cross-validation
+    EXECUTE 'SELECT count(*) FROM '|| data_tbl INTO row_num;
+    EXECUTE 'SELECT max(array_upper('|| col_ind ||', 1)) FROM '|| data_tbl INTO dimension;
+    
+    IF fold_num <= 1 THEN
+        RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!';
+    END IF;
+    
+    IF upto_fold < 1 OR upto_fold > fold_num THEN
+        RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!';
+    END IF;
+
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| tbl_coef ||';
+        CREATE TEMP TABLE '|| tbl_coef ||' (id integer, coef double precision[], intercept double precision)
+    ';    
+    
+    accum_count := 0;
+    coef_count := 0;
+    FOR k IN 1..upto_fold LOOP
+        -- split data into train and validation parts
+        IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
+            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_inter, tbl_valid, fold_num, k);
+        ELSE
+            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id,
+                                                row_num, tbl_inter, tbl_valid, fold_num, k);
+        END IF;
+
+        IF normalization THEN
+            PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind, dimension, tbl_ind_scales);
+            PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep, tbl_dep_scale);
+            PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_inter, col_ind, dimension, col_dep,
+                                                        tbl_ind_scales, tbl_dep_scale, tbl_train);
+        ELSE
+            tbl_train := tbl_inter;
+        END IF;
+
+        FOREACH lambda IN ARRAY lambda_values LOOP
+            coef_count := coef_count + 1;
+            EXECUTE '
+                INSERT INTO '|| tbl_coef ||'
+                    SELECT '|| coef_count ||', result, 0
+                    FROM (
+                        SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
+                            MADLIB_SCHEMA.ridge_newton_step(
+                            ('|| tbl_train ||'.'|| col_ind ||')::FLOAT8[],
+                            ('|| tbl_train ||'.'|| col_dep ||')::FLOAT8, 
+                            (NULL)::FLOAT8[],
+                            ('|| dimension ||')::INT2,
+                            ('|| lambda ||')::FLOAT8
+                            )
+                        ) AS result
+                        FROM ' || tbl_train || ' 
+                    ) subq';
+
+            IF normalization THEN
+                coef_count := coef_count + 1;
+                EXECUTE '
+                    INSERT INTO '|| tbl_coef ||'
+                    SELECT
+                        '|| coef_count ||',
+                        coefficients,
+                        intercept + dep_avg
+                    FROM (
+                        SELECT
+                            array_agg(val ORDER BY attr) AS coefficients,
+                            sum(intercept_tmp) AS intercept,
+                            max(dep_avg) AS dep_avg
+                        FROM (
+                            SELECT
+                                '|| subq2 ||'.attr,
+                                (
+                                    CASE WHEN std = 0 THEN
+                                        0.
+                                    ELSE
+                                        coef * dep_std / std
+                                    END
+                                ) AS val,
+                                (
+                                    CASE WHEN std = 0 THEN
+                                        0.
+                                    ELSE
+                                        - coef * dep_std * mean / std
+                                    END
+                                ) AS intercept_tmp,
+                                dep_avg
+                            FROM
+                                '|| tbl_ind_scales ||',
+                                '|| tbl_dep_scale ||',
+                                (
+                                    SELECT
+                                        generate_series(1, '|| dimension::VARCHAR ||') AS attr,
+                                        unnest(coef) AS coef
+                                    FROM '|| tbl_coef ||'
+                                ) AS '|| subq2 ||'
+                            WHERE '|| tbl_ind_scales ||'.attr = '|| subq2 ||'.attr
+                        ) AS subq3
+                    ) AS subq1                
+                ';            
+            END IF;
+            
+            EXECUTE '
+                SELECT
+                    avg((real_value - pred)^2)
+                FROM (
+                    SELECT
+                        MADLIB_SCHEMA.__ridge_newton_predict(coef, '|| tbl_valid ||'.'|| col_ind ||') + intercept AS pred,
+                        '|| tbl_valid ||'.'|| col_dep ||' AS real_value
+                    FROM '|| tbl_valid ||', '|| tbl_coef ||'
+                    WHERE '|| tbl_coef ||'.id = '|| coef_count ||'
+                    ) t
+                ' INTO error;
+            
+            -- accumulate the measured error result
+            accum_count := accum_count + 1;
+            IF accum_count = 1 THEN
+                EXECUTE '
+                    CREATE TEMP TABLE '|| tbl_accum_error ||' (lambda DOUBLE PRECISION, mean_squared_error DOUBLE PRECISION)';
+                EXECUTE '
+                    INSERT INTO '|| tbl_accum_error ||' VALUES ('|| lambda ||', '|| error ||')';
+            ELSE
+                EXECUTE '
+                    INSERT INTO '|| tbl_accum_error ||' VALUES ('|| lambda ||', '|| error ||')';
+            END IF;
+            
+        END LOOP;
+    END LOOP;
+
+    PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, 'lambda');
+
+    EXECUTE '
+        DROP TABLE IF EXISTS '|| tbl_all_data ||';
+        DROP TABLE IF EXISTS '|| tbl_train ||';
+        DROP TABLE IF EXISTS '|| tbl_inter ||';
+        DROP TABLE IF EXISTS '|| tbl_valid ||';
+        DROP TABLE IF EXISTS '|| tbl_random_id ||';
+        DROP TABLE IF EXISTS '|| tbl_coef ||';
+        DROP TABLE IF EXISTS '|| tbl_accum_error;
+
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
