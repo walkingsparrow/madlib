@@ -198,5 +198,5 @@ include(OSXUtils)
 add_subdirectory(src)
 add_subdirectory(doc)
 add_subdirectory(deploy)
-add_subdirectory(src/modules/stats)
+#add_subdirectory(src/modules/stats)
 
