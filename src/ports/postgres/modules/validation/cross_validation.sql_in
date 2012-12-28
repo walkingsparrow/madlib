@@ -469,7 +469,7 @@ BEGIN
     END IF;
  
     accum_count := 0;
-    FOR k IN 1..fold_num LOOP
+    FOR k IN 1..upto_fold LOOP
         -- split data into train and validation parts
         IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
