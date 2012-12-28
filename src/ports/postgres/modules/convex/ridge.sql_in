@@ -366,18 +366,28 @@ $$ LANGUAGE plpgsql VOLATILE;
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 -- compute the independent variables scales
+
+CREATE TYPE MADLIB_SCHEMA.__ridge_data_scale AS (
+    attr    INTEGER[],
+    mean    DOUBLE PRECISION[],
+    std     DOUBLE PRECISION[]
+);
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_ind_var_scales(
     tbl_data        VARCHAR,
     col_ind_var     VARCHAR,
-    dimension       INTEGER,
-    tbl_scales      VARCHAR
-) RETURNS VOID AS $$
+    dimension       INTEGER
+) RETURNS MADLIB_SCHEMA.__ridge_data_scale AS $$
 DECLARE
     foo         VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermdediate table name
+    theResult   MADLIB_SCHEMA.__ridge_data_scale;
 BEGIN
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_scales ||';
-        CREATE TABLE '|| tbl_scales ||' AS
+        SELECT
+            array_agg(attr),
+            array_agg(mean),
+            array_agg(std)
+        FROM (
             SELECT
                 attr,
                 avg(val) AS mean,
@@ -389,25 +399,33 @@ BEGIN
                 FROM
                     '|| tbl_data ||'
                 ) AS '|| foo ||'
-            GROUP BY attr';
+            GROUP BY attr
+        ) t'
+        INTO theResult;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- compute the dependent variable scale
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
     tbl_data        VARCHAR,
-    col_dep_var     VARCHAR,
-    tbl_scale       VARCHAR     -- scale including mean and std
-) RETURNS VOID AS $$
+    col_dep_var     VARCHAR
+) RETURNS MADLIB_SCHEMA.__ridge_data_scale AS $$
+DECLARE
+    theResult   MADLIB_SCHEMA.__ridge_data_scale;
 BEGIN
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_scale ||';
-        CREATE TABLE '|| tbl_scale ||' AS
+        SELECT
+            '{1}'::INTEGER[],
+            array_agg(dep_avg),
+            array_agg(dep_std)
+        FROM (
             SELECT
                 avg('|| col_dep_var ||') AS dep_avg,
                 stddev('|| col_dep_var ||') AS dep_std
             FROM
-                '|| tbl_data;
+                '|| tbl_data ||'
+        ) t'
+        INTO theResult;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -417,8 +435,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_normalize_data(
     col_ind_var     VARCHAR,    -- independent variables column 
     dimension       INTEGER,    -- length of independent variable array
     col_dep_var     VARCHAR,    -- dependent variable column
-    tbl_ind_scales  VARCHAR,    -- independent variables scales array
-    tbl_dep_scale   VARCHAR,    -- dependent variable scale 
+    ind_scales  MADLIB_SCHEMA.__ridge_data_scale,    -- independent variables scales array
+    dep_scale   MADLIB_SCHEMA.__ridge_data_scale,    -- dependent variable scale 
     tbl_data_scaled VARCHAR     -- scaled data result
 ) RETURNS VOID AS $$
 DECLARE
