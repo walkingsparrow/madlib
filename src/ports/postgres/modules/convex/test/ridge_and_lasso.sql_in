@@ -68,32 +68,31 @@ DECLARE
     model_id_2  INTEGER;
 BEGIN
     -- 1. same result as linear regression with lambda = 0
-    SELECT ridge_newton_run(
-        'test_ridge_model',
+    PERFORM ridge_newton_train(
         'houses_array',
         'features',
         'price',
-        4,
-        0
-        )
-    INTO model_id_1;
+        'test_ridge_model',
+        0,
+        False,
+        4
+        );
 
     PERFORM assert(
         relative_error(coefficients, ARRAY[27923.43, -35524.78, 2269.34, 130.79]) < 1e-4,
         'Ridge with lambda = 0 (houses): Wrong results'
-    ) FROM test_ridge_model
-    WHERE test_ridge_model.id = model_id_1;
+    ) FROM test_ridge_model;
 
     -- 2. with lambda > 0, norm has decreased
-    SELECT ridge_newton_run(
-        'test_ridge_model',
+    PERFORM ridge_newton_train(
         'houses_array',
         'features',
         'price',
-        4,
-        0.1
-        )
-    INTO model_id_2;
+        'test_ridge_model1',
+        0.1,
+        False,
+        4
+        );
 
     PERFORM assert(
         norm1 > norm2,
@@ -101,12 +100,10 @@ BEGIN
     ) FROM (
         SELECT array_dot(coefficients, coefficients) as norm1
         FROM test_ridge_model
-        WHERE test_ridge_model.id = model_id_1
     ) AS s,
     (
         SELECT array_dot(coefficients, coefficients) as norm2
-        FROM test_ridge_model
-        WHERE test_ridge_model.id = model_id_2
+        FROM test_ridge_model1
     ) AS t;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
