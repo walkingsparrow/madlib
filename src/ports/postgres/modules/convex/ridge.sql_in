@@ -523,6 +523,11 @@ $$ LANGUAGE plpgsql VOLATILE;
 /*
     cross validation for ridge only
 */
+/**
+ * @brief Run cross validation for ridge regression
+ *
+ * This function does not have the limitation on the number of lambda values
+ */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_cv(
     data_tbl            VARCHAR,
     data_id             VARCHAR,
@@ -553,6 +558,8 @@ DECLARE
     dimension               INTEGER;
     accum_count             INTEGER;
     coef_count              INTEGER;
+    tbl_ind_scales          VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    tbl_dep_scale           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -622,7 +629,7 @@ BEGIN
                         ) AS result
                         FROM ' || tbl_train || ' 
                     ) subq';
-
+                    
             IF normalization THEN
                 coef_count := coef_count + 1;
                 EXECUTE '
@@ -638,7 +645,7 @@ BEGIN
                             max(dep_avg) AS dep_avg
                         FROM (
                             SELECT
-                                '|| subq2 ||'.attr,
+                                subq2.attr,
                                 (
                                     CASE WHEN std = 0 THEN
                                         0.
@@ -662,13 +669,14 @@ BEGIN
                                         generate_series(1, '|| dimension::VARCHAR ||') AS attr,
                                         unnest(coef) AS coef
                                     FROM '|| tbl_coef ||'
-                                ) AS '|| subq2 ||'
-                            WHERE '|| tbl_ind_scales ||'.attr = '|| subq2 ||'.attr
+                                    WHERE id = '|| coef_count - 1 ||'
+                                ) AS subq2
+                            WHERE '|| tbl_ind_scales ||'.attr = subq2.attr
                         ) AS subq3
                     ) AS subq1                
                 ';            
             END IF;
-            
+        
             EXECUTE '
                 SELECT
                     avg((real_value - pred)^2)
@@ -707,6 +715,7 @@ BEGIN
         DROP TABLE IF EXISTS '|| tbl_coef ||';
         DROP TABLE IF EXISTS '|| tbl_accum_error;
 
+    EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
