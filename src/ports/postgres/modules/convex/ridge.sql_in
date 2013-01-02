@@ -102,7 +102,7 @@ mydb-# where ridge_model.id = 1;
 --------------------------------------------------------------------------
 -- create SQL functions for Newton's method optimizer
 --------------------------------------------------------------------------
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_transition(
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_transition(
     state           DOUBLE PRECISION[],
     ind_var         DOUBLE PRECISION[],
     dep_var         DOUBLE PRECISION,
@@ -110,20 +110,20 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_transition(
     dimension       SMALLINT,
     lambda          DOUBLE PRECISION)
 RETURNS DOUBLE PRECISION[]
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ridge_newton_transition'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_merge(
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_merge(
     state1 DOUBLE PRECISION[],
     state2 DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[]
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ridge_newton_merge'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_final(
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_final(
     state DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[]
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME', 'ridge_newton_final'
 LANGUAGE C IMMUTABLE STRICT;
 
 /**
@@ -131,23 +131,23 @@ LANGUAGE C IMMUTABLE STRICT;
  * @brief Perform one iteration of the incremental gradient
  *        method for computing ridge regression
  */
-CREATE AGGREGATE MADLIB_SCHEMA.ridge_newton_step(
+CREATE AGGREGATE MADLIB_SCHEMA.__ridge_newton_step(
     /*+ ind_var */          DOUBLE PRECISION[],
     /*+ dep_var */          DOUBLE PRECISION,
     /*+ previous_state */   DOUBLE PRECISION[], 
     /*+ dimension */        SMALLINT,
     /*+ lambda */           DOUBLE PRECISION) (
-    STYPE=DOUBLE PRECISION[],
-    SFUNC=MADLIB_SCHEMA.ridge_newton_transition,
-    m4_ifdef(`GREENPLUM',`prefunc=MADLIB_SCHEMA.ridge_newton_merge,')
-    FINALFUNC=MADLIB_SCHEMA.ridge_newton_final,
-    INITCOND='{0,0,0,0,0,0}'
+    STYPE = DOUBLE PRECISION[],
+    SFUNC = MADLIB_SCHEMA.__ridge_newton_transition,
+    m4_ifdef(`GREENPLUM',`prefunc = MADLIB_SCHEMA.__ridge_newton_merge,')
+    FINALFUNC = MADLIB_SCHEMA.__ridge_newton_final,
+    INITCOND = '{0,0,0,0,0,0}'
 );
 
-CREATE FUNCTION MADLIB_SCHEMA.internal_ridge_newton_result(
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_result(
     /*+ state */ DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION[] AS
-'MODULE_PATHNAME'
+'MODULE_PATHNAME', 'internal_ridge_newton_result'
 LANGUAGE c IMMUTABLE STRICT;
 
 /**
@@ -179,7 +179,6 @@ DECLARE
     text_src            VARCHAR;
     coef                DOUBLE PRECISION[];
     old_messages        VARCHAR;
-    dimension           INTEGER;
     tbl_ind_scales      VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
@@ -188,22 +187,27 @@ BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
 
-    EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
+    -- EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
     
     IF normalization THEN
         PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
         PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
-        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var, tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
+        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
+                                                    tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
     ELSE
         tbl_inter := tbl_source;
     END IF;
     
     -- create result table if it does not exist
+    IF normalization IS False THEN
+        tbl_inter_result := tbl_output;
+    END IF;
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_inter_result ||';
         CREATE TABLE ' || tbl_inter_result || ' (
-            coefficients    DOUBLE PRECISION[])';
+            coefficients    DOUBLE PRECISION[],
+            normalization   BOOLEAN)';
 
     -- -- A work-around for GPDB not supporting RETURNING for INSERT
     -- -- We generate an id using nextval before INSERT
@@ -214,36 +218,34 @@ BEGIN
     -- Perform acutal computation and output model
     EXECUTE '
         INSERT INTO ' || tbl_inter_result || '
-        SELECT result
+        SELECT result, False
         FROM (
-            SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
-                MADLIB_SCHEMA.ridge_newton_step(
-                    (' || tbl_inter || '.' || col_ind_var || ')::FLOAT8[],
-                    (' || tbl_inter || '.' || col_dep_var || ')::FLOAT8, 
+            SELECT MADLIB_SCHEMA.__ridge_newton_result(
+                MADLIB_SCHEMA.__ridge_newton_step(
+                    ('|| tbl_inter ||'.'|| col_ind_var ||')::FLOAT8[],
+                    ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
                     (NULL)::FLOAT8[],
-                    (' || dimension || ')::INT2,
-                    (' || lambda || ')::FLOAT8
+                    ('|| dimension ||')::INT2,
+                    ('|| lambda ||')::FLOAT8
                     )
                 ) AS result
-            FROM ' || tbl_inter || ' 
+            FROM '|| tbl_inter ||' 
             ) subq';
 
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
-        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT TRUE';
-    ELSE
-        EXECUTE '
-            DROP TABLE IF EXISTS '|| tbl_output ||';
-            CREATE TABLE '|| tbl_output ||' AS
-                SELECT * FROM '|| tbl_inter_result;
-        EXECUTE 'ALTER TABLE '|| tbl_output ||' ADD COLUMN normalization BOOLEAN DEFAULT FALSE';
+        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', '{normalization}'::VARCHAR[],
+                                                                dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
+        EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
     END IF;
 
     
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
             DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
-            DROP TABLE IF EXISTS '|| tbl_data_scaled ||';
-            DROP TABLE IF EXISTS '|| tbl_inter_result;
+            DROP TABLE IF EXISTS '|| tbl_data_scaled;
+
+    IF normalization THEN
+        EXECUTE 'DROP TABLE IF EXISTS '|| tbl_inter_result;
+    END IF;
             
     EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;
@@ -288,7 +290,7 @@ $$ LANGUAGE plpgsql VOLATILE;
  * @param ind_var  Features (independent variables)
  *
  */
-CREATE FUNCTION MADLIB_SCHEMA.__ridge_newton_predict(
+CREATE FUNCTION MADLIB_SCHEMA.__ridge_linear_newton_predict(
     coefficients    DOUBLE PRECISION[],
     ind_var         DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION
@@ -296,7 +298,7 @@ AS 'MODULE_PATHNAME', 'ridge_newton_predict'
 LANGUAGE C IMMUTABLE STRICT;
 
 -- predict multiple data points given in a table
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_predict(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_linear_newton_predict(
     tbl_model       VARCHAR,
     tbl_new_data    VARCHAR,
     ind_var         VARCHAR,
@@ -315,7 +317,7 @@ BEGIN
         CREATE TABLE '|| tbl_prediction ||' AS
             SELECT
                 '|| tbl_new_data ||'.'|| id_var ||' AS id,
-                MADLIB_SCHEMA.__ridge_newton_predict(
+                MADLIB_SCHEMA.__ridge_linear_newton_predict(
                     coefficients,
                     '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
             FROM
@@ -332,7 +334,7 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- compare the prediction and actual values
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_error(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.mse_error(
     tbl_prediction  VARCHAR,    -- predicted values
     tbl_actual      VARCHAR,
     id_actual       VARCHAR,
@@ -375,7 +377,7 @@ DECLARE
 BEGIN
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_scales ||';
-        CREATE TABLE '|| tbl_scales ||' AS
+        CREATE TEMP TABLE '|| tbl_scales ||' AS
             SELECT
                 attr,
                 avg(val) AS mean,
@@ -400,7 +402,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
 BEGIN
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_scale ||';
-        CREATE TABLE '|| tbl_scale ||' AS
+        CREATE TEMP TABLE '|| tbl_scale ||' AS
             SELECT
                 avg('|| col_dep_var ||') AS dep_avg,
                 stddev('|| col_dep_var ||') AS dep_std
@@ -425,7 +427,7 @@ DECLARE
 BEGIN
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_data_scaled;
     EXECUTE '
-        CREATE TABLE '|| tbl_data_scaled ||' AS
+        CREATE TEMP TABLE '|| tbl_data_scaled ||' AS
             SELECT
                 array_agg(val ORDER BY attr ) AS '|| col_ind_var ||',
                 max(dep_var) AS '|| col_dep_var ||'
@@ -460,12 +462,44 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+-- put normalized fitting result together with scales
+-- to be used for nonlinear fitting
+-- non-linear fitting just uses normalized fitting coefficients to get prediction
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_gather_results(
+    tbl_coef        VARCHAR,    -- table contains the result of fitting
+    col_coef        VARCHAR,    -- column for coefficients
+    col_others      VARCHAR,
+    tbl_ind_scales  VARCHAR,
+    tbl_dep_scale   VARCHAR,
+    tbl_all_results VARCHAR     -- the resulting coefficients have been restored to the original scales
+) RETURNS VOID AS $$
+DECLARE
+    col_others_string VARCHAR := MADLIB_SCHEMA.__cv_produce_col_name_string(tbl_coef, col_others);
+BEGIN
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_results;
+    EXECUTE '
+        CREATE TABLE '|| tbl_all_results ||' AS
+            SELECT
+                coefficients AS '|| col_coef ||',
+                intercept AS intercept,
+                array_agg('|| tbl_ind_scales ||'.mean ORDER BY '|| tbl_ind_scales ||'.attr) AS ind_var_mean,
+                '|| tbl_ind_scales ||'.std AS ind_var_std,
+                '|| tbl_dep_scale ||'.dep_avg AS dep_var_mean,
+                '|| tbl_dep_scale ||'.dep_std AS dep_var_std,
+                '|| col_others_string ||'
+            FROM
+                '|| tbl_coef ||',
+                '|| tbl_ind_scales ||',
+                '|| tbl_dep_scale;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 -- restore the scales of coefficients for linear model
--- only restore coefficients
--- other output should be taken care of by caller
+-- for non-linear models, the coefficients may not be able to restore like this
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(
     tbl_coef        VARCHAR,    -- table contains the result of fitting
     col_coef        VARCHAR,    -- column for coefficients
+    col_others      VARCHAR[],
     dimension       INTEGER,
     tbl_ind_scales  VARCHAR,
     tbl_dep_scale   VARCHAR,
@@ -473,13 +507,19 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(
 ) RETURNS VOID AS $$
 DECLARE
     subq2   VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermediate table name
+    col_others_string VARCHAR := MADLIB_SCHEMA.__cv_produce_col_name_string(tbl_coef, col_others);
 BEGIN
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_origin_coef;
     EXECUTE '
         CREATE TABLE '|| tbl_origin_coef ||' AS
             SELECT
-                coefficients AS '|| col_coef ||',
-                intercept + dep_avg AS intercept
+                subq1.coefficients AS '|| col_coef ||',
+                subq1.intercept + subq1.dep_avg AS intercept,
+                t.ind_var_mean,
+                t.ind_var_std,
+                '|| tbl_dep_scale ||'.dep_avg AS dep_var_mean,
+                '|| tbl_dep_scale ||'.dep_std AS dep_var_std,
+                '|| col_others_string ||'
             FROM (
                 SELECT
                     array_agg(val ORDER BY attr) AS coefficients,
@@ -514,8 +554,15 @@ BEGIN
                         ) AS '|| subq2 ||'
                     WHERE '|| tbl_ind_scales ||'.attr = '|| subq2 ||'.attr
                 ) AS subq3
-            ) AS subq1                
-    ';
+            ) AS subq1,
+            '|| tbl_coef ||',
+            (
+                SELECT
+                    array_agg('|| tbl_ind_scales ||'.mean ORDER BY '|| tbl_ind_scales ||'.attr) AS ind_var_mean,
+                    array_agg('|| tbl_ind_scales ||'.std ORDER BY '|| tbl_ind_scales ||'.attr) AS ind_var_std
+                FROM '|| tbl_ind_scales ||'
+            ) t,
+            '|| tbl_dep_scale;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -618,8 +665,8 @@ BEGIN
                 INSERT INTO '|| tbl_coef ||'
                     SELECT '|| coef_count ||', result, 0
                     FROM (
-                        SELECT MADLIB_SCHEMA.internal_ridge_newton_result(
-                            MADLIB_SCHEMA.ridge_newton_step(
+                        SELECT MADLIB_SCHEMA.__ridge_newton_result(
+                            MADLIB_SCHEMA.__ridge_newton_step(
                             ('|| tbl_train ||'.'|| col_ind ||')::FLOAT8[],
                             ('|| tbl_train ||'.'|| col_dep ||')::FLOAT8, 
                             (NULL)::FLOAT8[],
@@ -682,7 +729,7 @@ BEGIN
                     avg((real_value - pred)^2)
                 FROM (
                     SELECT
-                        MADLIB_SCHEMA.__ridge_newton_predict(coef, '|| tbl_valid ||'.'|| col_ind ||') + intercept AS pred,
+                        MADLIB_SCHEMA.__ridge_linear_newton_predict(coef, '|| tbl_valid ||'.'|| col_ind ||') + intercept AS pred,
                         '|| tbl_valid ||'.'|| col_dep ||' AS real_value
                     FROM '|| tbl_valid ||', '|| tbl_coef ||'
                     WHERE '|| tbl_coef ||'.id = '|| coef_count ||'
