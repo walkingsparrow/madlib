@@ -67,11 +67,11 @@ begin
         'lambda',
         '{0.01, 0.02, 0.04, 0.08, 0.1, 0.2, 0.4, 0.8, 1}'::varchar[],
         --
-        'madlib.ridge_newton_predict',
+        'madlib.ridge_linear_newton_predict',
         '{%model%, %data%, val, %id%, %prediction%}'::varchar[],
         '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
         --
-        'madlib.ridge_newton_error',
+        'madlib.mse_error',
         '{%prediction%, %data%, %id%, dep, %error%}'::varchar[],
         '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
         --

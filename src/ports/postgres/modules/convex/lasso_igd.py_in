@@ -47,7 +47,7 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
         while True:
             it.update("""
                 SELECT
-                    {schema_madlib}.lasso_igd_step(
+                    {schema_madlib}.__lasso_igd_step(
                         (_src.{col_ind_var})::FLOAT8[], 
                         (_src.{col_dep_var})::FLOAT8,
                         (SELECT _state FROM {rel_state}
@@ -60,7 +60,7 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
                 """)
             if it.test("""
                 {iteration} > _args.num_iterations OR
-                {schema_madlib}.internal_lasso_igd_distance(
+                {schema_madlib}.__lasso_igd_distance(
                     (SELECT _state FROM {rel_state}
                         WHERE _iteration = {iteration} - 1),
                     (SELECT _state FROM {rel_state}
@@ -68,147 +68,4 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
                 """):
                 break
     return iterationCtrl.iteration
-
-# ------------------------------------------------------------------------
-# compute the independent data scales including avarages and standard deviations
-# data must be an array
-def scale_ind_data(**kwargs):
-    plpy.execute("""
-                DROP TABLE IF EXISTS {rel_norm_params};
-                CREATE TEMP TABLE {rel_norm_params} AS
-                (
-                    SELECT attr, avg(val) AS mean, stddev(val) AS std
-                    FROM
-                    (
-                        SELECT
-                            generate_series(1, {dimension}) as attr,
-                            unnest({col_var}) as val
-                        FROM {rel_source}
-                    ) AS foo
-                    GROUP BY attr
-                )
-    """.format(**kwargs))
-    return None
-            
-# ------------------------------------------------------------------------
-# compute the dependent data scales including average and standard deviation
-# dependent data is a single column
-def scale_dep_data(**kwargs):
-    plpy.execute("""
-                DROP TABLE IF EXISTS {rel_norm_params};
-                CREATE TEMP TABLE {rel_norm_params} AS
-                (
-                    SELECT
-                        avg({col_var}) AS dep_avg,
-                        stddev({col_var}) AS dep_std
-                    FROM {rel_source}
-                )
-    """.format(**kwargs))
-    return None
-
-# ------------------------------------------------------------------------            
-# normalize the independent data
-def normalize_data(**kwargs):
-    plpy.execute("""
-                DROP TABLE IF EXISTS {resulting_table};
-                CREATE TEMP TABLE {resulting_table} AS
-                (
-                    SELECT
-                        array_agg(val ORDER BY attr) AS {col_ind_var},
-                        max({col_dep_var}) AS {col_dep_var}
-                    FROM
-                    (
-                        SELECT
-                            id,
-                            foos.attr AS attr,
-                            ({col_dep_var} - dep_avg) / dep_std AS {col_dep_var},
-                            (
-                                CASE WHEN std = 0 THEN
-                                    val - mean
-                                ELSE
-                                    (val - mean) / std
-                                END
-                            ) AS val
-                        FROM
-                            {ind_norms}, -- has attr, mean and std
-                            {dep_norms}, -- has dep_avg and dep_std
-                            (
-                                SELECT
-                                    row_number() OVER () AS id,
-                                    {col_dep_var},
-                                    generate_series(1, {dimension}) AS attr,
-                                    unnest({col_ind_var}) AS val
-                                FROM
-                                    {rel_source}
-                            ) AS foos
-                        WHERE {ind_norms}.attr = foos.attr
-                    ) AS goos
-                    GROUP BY id
-                )
-    """.format(**kwargs))
-    return None
-
-# ------------------------------------------------------------------------
-# restore the data original scales
-def restore_data_scales(**kwargs):
-    plpy.execute("""
-                INSERT INTO {rel_output}
-                SELECT
-                    id,
-                    coefficients,
-                    intercept + dep_avg AS intercept,
-                    loss
-                FROM
-                (
-                    SELECT
-                        id,
-                        array_agg(val ORDER BY attr) AS coefficients,
-                        sum(intercept_tmp) AS intercept,
-                        max(dep_avg) as dep_avg,
-                        max(loss) as loss
-                    FROM
-                    (
-                        SELECT
-                            id,
-                            subq2.attr,
-                            (
-                                CASE WHEN std = 0 THEN
-                                    0.
-                                ELSE
-                                    coef * dep_std / std
-                                END
-                            ) AS val,
-                            (
-                                CASE WHEN std = 0 THEN
-                                    0.
-                                ELSE
-                                    - coef * dep_std * mean / std
-                                END
-                            ) AS intercept_tmp,
-                            dep_avg,
-                            loss
-                        FROM
-                            {ind_norms},
-                            {dep_norms},
-                            (
-                                SELECT
-                                    id,
-                                    generate_series(1, {dimension}) AS attr,
-                                    unnest(coefficients) AS coef,
-                                    loss
-                                FROM
-                                (
-                                    SELECT
-                                        {model_id} AS id,
-                                        (result).*
-                                    FROM
-                                        {result_tbl}
-                                ) AS subq1
-                            ) subq2
-                        WHERE {ind_norms}.attr = subq2.attr
-                    ) AS subq3
-                    GROUP BY id
-                ) subq4
-    """.format(**kwargs))
-    return None
 
