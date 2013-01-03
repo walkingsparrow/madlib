@@ -62,7 +62,7 @@ double
 L2<Model, Hessian>::loss(
         const model_type                    &model, 
         const double                        &lambda) {
-    return lambda * dot(model, model);
+    return lambda * dot(model, model) / 2;
 }
 
 } // namespace convex

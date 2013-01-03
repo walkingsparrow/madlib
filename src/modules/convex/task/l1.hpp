@@ -8,6 +8,7 @@
 #define MADLIB_MODULES_CONVEX_TASK_L1_HPP_
 
 #include <dbconnector/dbconnector.hpp>
+#include <limits>
 
 namespace madlib {
 
@@ -25,7 +26,8 @@ public:
 
     static void gradient(
             const model_type                    &model,
-            const double                        &lambda, 
+            const double                        &lambda,
+            const double                        &stepsize,
             model_type                          &gradient);
 
     static double loss(
@@ -42,16 +44,42 @@ private:
 template <class Model>
 void
 L1<Model>::gradient(
-        const model_type                    &model,
-        const double                        &lambda, 
-        model_type                          &gradient) {
+    const model_type                    &model,
+    const double                        &lambda,
+    const double                        &stepsize,
+    model_type                          &gradient)
+{
     Index i;
-    for (i = 0; i < model.rows(); i ++) {
-        if (model(i) == 0.) {
-            if (std::abs(gradient(i)) > lambda) {
-                gradient(i) -= lambda * sign(gradient(i));
-            } else { gradient(i) = 0.; }
-        } else { gradient(i) += lambda * sign(model(i)); }
+    for (i = 0; i < model.rows(); i ++)
+    {
+        // if (model(i) == 0.)
+        // {
+        //     if (std::abs(gradient(i)) > lambda) {
+        //         gradient(i) -= lambda * sign(gradient(i));
+        //     } else {
+        //         gradient(i) = 0.;
+        //     }
+        // }
+        // else
+        // {
+        //     gradient(i) += lambda * sign(model(i));
+        // }
+        // =================================================================
+        if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
+        //if (std::abs(model(i)) < 1e-10)
+        {
+            // soft thresholding
+             if (std::abs(gradient(i)) > lambda) {
+                 gradient(i) -= lambda * sign(gradient(i));
+                 gradient(i) = - gradient(i) / stepsize + model(i) / stepsize;
+             } else {
+                 gradient(i) = model(i) / stepsize;
+             }
+        }
+        else
+        {
+            gradient(i) += lambda * sign(model(i));
+        }
     }
 }
 
