@@ -582,6 +582,7 @@ DECLARE
     tbl_output_pred         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
     tbl_output_error        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
     tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
+    num_explore_param       INTEGER := array_upper(explore_values, 1);
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -608,7 +609,7 @@ BEGIN
     IF upto_fold < 1 OR upto_fold > fold_num THEN
         RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!';
     END IF;
- 
+
     accum_count := 0;
     FOR k IN 1..upto_fold LOOP
         -- split data into train and validation parts
@@ -619,7 +620,8 @@ BEGIN
                                                     tbl_train, tbl_valid, fold_num, k);
         END IF;
 
-        FOREACH explore_value IN ARRAY explore_values LOOP
+        FOR k1 IN 1..num_explore_param LOOP
+            explore_value := explore_values[k1];
         
             -- try to be as general as possible
             -- validation using each explore_value
@@ -695,6 +697,7 @@ DECLARE
     col         VARCHAR;
     counts      INTEGER;
     sizes       INTEGER;
+    num_cols    INTEGER;
 BEGIN
     EXECUTE '
         SELECT array_agg(column_name::VARCHAR)
@@ -703,7 +706,10 @@ BEGIN
         INTO cols;
         
     counts := 0;
-    FOREACH col IN ARRAY cols LOOP
+    num_cols := array_upper(cols, 1);
+    FOR k IN 1..num_cols LOOP
+        col := cols[k];
+
         counts := counts + 1;
         IF counts = 1 THEN
             EXECUTE '

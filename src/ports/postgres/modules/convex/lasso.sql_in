@@ -335,7 +335,7 @@ BEGIN
     
     EXECUTE '
         INSERT INTO ' || tbl_inter_result || '
-            SELECT (result).coefficients, 0, (result).loss/row_num, False
+            SELECT (result).coefficients, 0, (result).loss/'||total_rows||', False
             FROM (
                     SELECT MADLIB_SCHEMA.__lasso_igd_result(_state) AS result
                     FROM '|| tbl_lasso_igd_state ||'

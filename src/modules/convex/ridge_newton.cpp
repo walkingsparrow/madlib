@@ -70,7 +70,7 @@ ridge_newton_transition::run(AnyType &args) {
     MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
     tuple.indVar.rebind(indVar.memoryHandle(), indVar.size());
     tuple.depVar = args[2].getAs<double>();
-
+    
     // Now do the transition step
     OLSNewtonAlgorithm::transition(state, tuple);
     state.algo.numRows ++;
