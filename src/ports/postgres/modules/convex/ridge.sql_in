@@ -245,7 +245,6 @@ BEGIN
         EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
     END IF;
 
-    
     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
             DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
             DROP TABLE IF EXISTS '|| tbl_data_scaled;
@@ -462,12 +461,17 @@ BEGIN
                     '|| tbl_dep_scale ||',
                     (
                         SELECT
-                            row_number() OVER () AS ids,
+                            -- row_number() OVER () AS ids,
+                            ids,
                             '|| col_dep_var ||' AS dep_var,
                             generate_series(1, '|| dimension::VARCHAR ||') AS attr,
                             unnest('|| col_ind_var ||') AS val
-                        FROM
-                            '|| tbl_data ||'
+                        FROM (
+                            SELECT
+                                row_number() OVER () AS ids,
+                                '|| col_dep_var ||',
+                                '|| col_ind_var ||'
+                            FROM '|| tbl_data ||') t
                     ) AS '|| foos ||'
                 WHERE '|| tbl_ind_scales ||'.attr = '|| foos ||'.attr
             ) AS '|| goos ||'
@@ -623,6 +627,7 @@ DECLARE
     tbl_ind_scales          VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_dep_scale           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     dep_std                 DOUBLE PRECISION;
+    num_lambda_values       INTEGER := array_upper(lambda_values, 1);
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -679,7 +684,9 @@ BEGIN
             dep_std := 1;
         END IF;
 
-        FOREACH lambda IN ARRAY lambda_values LOOP
+        FOR k1 IN 1..num_lambda_values LOOP
+            lambda := lambda_values[k1];
+
             coef_count := coef_count + 1;
             EXECUTE '
                 INSERT INTO '|| tbl_coef ||'
