@@ -144,28 +144,34 @@ BEGIN
         'LASSO with lambda = 0 (houses): Wrong results'
     ) FROM test_lasso_model;
 
-    EXECUTE 'SELECT @ coefficients[1] + @ coefficients[2] + @ coefficients[3] + @ coefficients[4]
+    EXECUTE 'SELECT (@ coefficients[1]) + (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
             FROM test_lasso_model' INTO norm1;
 
     -- 2. with lambda > 0, l1-norm has decreased
-    -- PERFORM lasso_igd_train(
-    --     'houses_array_normalized',
-    --     'features',
-    --     'price',
-    --     'test_lasso_model',
-    --     0.06
-    --     );
+    PERFORM lasso_igd_train(
+        'houses_array_normalized',
+        'features',
+        'price',
+        'test_lasso_model',
+        0.06,
+        0.003,
+        1000,
+        1e-10,
+        False,
+        4,
+        15
+        );
 
-    -- EXECUTE 'SELECT @ coefficients[1] + @ coefficients[2] + @ coefficients[3] + @ coefficients[4]
-    --         FROM test_lasso_model' INTO norm2;
+    EXECUTE 'SELECT (@ coefficients[1]) + (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
+            FROM test_lasso_model' INTO norm2;
 
-    -- raise notice 'norm1 is %', norm1;
-    -- raise notice 'norm2 is %', norm2;
+    raise notice 'norm1 is %', norm1;
+    raise notice 'norm2 is %', norm2;
         
-    -- PERFORM assert(
-    --     norm1 > norm2,
-    --     'LASSO with lambda > 0 should have a smaller 1-norm: Wrong results'
-    -- );
+    PERFORM assert(
+        norm1 > norm2,
+        'LASSO with lambda > 0 should have a smaller 1-norm: Wrong results'
+    );
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 

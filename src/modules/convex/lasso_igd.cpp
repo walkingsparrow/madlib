@@ -69,7 +69,8 @@ lasso_igd_transition::run(AnyType &args) {
 
             state.allocate(*this, dimension); // with zeros
             state.task.stepsize = stepsize;
-            state.task.lambda = lambda;
+            state.task.lambda = lambda; // regularized_igd.hpp uses lambda / totalRows instead of lambda itself
+            //state.task.lambda = lambda * totalRows; // compensate regularized_igd.hpp lambda
             state.task.totalRows = totalRows;
         }
         // resetting in either case

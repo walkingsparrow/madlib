@@ -20,7 +20,7 @@ m4_include(`SQLCommon.m4') -- '
 
 This module implements ridge regression (linear regression with Tikhonov regularization [1]).
 Mathematically, this model seeks to find a weight vector \f$w\f$ (also referred as hyperplane) that, for any given training example set, minimizes:
-\f[\min_{w \in R^N} \left[ \sum_{m=1}^M (w^{t} x_m - y_m)^2 \right] + \lambda \|w\|_2^2,\f]
+\f[\min_{w \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m - y_m)^2 \right] + \frac{\lambda}{2} \|w\|_2^2,\f]
 where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$ are values of the dependent variable, \f$m = 1,...,M\f$.
 
 
@@ -183,20 +183,25 @@ DECLARE
     tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    row_num             INTEGER;
+    dep_std             DOUBLE PRECISION;
 BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
 
     -- EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
+    EXECUTE 'SELECT count(*) FROM '|| tbl_source INTO row_num;
     
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
-        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
+        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, row_num, dimension, tbl_ind_scales);
+        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, row_num, tbl_dep_scale);
         PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
                                                     tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
+        EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
     ELSE
         tbl_inter := tbl_source;
+        dep_std := 1;
     END IF;
     
     -- create result table if it does not exist
@@ -216,6 +221,8 @@ BEGIN
     --     INTO model_id;
 
     -- Perform acutal computation and output model
+    -- In order to have consistent result with R glmnet package when using normalization
+    -- use lambda * row_num / dep_std instead of a simple lambda
     EXECUTE '
         INSERT INTO ' || tbl_inter_result || '
         SELECT result, False
@@ -226,7 +233,7 @@ BEGIN
                     ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
                     (NULL)::FLOAT8[],
                     ('|| dimension ||')::INT2,
-                    ('|| lambda ||')::FLOAT8
+                    ('|| lambda*row_num/dep_std ||')::FLOAT8
                     )
                 ) AS result
             FROM '|| tbl_inter ||' 
@@ -369,19 +376,22 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_ind_var_scales(
     tbl_data        VARCHAR,
     col_ind_var     VARCHAR,
+    row_num         INTEGER,
     dimension       INTEGER,
     tbl_scales      VARCHAR
 ) RETURNS VOID AS $$
 DECLARE
     foo         VARCHAR := MADLIB_SCHEMA.__cv_unique_string(); -- intermdediate table name
+    scale_factor    DOUBLE PRECISION;
 BEGIN
+    scale_factor := sqrt((row_num::double precision - 1.) / (row_num::double precision));
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_scales ||';
         CREATE TEMP TABLE '|| tbl_scales ||' AS
             SELECT
                 attr,
                 avg(val) AS mean,
-                stddev(val) AS std
+                stddev(val) * '|| scale_factor ||' AS std
             FROM (
                 SELECT
                     generate_series(1, '|| dimension::VARCHAR ||') as attr,
@@ -397,15 +407,19 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
     tbl_data        VARCHAR,
     col_dep_var     VARCHAR,
+    row_num         INTEGER,
     tbl_scale       VARCHAR     -- scale including mean and std
 ) RETURNS VOID AS $$
+DECLARE
+    scale_factor    DOUBLE PRECISION;
 BEGIN
+    scale_factor := sqrt((row_num::double precision - 1.) / (row_num::double precision));
     EXECUTE '
         DROP TABLE IF EXISTS '|| tbl_scale ||';
         CREATE TEMP TABLE '|| tbl_scale ||' AS
             SELECT
                 avg('|| col_dep_var ||') AS dep_avg,
-                stddev('|| col_dep_var ||') AS dep_std
+                stddev('|| col_dep_var ||') * '|| scale_factor ||' AS dep_std
             FROM
                 '|| tbl_data;
 END;
@@ -440,7 +454,7 @@ BEGIN
                         CASE WHEN std = 0 THEN
                             val - mean
                         ELSE
-                            (val - mean) / std
+                            (val - mean) / (case when std = 0 then 1 else std end)
                         END
                     ) AS val
                 FROM
@@ -532,7 +546,7 @@ BEGIN
                             CASE WHEN std = 0 THEN
                                 0.
                             ELSE
-                                coef * dep_std / std
+                                coef * dep_std / (case when std = 0 then 1 else std end)
                             END
                         ) AS val,
                         (
@@ -599,6 +613,7 @@ DECLARE
     tbl_coef                VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
     row_num                 INTEGER;
+    row_num_train           INTEGER;
     data_cols               VARCHAR[];
     error                   DOUBLE PRECISION;
     lambda                  DOUBLE PRECISION;
@@ -607,6 +622,7 @@ DECLARE
     coef_count              INTEGER;
     tbl_ind_scales          VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_dep_scale           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
+    dep_std                 DOUBLE PRECISION;
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
@@ -650,13 +666,17 @@ BEGIN
                                                 row_num, tbl_inter, tbl_valid, fold_num, k);
         END IF;
 
+        EXECUTE 'SELECT count(*) FROM '|| tbl_inter INTO row_num_train;
+        
         IF normalization THEN
-            PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind, dimension, tbl_ind_scales);
-            PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep, tbl_dep_scale);
+            PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind, row_num_train, dimension, tbl_ind_scales);
+            PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep, row_num_train, tbl_dep_scale);
             PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_inter, col_ind, dimension, col_dep,
                                                         tbl_ind_scales, tbl_dep_scale, tbl_train);
+            EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
         ELSE
             tbl_train := tbl_inter;
+            dep_std := 1;
         END IF;
 
         FOREACH lambda IN ARRAY lambda_values LOOP
@@ -671,7 +691,7 @@ BEGIN
                             ('|| tbl_train ||'.'|| col_dep ||')::FLOAT8, 
                             (NULL)::FLOAT8[],
                             ('|| dimension ||')::INT2,
-                            ('|| lambda ||')::FLOAT8
+                            ('|| lambda*row_num_train/dep_std ||')::FLOAT8
                             )
                         ) AS result
                         FROM ' || tbl_train || ' 
