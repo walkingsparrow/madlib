@@ -837,4 +837,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
+    module_name         VARCHAR,
+    args                VARCHAR[],
+    tbl_data            VARCHAR,
+    data_id             VARCHAR,
+    id_is_random        BOOLEAN,
+    validation_result   VARCHAR,
+    fold_num            INTEGER
+) RETURNS VOID AS $$
+BEGIN
+    IF module_name = 'ridge' THEN
+        PERFORM MADLIB_SCHEMA.cross_validation_general(MADLIB_SCHEMA.__ridge_cv_args(args, tbl_data, data_id, id_is_random,
+                                                                                    validation_result, fold_num));
+    END IF;
+
+    IF module_name = 'lasso' THEN
+        PERFORM MADLIB_SCHEMA.cross_validation_general(MADLIB_SCHEMA.__lasso_cv_args(args, tbl_data, data_id, id_is_random,
+                                                                                    validation_result, fold_num));
+    END IF;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 

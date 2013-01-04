@@ -233,7 +233,7 @@ BEGIN
                     ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
                     (NULL)::FLOAT8[],
                     ('|| dimension ||')::INT2,
-                    ('|| lambda*row_num/dep_std ||')::FLOAT8
+                    ('|| lambda*row_num ||')::FLOAT8
                     )
                 ) AS result
             FROM '|| tbl_inter ||' 
@@ -698,7 +698,7 @@ BEGIN
                             ('|| tbl_train ||'.'|| col_dep ||')::FLOAT8, 
                             (NULL)::FLOAT8[],
                             ('|| dimension ||')::INT2,
-                            ('|| lambda*row_num_train/dep_std ||')::FLOAT8
+                            ('|| lambda*row_num_train ||')::FLOAT8
                             )
                         ) AS result
                         FROM ' || tbl_train || ' 
@@ -794,3 +794,18 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 -- column standard deviation
+
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_cv_args(
+    args                VARCHAR[],
+    tbl_data            VARCHAR,
+    data_id             VARCHAR,
+    id_is_random        BOOLEAN,
+    validation_result   VARCHAR,
+    fold_num            INTEGER
+) RETURNS VARCHAR AS $$
+
+$$ LANGUAGE plpythonu;
