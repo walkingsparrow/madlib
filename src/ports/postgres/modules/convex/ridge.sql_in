@@ -171,8 +171,7 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     col_dep_var     VARCHAR,
     tbl_output      VARCHAR,
     lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
-    normalization   BOOLEAN, -- default f to save computation amount
-    dimension       INTEGER /*+ DEFAULT 'SELECT max(array_upper(col_ind_var, 1)) FROM rel_source' */
+    normalization   BOOLEAN -- default f to save computation amount
 ) RETURNS VOID AS $$
 DECLARE
     tbl_inter           VARCHAR;
@@ -185,12 +184,14 @@ DECLARE
     tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     row_num             INTEGER;
     dep_std             DOUBLE PRECISION;
+    dimension           INTEGER;
 BEGIN
     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
 
     -- EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
     EXECUTE 'SELECT count(*) FROM '|| tbl_source INTO row_num;
+    EXECUTE 'SELECT max(array_upper(' || col_ind_var || ', 1)) FROM ' || rel_source INTO dimension;
     
     IF normalization THEN
         PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, row_num, dimension, tbl_ind_scales);
@@ -233,7 +234,7 @@ BEGIN
                     ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
                     (NULL)::FLOAT8[],
                     ('|| dimension ||')::INT2,
-                    ('|| lambda*row_num ||')::FLOAT8
+                    ('|| lambda * row_num ||')::FLOAT8
                     )
                 ) AS result
             FROM '|| tbl_inter ||' 
@@ -254,26 +255,6 @@ BEGIN
     END IF;
             
     EXECUTE 'SET client_min_messages TO ' || old_messages;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
-
-CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
-    rel_source      VARCHAR,
-    col_ind_var     VARCHAR,
-    col_dep_var     VARCHAR,
-    rel_output      VARCHAR,
-    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
-    normalization   BOOLEAN -- default f to save computation amount
-) RETURNS VOID AS $$
-DECLARE
-    dimension INTEGER;
-BEGIN
-    EXECUTE '
-        SELECT max(array_upper(' || col_ind_var || ', 1))
-        FROM ' || rel_source
-        INTO dimension;
-
-    PERFORM MADLIB_SCHEMA.ridge_newton_train($1, $2, $3, $4, $5, $6, dimension);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -597,8 +578,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.ridge_newton_cv(
     data_tbl            VARCHAR,
     data_id             VARCHAR,
     id_is_random        BOOLEAN,
-    col_ind             VARCHAR,
-    col_dep             VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
     lambda_values       DOUBLE PRECISION[],
     normalization       BOOLEAN,
     fold_num            INTEGER,
@@ -626,13 +607,13 @@ DECLARE
     coef_count              INTEGER;
     tbl_ind_scales          VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
     tbl_dep_scale           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
-    dep_std                 DOUBLE PRECISION;
+    dep_std                 DOUBLE PRECISION := 1;
     num_lambda_values       INTEGER := array_upper(lambda_values, 1);
 BEGIN
     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
     EXECUTE 'SET client_min_messages TO warning';
 
-    data_cols := array[col_ind, col_dep];
+    data_cols := array[col_ind_var, col_dep_var];
     IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
         PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
         tbl_used := tbl_all_data;
@@ -645,7 +626,7 @@ BEGIN
 
     -- k-fold cross-validation
     EXECUTE 'SELECT count(*) FROM '|| data_tbl INTO row_num;
-    EXECUTE 'SELECT max(array_upper('|| col_ind ||', 1)) FROM '|| data_tbl INTO dimension;
+    EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| data_tbl INTO dimension;
     
     IF fold_num <= 1 THEN
         RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!';
@@ -672,16 +653,16 @@ BEGIN
         END IF;
 
         EXECUTE 'SELECT count(*) FROM '|| tbl_inter INTO row_num_train;
-        
+
+        -- normalization the training table
         IF normalization THEN
-            PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind, row_num_train, dimension, tbl_ind_scales);
-            PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep, row_num_train, tbl_dep_scale);
-            PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_inter, col_ind, dimension, col_dep,
+            PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind_var, row_num_train, dimension, tbl_ind_scales);
+            PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep_var, row_num_train, tbl_dep_scale);
+            PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_inter, col_ind_var, dimension, col_dep_var,
                                                         tbl_ind_scales, tbl_dep_scale, tbl_train);
             EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
         ELSE
             tbl_train := tbl_inter;
-            dep_std := 1;
         END IF;
 
         FOR k1 IN 1..num_lambda_values LOOP
@@ -694,16 +675,16 @@ BEGIN
                     FROM (
                         SELECT MADLIB_SCHEMA.__ridge_newton_result(
                             MADLIB_SCHEMA.__ridge_newton_step(
-                            ('|| tbl_train ||'.'|| col_ind ||')::FLOAT8[],
-                            ('|| tbl_train ||'.'|| col_dep ||')::FLOAT8, 
+                            ('|| tbl_train ||'.'|| col_ind_var ||')::FLOAT8[],
+                            ('|| tbl_train ||'.'|| col_dep_var ||')::FLOAT8, 
                             (NULL)::FLOAT8[],
                             ('|| dimension ||')::INT2,
-                            ('|| lambda*row_num_train ||')::FLOAT8
+                            ('|| lambda * row_num_train ||')::FLOAT8
                             )
                         ) AS result
                         FROM ' || tbl_train || ' 
                     ) subq';
-                    
+
             IF normalization THEN
                 coef_count := coef_count + 1;
                 EXECUTE '
@@ -750,14 +731,14 @@ BEGIN
                     ) AS subq1                
                 ';            
             END IF;
-        
+                    
             EXECUTE '
                 SELECT
                     avg((real_value - pred)^2)
                 FROM (
                     SELECT
-                        MADLIB_SCHEMA.__ridge_linear_newton_predict(coef, '|| tbl_valid ||'.'|| col_ind ||') + intercept AS pred,
-                        '|| tbl_valid ||'.'|| col_dep ||' AS real_value
+                        MADLIB_SCHEMA.__ridge_linear_newton_predict(coef, '|| tbl_valid ||'.'|| col_ind_var ||') + intercept AS pred,
+                        '|| tbl_valid ||'.'|| col_dep_var ||' AS real_value
                     FROM '|| tbl_valid ||', '|| tbl_coef ||'
                     WHERE '|| tbl_coef ||'.id = '|| coef_count ||'
                     ) t
@@ -787,6 +768,8 @@ BEGIN
         DROP TABLE IF EXISTS '|| tbl_valid ||';
         DROP TABLE IF EXISTS '|| tbl_random_id ||';
         DROP TABLE IF EXISTS '|| tbl_coef ||';
+        DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
+        DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
         DROP TABLE IF EXISTS '|| tbl_accum_error;
 
     EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
@@ -798,14 +781,99 @@ $$ LANGUAGE plpgsql VOLATILE;
 ------------------------------------------------------------------------
 ------------------------------------------------------------------------
 ------------------------------------------------------------------------
-
+-- generate argument list for the ridge_newton_cv, used in the CV wrapper
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_cv_args(
     args                VARCHAR[],
-    tbl_data            VARCHAR,
+    param_to_try        VARCHAR,
+    param_values        DOUBLE PRECISION[],
     data_id             VARCHAR,
     id_is_random        BOOLEAN,
     validation_result   VARCHAR,
     fold_num            INTEGER
 ) RETURNS VARCHAR AS $$
+    allowed_args = set(["tbl_source", "col_ind_var", "col_dep_var", "tbl_output", "lambda", "normalization"])
+    
+    name_value = dict()
+    name_value["tbl_source"] = None
+    name_value["col_ind_var"] = None
+    name_value["col_dep_var"] = None
+    name_value["tbl_output"] = None
+    name_value["lambda"] = None
+    name_value["normalization"] = None
+    name_value["validation_result"] = "'" + validation_result + "'"
+    name_value["fold_num"] = fold_num
+    if data_id is None:
+        name_value["data_id"] = "Null::varchar"
+    else:
+        name_value["data_id"] = "'" + data_id + "'"
+    if id_is_random:
+        name_value["id_is_random"] = "True"
+    else:
+        name_value["id_is_random"] = "False"
+        
+    if param_to_try != "lambda":
+        plpy.error("Only lambda can be used to cross-validation in Ridge regression! {0} is not allowed.".format(param_to_try))
+    vals = "'{" #'
+    for i in range(len(param_values)):
+        vals += str(param_values[i])
+        if i != len(param_values) - 1:
+            vals += ", "
+    vals += "}'" #'
+    name_value["param_values"] = vals
+ 
+    for s in args[0]:
+        items = s.split("=")
+        if (len(items) != 2):
+            plpy.error("Argument list syntax error!")
+        arg_name = items[0].strip()
+        arg_value = items[1].strip()
 
+        if arg_name not in allowed_args:
+            plpy.error("{0} is not a valid argument name for module Ridge.".format(arg_name))
+
+        if arg_name == "tbl_source":
+            name_value["tbl_source"] = "'" + arg_value + "'"
+            continue
+
+        if arg_name == "col_ind_var":
+            name_value["col_ind_var"] = "'" + arg_value + "'"
+            continue
+
+        if arg_name == "col_dep_var":
+            name_value["col_dep_var"] = "'" + arg_value + "'"
+            continue
+
+        if arg_name == "tbl_output":
+            name_value["tbl_output"] = "'" + arg_value + "'"
+            continue
+
+        if arg_name == "lambda":
+            name_value["lambda"] = arg_value
+            continue
+
+        if arg_name == "normalization":
+            name_value["normalization"] = arg_value
+            continue
+    
+    if name_value["normalization"] is None:
+        name_value["normalization"] = "False"
+
+    if name_value["tbl_source"] is None or name_value["col_ind_var"] is None or name_value["col_dep_var"] is None:
+        plpy.error("tbl_source, col_ind_var and col_dep_var must be provided!")
+
+    arg_string = """
+                    {tbl_source},
+                    {data_id},
+                    {id_is_random},
+                    {col_ind_var},
+                    {col_dep_var},
+                    {param_values},
+                    {normalization},
+                    {fold_num},
+                    {fold_num},
+                    {validation_result}
+                """.format(**name_value)
+
+    return arg_string
 $$ LANGUAGE plpythonu;
+
