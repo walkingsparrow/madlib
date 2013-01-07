@@ -197,7 +197,8 @@ CREATE FUNCTION MADLIB_SCHEMA.__compute_lasso_igd(
     rel_state       VARCHAR,
     rel_source      VARCHAR,
     col_ind_var     VARCHAR,
-    col_dep_var     VARCHAR)
+    col_dep_var     VARCHAR,
+    drop_table      BOOLEAN)
 RETURNS INTEGER
 AS $$PythonFunction(convex, lasso_igd, compute_lasso_igd)$$
 LANGUAGE plpythonu VOLATILE;
@@ -298,7 +299,7 @@ BEGIN
     -- Unfortunately, Greenplum and PostgreSQL <= 8.2 do not have conversion
     -- operators from regclass to varchar/text.
     iteration_run := MADLIB_SCHEMA.__compute_lasso_igd(tbl_lasso_igd_args, tbl_lasso_igd_state,
-                                                        tbl_inter, col_ind_var, col_dep_var);
+                                                        tbl_inter, col_ind_var, col_dep_var, True);
 
     -- create result table if it does not exist
     IF normalization IS False THEN

@@ -11,6 +11,7 @@
 """
 import plpy
 from utilities.control import IterationController
+from utilities.control import MinWarning
 from validation.cv_utils import __cv_unique_string
 from convex.ridge import __ridge_newton_cv_preprocess
 from convex.ridge import __ridge_newton_cv_split_and_normalization
@@ -20,7 +21,7 @@ from convex.ridge import __ridge_accumulate_error
 from validation.cv_utils import __cv_summarize_result
 
 def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
-    col_ind_var, col_dep_var, **kwargs):
+    col_ind_var, col_dep_var, drop_table, **kwargs):
     """
     Driver function for LASSO using IGD
 
@@ -39,15 +40,27 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
     @return The iteration number (i.e., the key) with which to look up the
         result in \c rel_state
     """
-    iterationCtrl = IterationController(
-        rel_args = rel_args,
-        rel_state = rel_state,
-        stateType = "DOUBLE PRECISION[]",
-        truncAfterIteration = False,
-        schema_madlib = schema_madlib, # Identifiers start here
-        rel_source = rel_source,
-        col_ind_var = col_ind_var,
-        col_dep_var = col_dep_var)
+    if drop_table:
+        iterationCtrl = IterationController(
+            rel_args = rel_args,
+            rel_state = rel_state,
+            stateType = "DOUBLE PRECISION[]",
+            truncAfterIteration = False,
+            schema_madlib = schema_madlib, # Identifiers start here
+            rel_source = rel_source,
+            col_ind_var = col_ind_var,
+            col_dep_var = col_dep_var)
+    else:
+        iterationCtrl = IterationControllerNoTableDrop(
+            rel_args = rel_args,
+            rel_state = rel_state,
+            stateType = "DOUBLE PRECISION[]",
+            truncAfterIteration = False,
+            schema_madlib = schema_madlib, # Identifiers start here
+            rel_source = rel_source,
+            col_ind_var = col_ind_var,
+            col_dep_var = col_dep_var)
+        
     with iterationCtrl as it:
         it.iteration = 0
         while True:
@@ -181,6 +194,12 @@ def __lasso_igd_cv(**kwargs):
     normalization = kwargs["normalization"]
     tbl_accum_error = kwargs["tbl_accum_error"]
     validation_result = kwargs["validation_result"]
+    schema_madlib = kwargs["schema_madlib"]
+    tbl_lasso_igd_args = kwargs["tbl_lasso_igd_args"]
+    tbl_lasso_igd_state = kwargs["tbl_lasso_igd_state"]
+    tbl_train = kwargs["tbl_train"]
+    col_ind_var = kwargs["col_ind_var"]
+    col_dep_var = kwargs["col_dep_var"]
     
     accum_count = 0
     coef_count = 0
@@ -195,7 +214,8 @@ def __lasso_igd_cv(**kwargs):
             effective_lambda = value * row_num_train / dep_std
             plpy.execute("update pg_temp.{tbl_lasso_igd_args} set lambda = {effective_lambda}".format(effective_lambda = effective_lambda,
                                                                                                       **kwargs))
-            iteration_run = plpy.execute("select {schema_madlib}.__compute_lasso_igd('{tbl_lasso_igd_args}', '{tbl_lasso_igd_state}', '{tbl_train}', '{col_ind_var}', '{col_dep_var}') as iter".format(**kwargs))[0]["iter"]
+            iteration_run = compute_lasso_igd(schema_madlib, tbl_lasso_igd_args, tbl_lasso_igd_state,
+                                              tbl_train, col_ind_var, col_dep_var, False)
             plpy.execute("""
                 insert into {tbl_coef}
                     select {coef_count}, (result).coefficients, 0
@@ -262,3 +282,51 @@ def __lasso_igd_cv(**kwargs):
     plpy.execute("set client_min_messages to " + old_msg_level)
 
     return None
+
+## ========================================================================
+
+class IterationControllerNoTableDrop (IterationController):
+    """
+    IterationController but without table dropping
+    Useful if one wants to use it in cross validation
+    where dropping tables in a loop would use up all the locks
+    and get "out of memory" error
+    """
+    def __init__(self, rel_args, rel_state, stateType,
+                 temporaryTables = True,
+                 truncAfterIteration = False,
+                 schema_madlib = "MADLIB_SCHEMA_MISSING",
+                 verbose = False,
+                 **kwargs):
+        IterationController.__init__(self, rel_args, rel_state, stateType,
+                                     temporaryTables, truncAfterIteration,
+                                     schema_madlib, verbose, **kwargs)
+        self.state_exists = plpy.execute("select exists(select * from information_schema.tables where table_name = '{0}')".format(rel_state))[0]['exists']
+        if self.state_exists:
+            self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]
+
+    def update(self, newState):
+        newState = newState.format(iteration = self.iteration, **self.kwargs)
+        self.iteration += 1
+        if self.state_exists and self.iteration <= self.state_row_num:
+            self.runSQL("""
+                update {rel_state} set _state = ({newState})
+                where _iteration = {iteration}
+            """.format(iteration = self.iteration,
+                       newState = newState,
+                       **self.kwargs))
+        else:
+            self.runSQL("""
+                INSERT INTO {rel_state}
+                    SELECT
+                        {iteration},
+                        ({newState})
+            """.format(iteration = self.iteration,
+                       newState = newState,
+                       **self.kwargs))
+
+    def __enter__(self):
+        if self.state_exists is False:
+            IterationController.__enter__(self)
+        self.inWith = True
+        return self
