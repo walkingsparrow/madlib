@@ -1,0 +1,171 @@
+import time
+import random
+import math
+import plpy
+
+## Generate random remporary names for temp table and other names
+def __cv_unique_string(**kwargs):
+    r1 = random.randint(1, 100000000)
+    r2 = int(time.time())
+    r3 = int(time.time()) % random.randint(1, 100000000)
+    unique_string = "__madlib_temp_" + str(r1) + "_" + str(r2) + "_" + str(r3) + "__"
+    return unique_string
+
+##  Given an array of strings, pick out the column names and form a single
+##  string, so that we could select only the necessary data when copying is
+##  inevitable.
+def __cv_produce_col_name_string(tbl, cols):
+    rst = ""
+    for i in range(len(cols)):
+        rst += tbl + "." + cols[i]
+        if i != len(cols) - 1:
+            rst += ", "
+    return rst
+
+## If the user does not provide a ID column, the data table has to be
+## copied and at the same time create a random ID column with it.
+def __cv_copy_data_with_id(rel_origin, col_data, rel_copied, random_id):
+    col_string = __cv_produce_col_name_string(rel_origin, col_data)
+    plpy.execute("""
+        drop table if exists {rel_copied};
+        create temp table {rel_copied} as
+            select
+                row_number() over (order by random()) as {random_id},
+                {col_string}
+            from {rel_origin}
+    """.format(rel_origin = rel_origin, rel_copied = rel_copied,
+               random_id = random_id, col_string = col_string))
+    return None
+
+## summarize the result
+def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored):
+    cols = plpy.execute("select array_agg(column_name::varchar) as col from information_schema.columns where table_name = '" + tbl_accum_error + "'")[0]["col"]
+    kwargs = dict(tbl_accum_error = tbl_accum_error, tbl_result = tbl_result, param_explored = param_explored)
+    counts = 0
+    for col in cols:
+        counts += 1
+        if counts == 1:
+            plpy.execute("""
+                drop table if exists {tbl_result};
+                create table {tbl_result} as
+                    select {param_explored}
+                    from {tbl_accum_error}
+                    group by {param_explored}
+                    order by {param_explored}
+            """.format(**kwargs))
+        else:
+            plpy.execute("alter table " + tbl_result + " add column " + col + "_avg double precision default 0")
+            plpy.execute("""
+                update {tbl_result} set {col}_avg = avgs from
+                (
+                    select {param_explored}, avg({col}) as avgs
+                    from {tbl_accum_error}
+                    group by {param_explored}
+                ) t
+                where t.{param_explored} = {tbl_result}.{param_explored}
+            """.format(col = col, **kwargs))
+            plpy.execute("alter table " + tbl_result + " add column " + col + "_stddev double precision default 0")
+            plpy.execute("""
+                update {tbl_result} set {col}_stddev = stds from
+                (
+                    select {param_explored}, stddev({col}) as stds
+                    from {tbl_accum_error}
+                    group by {param_explored}
+                ) t
+                where t.{param_explored} = {tbl_result}.{param_explored}
+            """.format(col = col, **kwargs))
+    return None
+
+## Create an random ID column for a given data table.
+##
+## If the user provides an ID column, which can uniquely identify the rows,
+## create a table which maps the row ID to a random integer, which is
+## then used as the ID when splitting data.
+
+## If the ID provided by user is already random, then there is no need to
+## call this function.
+def __cv_generate_random_id(tbl_origin, col_id, tbl_random_id,
+                            random_id, origin_id):
+    plpy.execute("""
+        drop table if exists {tbl_random_id};
+        create temp table {tbl_random_id} as
+            select
+                row_number() over (order by random()) as {random_id},
+                {col_id} as {origin_id}
+            from {tbl_origin}
+    """.format(tbl_origin = tbl_origin, col_id = col_id,
+           tbl_random_id = tbl_random_id, random_id = random_id,
+           origin_id = origin_id))
+    return None
+
+def __cv_validation_rows(row_num, fold_num, which_fold):
+    fold_row_num = int(math.floor(row_num * 1.0 / fold_num))
+
+    start_row = int(math.floor((which_fold - 1) * fold_row_num * 1.0) + 1)
+    if which_fold == fold_num:
+        end_row = row_num + 1
+    else:
+        end_row = start_row + fold_row_num
+
+    return (start_row, end_row)
+
+def __cv_split_data_using_id_col(rel_source, col_data, col_id, row_num,
+                                 rel_train, rel_valid, fold_num, which_fold):
+    col_string = __cv_produce_col_name_string(rel_source, col_data)
+    (start_row, end_row) = __cv_validation_rows(row_num, fold_num, which_fold)
+    kwargs = dict(rel_train = rel_train, rel_source = rel_source,
+                  col_id = col_id, start_row = start_row,
+                  rel_valid = rel_valid,
+                  end_row = end_row, col_string = col_string)
+    plpy.execute("""
+        drop table if exists {rel_train};
+        create temp table {rel_train} as
+            select {col_id}, {col_string} from {rel_source}
+            where {col_id} < {start_row}
+                 or {col_id} >= {end_row}
+    """.format(**kwargs))
+    plpy.execute("""
+        drop table if exists {rel_valid};
+        create temp table {rel_valid} as
+            select {col_id}, {col_string} from {rel_source}
+            where {col_id} >= {start_row}
+                 and {col_id} < {end_row}
+    """.format(**kwargs))
+    return None
+
+def __cv_split_data_using_id_tbl(rel_origin, col_data, rel_random_id,
+                                 random_id, origin_id, row_num, rel_train,
+                                 rel_valid, fold_num, which_fold):
+    col_string = __cv_produce_col_name_string(rel_origin, col_data)
+    (start_row, end_row) = __cv_validation_rows(row_num, fold_num, which_fold)
+    kwargs = dict(rel_origin = rel_origin, rel_random_id = rel_random_id,
+                  random_id = random_id, origin_id = origin_id,
+                  rel_train = rel_train, rel_valid = rel_valid,
+                  start_row = start_row, end_row = end_row,
+                  col_string = col_string)
+    plpy.execute("""
+        drop table if exists {rel_train};
+        create temp table {rel_train} as
+            select {rel_random_id}.{random_id}, {col_string}
+            from {rel_origin}, {rel_random_id}
+            where
+                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
+                and (
+                 {rel_random_id}.{random_id} < {start_row}
+                 or
+                 {rel_random_id}.{random_id} >= {end_row}
+    """.format(**kwargs))
+    plpy.execute("""
+        drop table if exists {rel_valid};
+        create temp table {rel_valid} as
+            select {rel_random_id}.{random_id}, {col_string}
+            from {rel_origin}, {rel_random_id}
+            where
+                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
+                and (
+                 {rel_random_id}.{random_id} >= {start_row}
+                 and
+                 {rel_random_id}.{random_id} < {end_row}
+             )
+    """.format(**kwargs))
+    return None

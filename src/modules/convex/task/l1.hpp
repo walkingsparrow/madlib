@@ -27,6 +27,7 @@ public:
     static void gradient(
             const model_type                    &model,
             const double                        &lambda,
+            const int                           &row_num,
             const double                        &stepsize,
             model_type                          &gradient);
 
@@ -46,6 +47,7 @@ void
 L1<Model>::gradient(
     const model_type                    &model,
     const double                        &lambda,
+    const int                           &row_num,
     const double                        &stepsize,
     model_type                          &gradient)
 {
@@ -71,9 +73,9 @@ L1<Model>::gradient(
             // soft thresholding
              if (std::abs(gradient(i)) > lambda) {
                  gradient(i) -= lambda * sign(gradient(i));
-                 gradient(i) = - gradient(i) / stepsize + model(i) / stepsize;
+                 gradient(i) = - gradient(i) / stepsize + model(i) * row_num / stepsize;
              } else {
-                 gradient(i) = model(i) / stepsize;
+                 gradient(i) = model(i) * row_num / stepsize;
              }
         }
         else
