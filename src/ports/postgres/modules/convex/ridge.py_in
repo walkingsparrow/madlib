@@ -1,0 +1,432 @@
+
+import plpy
+import math
+from validation.cv_utils import __cv_unique_string
+from validation.cv_utils import __cv_produce_col_name_string
+from validation.cv_utils import __cv_copy_data_with_id
+from validation.cv_utils import __cv_split_data_using_id_col
+from validation.cv_utils import __cv_split_data_using_id_tbl
+from validation.cv_utils import __cv_summarize_result
+
+## generate argument list for the ridge_newton_cv, used in the CV wrapper
+def __ridge_cv_args(schema_madlib, func_args, param_to_try,
+                    param_values, data_id,
+                    id_is_random, validation_result, fold_num):
+    allowed_args = set(["tbl_source", "col_ind_var", "col_dep_var", "tbl_output", "lambda", "normalization"])
+    
+    name_value = dict()
+    name_value["schema_madlib"] = schema_madlib
+    name_value["data_tbl"] = None
+    name_value["col_ind_var"] = None
+    name_value["col_dep_var"] = None
+    name_value["normalization"] = None
+    name_value["validation_result"] = validation_result
+    name_value["fold_num"] = fold_num
+    name_value["upto_fold"] = fold_num
+    name_value["data_id"] = data_id
+    name_value["id_is_random"] = id_is_random
+        
+    if param_to_try != "lambda":
+        plpy.error("Only lambda can be used to cross-validation in Ridge regression! {0} is not allowed.".format(param_to_try))
+    name_value["lambda_values"] = param_values
+ 
+    for s in func_args:
+        items = s.split("=")
+        if (len(items) != 2):
+            plpy.error("Argument list syntax error!")
+        arg_name = items[0].strip()
+        arg_value = items[1].strip()
+
+        if arg_name not in allowed_args:
+            plpy.error("{0} is not a valid argument name for module Ridge.".format(arg_name))
+
+        if arg_name == "tbl_source":
+            name_value["data_tbl"] = arg_value
+            continue
+
+        if arg_name == "col_ind_var":
+            name_value["col_ind_var"] = arg_value
+            continue
+
+        if arg_name == "col_dep_var":
+            name_value["col_dep_var"] = arg_value
+            continue
+
+        if arg_name == "normalization":
+            name_value["normalization"] = arg_value
+            continue
+    
+    if name_value["normalization"] is None:
+        name_value["normalization"] = False
+
+    if name_value["data_tbl"] is None or name_value["col_ind_var"] is None or name_value["col_dep_var"] is None:
+        plpy.error("tbl_source, col_ind_var and col_dep_var must be provided!")
+
+    return name_value
+
+def __ridge_ind_var_scales(**kwargs):
+    scale_factor = math.sqrt(1. - 1./float(kwargs["row_num"]))
+    plpy.execute("""
+        drop table if exists {tbl_scales};
+        create temp table {tbl_scales} as
+            select
+                attr,
+                avg(val) as mean,
+                stddev(val) * {scale_factor} as std
+            from (
+                select
+                    generate_series(1, {dimension}) as attr,
+                    unnest({col_ind_var}) as val
+                from {tbl_data}
+            ) t
+            group by attr
+    """.format(scale_factor = scale_factor, **kwargs))
+    return None
+
+def __ridge_dep_var_scale(**kwargs):
+    scale_factor = math.sqrt(1. - 1./float(kwargs["row_num"]))
+    plpy.execute("""
+        drop table if exists {tbl_scale};
+        create temp table {tbl_scale} as
+            select
+                avg({col_dep_var}) as dep_avg,
+                stddev({col_dep_var}) * {scale_factor} as dep_std
+            from {tbl_data}
+    """.format(scale_factor = scale_factor, **kwargs))
+    return None
+
+def __ridge_normalize_data(**kwargs):
+    foos = __cv_unique_string()
+    plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
+    plpy.execute("""
+        create temp table {tbl_data_scaled} as
+            select
+                array_agg(val order by attr ) as {col_ind_var},
+                max(dep_var) as {col_dep_var}
+            from (
+                select
+                    ids,
+                    {foos}.attr as attr,
+                    (dep_var - dep_avg) / dep_std as dep_var,
+                    (
+                        case when std = 0 then
+                            val - mean
+                        else
+                            (val - mean) / (case when std = 0 then 1 else std end)
+                        end
+                    ) as val
+                from
+                    {tbl_ind_scales},
+                    {tbl_dep_scale},
+                    (
+                        select
+                            ids,
+                            {col_dep_var} as dep_var,
+                            generate_series(1, {dimension}) as attr,
+                            unnest({col_ind_var}) as val
+                        from (
+                            select
+                                row_number() over () as ids,
+                                {col_dep_var},
+                                {col_ind_var}
+                            from {tbl_data}) t
+                    ) as {foos}
+                where {tbl_ind_scales}.attr = {foos}.attr
+            ) as t
+            group by ids
+    """.format(foos = foos, **kwargs))
+    return None
+
+# Put normalized fitting result together with scales
+# to be used for nonlinear fitting.
+# Non-linear fitting just uses normalized fitting
+# coefficients to get prediction.
+def __ridge_gather_results(**kwargs):
+    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
+    plpy.execute("drop table if exists {tbl_all_results}".format(**kwargs))
+    plpy.execute("""
+        create table {tbl_all_results} as
+            select
+                coefficients as {col_coef},
+                intercept as intercept,
+                array_agg({tbl_ind_scales}.mean order by {tbl_ind_scales}.attr) as ind_var_mean,
+                {tbl_ind_scales}.std as ind_var_std,
+                {tbl_dep_scale}.dep_avg as dep_var_mean,
+                {tbl_dep_scale}.dep_std as dep_var_std,
+                {col_others_string}
+            from
+                {tbl_coef},
+                {tbl_ind_scales},
+                {tbl_dep_scale}
+    """.format(col_others_string = col_others_string, **kwargs))
+    return None
+
+def __ridge_restore_linear_coef_scales_sql(**kwargs):
+    subq2 = __cv_unique_string()
+    query = """
+        select
+            subq1.coefficients as {col_coef},
+            subq1.intercept + subq1.dep_avg as intercept
+        from (
+            select
+                array_agg(val order by attr) as coefficients,
+                sum(intercept_tmp) as intercept,
+                max(dep_avg) as dep_avg
+            from (
+                select
+                    {subq2}.attr,
+                    (
+                        case when std = 0 then
+                            0.
+                        else
+                            coef * dep_std / (case when std = 0 then 1 else std end)
+                        end
+                    ) as val,
+                    (
+                        case when std = 0 then
+                            0.
+                        else
+                            - coef * dep_std * mean / std
+                        end
+                    ) as intercept_tmp,
+                    dep_avg
+                from
+                    {tbl_ind_scales},
+                    {tbl_dep_scale},
+                    (
+                        select
+                            generate_series(1, {dimension}) as attr,
+                            unnest({col_coef}) as coef
+                        from {tbl_coef}
+                    ) as {subq2}
+                where {tbl_ind_scales}.attr = {subq2}.attr
+            ) as subq3
+        ) as subq1
+    """.format(subq2 = subq2, **kwargs)
+    return query
+
+def __ridge_restore_linear_coef_scales(**kwargs):
+    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
+    foos = __cv_unique_string()
+    goos = __cv_unique_string()
+    sql_query = __ridge_restore_linear_coef_scales_sql(**kwargs)
+    plpy.execute("drop table if exists {tbl_origin_coef}".format(**kwargs))
+    plpy.execute("""
+        create table {tbl_origin_coef} as
+            select
+                {foos}.{col_coef},
+                {foos}.intercept,
+                {goos}.ind_var_mean,
+                {goos}.ind_var_std,
+                {tbl_dep_scale}.dep_avg AS dep_var_mean,
+                {tbl_dep_scale}.dep_std AS dep_var_std,
+                {col_others_string}
+            from
+                ({sql_query}) as {foos},
+                {tbl_coef},
+                (
+                    SELECT
+                        array_agg({tbl_ind_scales}.mean ORDER BY {tbl_ind_scales}.attr) AS ind_var_mean,
+                        array_agg({tbl_ind_scales}.std ORDER BY {tbl_ind_scales}.attr) AS ind_var_std
+                    FROM {tbl_ind_scales}
+                ) {goos},
+                {tbl_dep_scale}
+    """.format(col_others_string = col_others_string,
+               foos = foos, goos = goos,
+               sql_query = sql_query, **kwargs))
+    return None
+
+def __ridge_newton_cv_preprocess(kwargs):
+    data_tbl = kwargs["data_tbl"]
+    data_id = kwargs["data_id"]
+    id_is_random = kwargs["id_is_random"]
+    col_ind_var = kwargs["col_ind_var"]
+    col_dep_var = kwargs["col_dep_var"]
+    fold_num = kwargs["fold_num"]
+    upto_fold = kwargs["upto_fold"]
+    tbl_all_data = __cv_unique_string()
+    tbl_inter = __cv_unique_string()
+    tbl_train = __cv_unique_string()
+    tbl_valid = __cv_unique_string()
+    col_random_id = __cv_unique_string()
+    tbl_random_id = __cv_unique_string()
+    tbl_accum_error = __cv_unique_string()
+    tbl_ind_scales = __cv_unique_string()
+    tbl_dep_scale = __cv_unique_string()
+    tbl_coef = __cv_unique_string()
+    kwargs.update(dict(tbl_accum_error = tbl_accum_error,
+                       tbl_all_data = tbl_all_data,
+                       tbl_inter = tbl_inter,
+                       tbl_train = tbl_train,
+                       tbl_valid = tbl_valid,
+                       tbl_random_id = tbl_random_id,
+                       col_random_id = col_random_id,
+                       tbl_ind_scales = tbl_ind_scales,
+                       tbl_dep_scale = tbl_dep_scale,
+                       tbl_coef = tbl_coef))
+    
+    data_cols = [col_ind_var, col_dep_var]
+    if data_id is None:
+        __cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id)
+        tbl_used = tbl_all_data
+    else:
+        __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id)
+        tbl_used = data_tbl
+
+    row_num = plpy.execute("select count(*) as row_num from {data_tbl}".format(**kwargs))[0]["row_num"]
+    dimension = plpy.execute("select max(array_upper({col_ind_var},1)) as dimension from {data_tbl}".format(**kwargs))[0]["dimension"]
+
+    kwargs.update(dict(tbl_used = tbl_used, row_num = row_num, dimension = dimension))
+
+    if fold_num <= 1:
+        plpy.error("Cross validation total fold number should be larger than 1!")
+
+    if upto_fold < 1 or upto_fold > fold_num:
+        plpy.error("Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
+
+    plpy.execute("""
+        drop table if exists {tbl_coef};
+        create temp table {tbl_coef} (id integer, coef double precision[], intercept double precision)
+    """.format(**kwargs))
+    return None
+
+def __ridge_newton_cv_split_and_normalization(k, kwargs):
+    data_id = kwargs["data_id"]
+    id_is_random = kwargs["id_is_random"]
+    tbl_used = kwargs["tbl_used"]
+    col_random_id = kwargs["col_random_id"]
+    row_num = kwargs["row_num"]
+    tbl_train = kwargs["tbl_train"]
+    tbl_valid = kwargs["tbl_valid"]
+    fold_num = kwargs["fold_num"]
+    tbl_random_id = kwargs["tbl_random_id"]
+    tbl_inter = kwargs["tbl_inter"]
+    normalization = kwargs["normalization"]
+    dimension = kwargs["dimension"]
+    tbl_ind_scales = kwargs["tbl_ind_scales"]
+    tbl_dep_scale = kwargs["tbl_dep_scale"]
+    col_ind_var = kwargs["col_ind_var"]
+    col_dep_var = kwargs["col_dep_var"]
+
+    col_data = [col_ind_var, col_dep_var]
+    if (data_id is None) or (data_id is not None and id_is_random):
+        __cv_split_data_using_id_col(tbl_used, col_data, col_random_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+    else:
+        __cv_split_data_using_id_tbl(tbl_used, col_data, tbl_random_id, col_random_id, data_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+
+    row_num_train = plpy.execute("select count(*) as n from " + tbl_inter)[0]["n"]
+    kwargs["row_num_train"] = row_num_train
+    
+    if normalization:
+        __ridge_ind_var_scales(tbl_data = tbl_inter, col_ind_var = col_ind_var, row_num = row_num_train, dimension = dimension, tbl_scales = tbl_ind_scales)
+        __ridge_dep_var_scale(tbl_data = tbl_inter, col_dep_var = col_dep_var, row_num = row_num_train, tbl_scale = tbl_dep_scale)
+        __ridge_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale, tbl_data_scaled = tbl_train)
+        dep_std = plpy.execute("select dep_std as std from " + tbl_dep_scale)[0]["std"]
+        kwargs["dep_std"] = dep_std
+    else:
+        kwargs["tbl_train"] = tbl_inter
+
+    return None
+
+def __ridge_accumulate_error(accum_count, tbl_accum_error, param_value, error):
+    if accum_count == 1:
+        plpy.execute("create temp table {tbl_accum_error} (lambda double precision, mean_squared_error double precision)".format(tbl_accum_error = tbl_accum_error))
+    plpy.execute("insert into {tbl_accum_error} values ({param_value}, {error})".format(tbl_accum_error = tbl_accum_error,
+                                                                                        param_value = param_value, error = error))
+
+def __ridge_normalization_cv_restore(coef_count, **kwargs):
+    sql_query = __ridge_restore_linear_coef_scales_sql(
+        col_coef = "coef",
+        dimension = kwargs["dimension"],
+        tbl_ind_scales = kwargs["tbl_ind_scales"],
+        tbl_dep_scale = kwargs["tbl_dep_scale"],
+        tbl_coef = "{tbl_coef} where id = {coef_count}-1".format(coef_count = coef_count,
+                                                               **kwargs)
+    )                
+    plpy.execute("""
+                 insert into {tbl_coef}
+                 select
+                 {coef_count},
+                 coef,
+                 intercept
+                 from (
+                 {sql_query}
+             ) t
+    """.format(coef_count = coef_count, sql_query = sql_query,
+               **kwargs))
+    
+def __ridge_newton_cv(**kwargs):
+    old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
+    plpy.execute("set client_min_messages to warning")
+
+    __ridge_newton_cv_preprocess(kwargs)
+
+    upto_fold = kwargs["upto_fold"]
+    lambda_values = kwargs["lambda_values"]
+    normalization = kwargs["normalization"]
+    tbl_accum_error = kwargs["tbl_accum_error"]
+    validation_result = kwargs["validation_result"]
+
+    accum_count = 0
+    coef_count = 0
+    for k in range(upto_fold):
+        __ridge_newton_cv_split_and_normalization(k, kwargs)
+        row_num_train = kwargs["row_num_train"]
+        
+        for value in lambda_values:
+            coef_count += 1
+            effective_lambda = value * row_num_train
+            plpy.execute("""
+                insert into {tbl_coef}
+                    select {coef_count}, result, 0
+                    from (
+                        select {schema_madlib}.__ridge_newton_result(
+                            {schema_madlib}.__ridge_newton_step(
+                                ({tbl_train}.{col_ind_var})::float8[],
+                                ({tbl_train}.{col_dep_var})::float8,
+                                NULL::float8[],
+                                {dimension}::int2,
+                                ({effective_lambda})::float8
+                            )
+                        ) as result
+                        from {tbl_train}
+                    ) t
+            """.format(coef_count = coef_count,
+                       effective_lambda = effective_lambda,
+                       **kwargs))
+       
+            if normalization:
+                coef_count += 1
+                __ridge_normalization_cv_restore(coef_count, **kwargs)
+         
+            error = plpy.execute("""
+                select avg((real_value - pred)^2) as error
+                from (
+                    select
+                        {schema_madlib}.__ridge_linear_newton_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
+                        {tbl_valid}.{col_dep_var} as real_value
+                    from {tbl_valid}, {tbl_coef}
+                    where {tbl_coef}.id = {coef_count}
+                ) t
+            """.format(coef_count = coef_count, **kwargs))[0]["error"]
+
+            accum_count += 1
+            __ridge_accumulate_error(accum_count, tbl_accum_error, value, error)
+            
+    __cv_summarize_result(tbl_accum_error, validation_result, "lambda")
+
+    plpy.execute("""
+        drop table if exists {tbl_all_data};
+        drop table if exists {tbl_train};
+        drop table if exists {tbl_inter};
+        drop table if exists {tbl_valid};
+        drop table if exists {tbl_random_id};
+        drop table if exists {tbl_coef};
+        drop table if exists {tbl_ind_scales};
+        drop table if exists {tbl_dep_scale};
+        drop table if exists {tbl_accum_error}
+    """.format(**kwargs))
+
+    plpy.execute("set client_min_messages to " + old_msg_level)
+
+    return None

@@ -203,20 +203,8 @@ select madlib.ridge_newton_cv(
 */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_unique_string ()
 RETURNS VARCHAR AS $$
-DECLARE
-    name        VARCHAR;
-BEGIN
-    name := '__madlib_temp_'
-            || floor(random()*100000000)
-            || '_'
-            || round(extract(epoch from now()))
-            || '_'
-            || round(extract(epoch from now()))::INTEGER
-                % floor(random() * 100000000)::INTEGER
-            || '__';
-    return name;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+PythonFunction(validation, cv_utils, __cv_unique_string)
+$$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
 /*
@@ -224,17 +212,17 @@ $$ LANGUAGE plpgsql VOLATILE;
     string, so that we could select only the necessary data when copying is
     inevitable.
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_produce_col_name_string (
-    tbl         VARCHAR,
-    cols        VARCHAR[]
-) RETURNS VARCHAR AS $$
-    rst = ""
-    for i in range(len(cols)):
-        rst += tbl + "." + cols[i]
-        if i != len(cols) - 1:
-            rst += ", "
-    return rst
-$$ LANGUAGE plpythonu;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_produce_col_name_string (
+--     tbl         VARCHAR,
+--     cols        VARCHAR[]
+-- ) RETURNS VARCHAR AS $$
+--     rst = ""
+--     for i in range(len(cols)):
+--         rst += tbl + "." + cols[i]
+--         if i != len(cols) - 1:
+--             rst += ", "
+--     return rst
+-- $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
 /*
@@ -247,294 +235,294 @@ $$ LANGUAGE plpythonu;
     If the ID provided by user is already random, then there is no need to
     call this function.
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_generate_random_id(
-    rel_origin      VARCHAR,    -- the original data table
-    col_id          VARCHAR,    -- name of ID column provided by the user
-    rel_random_id   VARCHAR,    -- table for mapping id to random ID
-    random_id       VARCHAR,    -- column name for random ID
-    origin_id       VARCHAR     -- column name for the orginal non-random ID in table rel_random_id
-) RETURNS VOID AS $$
-BEGIN
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_random_id ||';
-        CREATE TEMP TABLE '|| rel_random_id ||' AS
-            SELECT
-                row_number() OVER (ORDER BY random()) AS '|| random_id ||',
-                '|| col_id ||' AS '|| origin_id ||'
-            FROM
-                '|| rel_origin ||'
-    ';
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_generate_random_id(
+--     rel_origin      VARCHAR,    -- the original data table
+--     col_id          VARCHAR,    -- name of ID column provided by the user
+--     rel_random_id   VARCHAR,    -- table for mapping id to random ID
+--     random_id       VARCHAR,    -- column name for random ID
+--     origin_id       VARCHAR     -- column name for the orginal non-random ID in table rel_random_id
+-- ) RETURNS VOID AS $$
+-- BEGIN
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_random_id ||';
+--         CREATE TEMP TABLE '|| rel_random_id ||' AS
+--             SELECT
+--                 row_number() OVER (ORDER BY random()) AS '|| random_id ||',
+--                 '|| col_id ||' AS '|| origin_id ||'
+--             FROM
+--                 '|| rel_origin ||'
+--     ';
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
 /*
     If the user does not provide a ID column, the data table has to be
     copied and at the same time create a random ID column with it.
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_copy_data_with_id(
-    rel_origin      VARCHAR,    -- the original data table
-    col_data        VARCHAR[],  -- ind & dep data column names as an array
-    rel_copied      VARCHAR,    -- the copied table together with a newly generated random ID column
-    random_id       VARCHAR     -- the name of the newly generated random ID column
-) RETURNS VOID AS $$
-DECLARE
-    col_string      VARCHAR;
-BEGIN
-    -- We want to select only the columns that will be used in the computation.
-    col_string := MADLIB_SCHEMA.__cv_produce_col_name_string(rel_origin, col_data);
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_copied ||';
-        CREATE TEMP TABLE '|| rel_copied ||' AS
-            SELECT
-                row_number() OVER (ORDER BY random()) AS '|| random_id ||',
-                '|| col_string ||'
-            FROM
-                '|| rel_origin ||'
-    ';
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_copy_data_with_id(
+--     rel_origin      VARCHAR,    -- the original data table
+--     col_data        VARCHAR[],  -- ind & dep data column names as an array
+--     rel_copied      VARCHAR,    -- the copied table together with a newly generated random ID column
+--     random_id       VARCHAR     -- the name of the newly generated random ID column
+-- ) RETURNS VOID AS $$
+-- DECLARE
+--     col_string      VARCHAR;
+-- BEGIN
+--     -- We want to select only the columns that will be used in the computation.
+--     col_string := MADLIB_SCHEMA.__cv_produce_col_name_string(rel_origin, col_data);
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_copied ||';
+--         CREATE TEMP TABLE '|| rel_copied ||' AS
+--             SELECT
+--                 row_number() OVER (ORDER BY random()) AS '|| random_id ||',
+--                 '|| col_string ||'
+--             FROM
+--                 '|| rel_origin ||'
+--     ';
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
 /*
     Compute the start_row and end_row of validation data
     start_row is included, while end_row is not.
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_validation_rows(
-    row_num         INTEGER,            -- how many rows in the original data table
-    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
-                                        -- double number is allowed for a more general situation
-    which_fold      INTEGER             -- which fold of data is going to be used as validation
-) RETURNS INTEGER[] AS $$
-DECLARE
-    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
-    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
-    fold_row_num    INTEGER;            -- each fold's row number
-    start_end_pair  INTEGER[];
-BEGIN
-    fold_row_num := floor(row_num * 1.0 / fold_num); -- how many rows in each cross-validation fold
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_validation_rows(
+--     row_num         INTEGER,            -- how many rows in the original data table
+--     fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+--                                         -- double number is allowed for a more general situation
+--     which_fold      INTEGER             -- which fold of data is going to be used as validation
+-- ) RETURNS INTEGER[] AS $$
+-- DECLARE
+--     start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+--     end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+--     fold_row_num    INTEGER;            -- each fold's row number
+--     start_end_pair  INTEGER[];
+-- BEGIN
+--     fold_row_num := floor(row_num * 1.0 / fold_num); -- how many rows in each cross-validation fold
 
-    -- Since the ID column is already random, a consecutive part of
-    -- the ID is enough to extract a good sample of validation data.
-    start_row := floor((which_fold - 1) * fold_row_num * 1.0) + 1;
-    IF which_fold = fold_num THEN
-        end_row :=  row_num + 1; -- the end row itself is not included
-    ELSE
-        end_row := start_row + fold_row_num;
-    END IF;
+--     -- Since the ID column is already random, a consecutive part of
+--     -- the ID is enough to extract a good sample of validation data.
+--     start_row := floor((which_fold - 1) * fold_row_num * 1.0) + 1;
+--     IF which_fold = fold_num THEN
+--         end_row :=  row_num + 1; -- the end row itself is not included
+--     ELSE
+--         end_row := start_row + fold_row_num;
+--     END IF;
 
-    SELECT ARRAY[start_row, end_row] INTO start_end_pair;
+--     SELECT ARRAY[start_row, end_row] INTO start_end_pair;
 
-    RETURN start_end_pair;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--     RETURN start_end_pair;
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
 /*
     Split the data table according to some given ID column
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_split_data(
-    rel_source      VARCHAR,            -- the data table with random IDs
-    col_id          VARCHAR,            -- a unique id for each row, it is randomly assigned, starting from 1
-    row_num         INTEGER,            -- how many rows in the original data table
-    rel_train       VARCHAR,            -- split into training data
-    rel_valid       VARCHAR,            -- and validation data
-    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
-                                        -- double number is allowed for a more general situation
-    which_fold      INTEGER             -- which fold of data is going to be used as validation
-) RETURNS VOID AS $$
-DECLARE
-    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
-    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
-BEGIN
-    -- Since the ID column is already random, a consecutive part of
-    -- the ID is enough to extract a good sample of validation data.
-    SELECT INTO start_row, end_row
-        (start_end_pair::INTEGER[])[1],
-        (start_end_pair::INTEGER[])[2]
-    FROM (
-        SELECT
-            MADLIB_SCHEMA.__cv_validation_rows(row_num, fold_num, which_fold) AS start_end_pair
-        ) AS t;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_split_data(
+--     rel_source      VARCHAR,            -- the data table with random IDs
+--     col_id          VARCHAR,            -- a unique id for each row, it is randomly assigned, starting from 1
+--     row_num         INTEGER,            -- how many rows in the original data table
+--     rel_train       VARCHAR,            -- split into training data
+--     rel_valid       VARCHAR,            -- and validation data
+--     fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+--                                         -- double number is allowed for a more general situation
+--     which_fold      INTEGER             -- which fold of data is going to be used as validation
+-- ) RETURNS VOID AS $$
+-- DECLARE
+--     start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+--     end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+-- BEGIN
+--     -- Since the ID column is already random, a consecutive part of
+--     -- the ID is enough to extract a good sample of validation data.
+--     SELECT INTO start_row, end_row
+--         (start_end_pair::INTEGER[])[1],
+--         (start_end_pair::INTEGER[])[2]
+--     FROM (
+--         SELECT
+--             MADLIB_SCHEMA.__cv_validation_rows(row_num, fold_num, which_fold) AS start_end_pair
+--         ) AS t;
 
-    -- Extract the training part of data,
-    -- which corresponds to rows outside of [start_row, end_row).
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_train ||';
-        CREATE TEMP TABLE '|| rel_train ||' AS
-            SELECT * FROM '|| rel_source ||' -- include the ID column
-            WHERE '|| col_id ||' < '|| start_row ||'
-                OR '|| col_id ||' >= '|| end_row ||'
-    ';
+--     -- Extract the training part of data,
+--     -- which corresponds to rows outside of [start_row, end_row).
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_train ||';
+--         CREATE TEMP TABLE '|| rel_train ||' AS
+--             SELECT * FROM '|| rel_source ||' -- include the ID column
+--             WHERE '|| col_id ||' < '|| start_row ||'
+--                 OR '|| col_id ||' >= '|| end_row ||'
+--     ';
 
-    -- Extract the validation part of data,
-    -- which corresponds to rows inside of [start_row, end_row).
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_valid ||';
-        CREATE TEMP TABLE '|| rel_valid ||' AS
-            SELECT * FROM '|| rel_source ||' -- include the ID column
-            WHERE '|| col_id ||' >= '|| start_row ||'
-                AND '|| col_id ||' < '|| end_row ||'
-    ';
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--     -- Extract the validation part of data,
+--     -- which corresponds to rows inside of [start_row, end_row).
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_valid ||';
+--         CREATE TEMP TABLE '|| rel_valid ||' AS
+--             SELECT * FROM '|| rel_source ||' -- include the ID column
+--             WHERE '|| col_id ||' >= '|| start_row ||'
+--                 AND '|| col_id ||' < '|| end_row ||'
+--     ';
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
 /*
     Split data according to a separated ID mapping table,
     which is generated by the function __generate_random_id
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_split_data(
-    rel_origin      VARCHAR,            -- original data
-    rel_random_id   VARCHAR,            -- table for mapping id to random ID
-    random_id       VARCHAR,            -- column name for random ID
-    origin_id       VARCHAR,             -- column name for the original non-random ID
-    row_num         INTEGER,            -- how many rows in the original data table
-    rel_train       VARCHAR,            -- split into training data
-    rel_valid       VARCHAR,            -- and validation data
-    fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
-    which_fold      INTEGER             -- which fold of data is going to be used as validation
-) RETURNS VOID AS $$
-DECLARE
-    start_row       INTEGER;            -- starts the validation data set from this row (itself included)
-    end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
-BEGIN
-    -- Since the ID column is already random, a consecutive part of
-    -- the ID is enough to extract a good sample of validation data.
-    SELECT INTO start_row, end_row
-        (start_end_pair::INTEGER[])[1],
-        (start_end_pair::INTEGER[])[2]
-    FROM (
-        SELECT
-            MADLIB_SCHEMA.__validation_rows(row_num, fold_num, which_fold) AS start_end_pair
-        ) AS t;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_split_data(
+--     rel_origin      VARCHAR,            -- original data
+--     rel_random_id   VARCHAR,            -- table for mapping id to random ID
+--     random_id       VARCHAR,            -- column name for random ID
+--     origin_id       VARCHAR,             -- column name for the original non-random ID
+--     row_num         INTEGER,            -- how many rows in the original data table
+--     rel_train       VARCHAR,            -- split into training data
+--     rel_valid       VARCHAR,            -- and validation data
+--     fold_num        DOUBLE PRECISION,   -- k-fold cross validation, ordered by 1_th, 2_th, ..., k_th fold
+--     which_fold      INTEGER             -- which fold of data is going to be used as validation
+-- ) RETURNS VOID AS $$
+-- DECLARE
+--     start_row       INTEGER;            -- starts the validation data set from this row (itself included)
+--     end_row         INTEGER;            -- ends the validation data set at this row (itself not included)
+-- BEGIN
+--     -- Since the ID column is already random, a consecutive part of
+--     -- the ID is enough to extract a good sample of validation data.
+--     SELECT INTO start_row, end_row
+--         (start_end_pair::INTEGER[])[1],
+--         (start_end_pair::INTEGER[])[2]
+--     FROM (
+--         SELECT
+--             MADLIB_SCHEMA.__validation_rows(row_num, fold_num, which_fold) AS start_end_pair
+--         ) AS t;
    
-    -- Extract the training part of data,
-    -- which corresponds to rows outside of [start_row, end_row).
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_train ||';
-        CREATE TEMP TABLE '|| rel_train ||' AS
-            SELECT
-                '|| rel_random_id ||'.'|| random_id ||', -- include the random ID column
-                '|| rel_origin ||'.*
-            FROM
-                '|| rel_origin ||',
-                '|| rel_random_id ||'
-            WHERE
-                '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
-                AND
-                (
-                    '|| rel_random_id ||'.'|| random_id ||' < '|| start_row ||'
-                    OR
-                    '|| rel_random_id ||'.'|| random_id ||' >= '|| end_row ||'
-                )            
-    ';
+--     -- Extract the training part of data,
+--     -- which corresponds to rows outside of [start_row, end_row).
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_train ||';
+--         CREATE TEMP TABLE '|| rel_train ||' AS
+--             SELECT
+--                 '|| rel_random_id ||'.'|| random_id ||', -- include the random ID column
+--                 '|| rel_origin ||'.*
+--             FROM
+--                 '|| rel_origin ||',
+--                 '|| rel_random_id ||'
+--             WHERE
+--                 '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
+--                 AND
+--                 (
+--                     '|| rel_random_id ||'.'|| random_id ||' < '|| start_row ||'
+--                     OR
+--                     '|| rel_random_id ||'.'|| random_id ||' >= '|| end_row ||'
+--                 )            
+--     ';
 
-    -- Extract the validation part of data,
-    -- which corresponds to rows outside of [start_row, end_row).
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| rel_valid ||';
-        CREATE TEMP TABLE '|| rel_valid ||' AS
-            SELECT
-                '|| rel_random_id ||'.'|| random_id ||',
-                '|| rel_origin ||'.*
-            FROM
-                '|| rel_origin ||',
-                '|| rel_random_id ||'
-            WHERE
-                '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
-                AND
-                (
-                    '|| rel_random_id ||'.'|| random_id ||' >= '|| start_row ||'
-                    AND
-                    '|| rel_random_id ||'.'|| random_id ||' < '|| end_row ||'
-                )
-    ';
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--     -- Extract the validation part of data,
+--     -- which corresponds to rows outside of [start_row, end_row).
+--     EXECUTE '
+--         DROP TABLE IF EXISTS '|| rel_valid ||';
+--         CREATE TEMP TABLE '|| rel_valid ||' AS
+--             SELECT
+--                 '|| rel_random_id ||'.'|| random_id ||',
+--                 '|| rel_origin ||'.*
+--             FROM
+--                 '|| rel_origin ||',
+--                 '|| rel_random_id ||'
+--             WHERE
+--                 '|| rel_origin ||'.'|| origin_id ||' = '|| rel_random_id ||'.'|| origin_id ||'
+--                 AND
+--                 (
+--                     '|| rel_random_id ||'.'|| random_id ||' >= '|| start_row ||'
+--                     AND
+--                     '|| rel_random_id ||'.'|| random_id ||' < '|| end_row ||'
+--                 )
+--     ';
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_combine_params_type_general(
-    params          VARCHAR[],
-    params_type     VARCHAR[],
-    tbl_data        VARCHAR,
-    col_random_id   VARCHAR,
-    param_explored  VARCHAR,
-    explore_value   VARCHAR,
-    tbl_input       VARCHAR,
-    tbl_output      VARCHAR
-) RETURNS VARCHAR AS $$
-    if len(params) != len(params_type):
-        plpy.error('Parameter number should be equal to the type number!')
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_combine_params_type_general(
+--     params          VARCHAR[],
+--     params_type     VARCHAR[],
+--     tbl_data        VARCHAR,
+--     col_random_id   VARCHAR,
+--     param_explored  VARCHAR,
+--     explore_value   VARCHAR,
+--     tbl_input       VARCHAR,
+--     tbl_output      VARCHAR
+-- ) RETURNS VARCHAR AS $$
+--     if len(params) != len(params_type):
+--         plpy.error('Parameter number should be equal to the type number!')
         
-    rst = ""
-    opts = set(["%data%", "%id%", "%error%", "%model%", "%prediction%", param_explored])
-    for i in range(len(params)):
-        if params[i] not in opts:
-            rst += "\'" + params[i] + "\'::" + params_type[i]
-        elif params[i] == param_explored:
-            rst += "\'" + explore_value + "\'::" + params_type[i]
-        elif params[i] == "%data%":
-            rst += "\'" + tbl_data + "\'::" + params_type[i]
-        elif params[i] == "%id%":
-            rst += "\'" + col_random_id + "\'::" + params_type[i]
-        elif params[i] == "%error%" :
-            rst += "\'" + tbl_output + "\'::" + params_type[i]
-        elif params[i] == "%model%":
-            if tbl_input is None:
-                rst += "\'" + tbl_output + "\'::" + params_type[i]
-            else:
-                rst += "\'" + tbl_input + "\'::" + params_type[i]
-        elif params[i] == "%prediction%":
-            if "%error%" in set(params):
-                rst += "\'" + tbl_input + "\'::" + params_type[i]
-            else:
-                rst += "\'" + tbl_output + "\'::" + params_type[i]
+--     rst = ""
+--     opts = set(["%data%", "%id%", "%error%", "%model%", "%prediction%", param_explored])
+--     for i in range(len(params)):
+--         if params[i] not in opts:
+--             rst += "\'" + params[i] + "\'::" + params_type[i]
+--         elif params[i] == param_explored:
+--             rst += "\'" + explore_value + "\'::" + params_type[i]
+--         elif params[i] == "%data%":
+--             rst += "\'" + tbl_data + "\'::" + params_type[i]
+--         elif params[i] == "%id%":
+--             rst += "\'" + col_random_id + "\'::" + params_type[i]
+--         elif params[i] == "%error%" :
+--             rst += "\'" + tbl_output + "\'::" + params_type[i]
+--         elif params[i] == "%model%":
+--             if tbl_input is None:
+--                 rst += "\'" + tbl_output + "\'::" + params_type[i]
+--             else:
+--                 rst += "\'" + tbl_input + "\'::" + params_type[i]
+--         elif params[i] == "%prediction%":
+--             if "%error%" in set(params):
+--                 rst += "\'" + tbl_input + "\'::" + params_type[i]
+--             else:
+--                 rst += "\'" + tbl_output + "\'::" + params_type[i]
 
-        if i != len(params) - 1:
-            rst = rst + ", "
-    return rst
-$$ LANGUAGE plpythonu;
+--         if i != len(params) - 1:
+--             rst = rst + ", "
+--     return rst
+-- $$ LANGUAGE plpythonu;
 
 /*
     Call function
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_funcall_general(
-    func            VARCHAR,    -- the function
-    params          VARCHAR[],  -- parameters of the function
-    params_type     VARCHAR[],  -- parameter types
-    tbl_data        VARCHAR,    -- data table name for training or validation
-    col_random_id   VARCHAR,    -- ID column name
-    param_explored  VARCHAR,    -- which parameter is under study
-    explore_value   VARCHAR,    -- the value currently under study
-    tbl_input       VARCHAR,    -- possible input table
-    tbl_output      VARCHAR     -- output the result of function
-) RETURNS VOID AS $$
-DECLARE
-    arguments   VARCHAR;
-BEGIN
-    arguments := MADLIB_SCHEMA.__cv_combine_params_type_general(
-                    params, params_type, tbl_data, col_random_id,
-                    param_explored, explore_value, tbl_input, tbl_output
-                );
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_funcall_general(
+--     func            VARCHAR,    -- the function
+--     params          VARCHAR[],  -- parameters of the function
+--     params_type     VARCHAR[],  -- parameter types
+--     tbl_data        VARCHAR,    -- data table name for training or validation
+--     col_random_id   VARCHAR,    -- ID column name
+--     param_explored  VARCHAR,    -- which parameter is under study
+--     explore_value   VARCHAR,    -- the value currently under study
+--     tbl_input       VARCHAR,    -- possible input table
+--     tbl_output      VARCHAR     -- output the result of function
+-- ) RETURNS VOID AS $$
+-- DECLARE
+--     arguments   VARCHAR;
+-- BEGIN
+--     arguments := MADLIB_SCHEMA.__cv_combine_params_type_general(
+--                     params, params_type, tbl_data, col_random_id,
+--                     param_explored, explore_value, tbl_input, tbl_output
+--                 );
  
-    EXECUTE  'SELECT '|| func ||'('|| arguments ||')';
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--     EXECUTE  'SELECT '|| func ||'('|| arguments ||')';
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 /*
     find the type of exploring parameter
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_param_type_explored(
-    params          VARCHAR[],
-    params_type     VARCHAR[],
-    param_explored   VARCHAR
-) RETURNS VARCHAR AS $$
-    for i in range(len(params)):
-        if params[i] == param_explored:
-            return params_type[i]
-    return None
-$$ LANGUAGE plpythonu;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_param_type_explored(
+--     params          VARCHAR[],
+--     params_type     VARCHAR[],
+--     param_explored   VARCHAR
+-- ) RETURNS VARCHAR AS $$
+--     for i in range(len(params)):
+--         if params[i] == param_explored:
+--             return params_type[i]
+--     return None
+-- $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
 /*
@@ -566,186 +554,188 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
     upto_fold               INTEGER,    -- how many fold actually will be used, default: 10. If 1, it is just one validation.
     data_cols               VARCHAR[]  -- names of data columns that are going to be used
 ) RETURNS VOID AS $$
-DECLARE
-    oldClientMinMessages    VARCHAR;
-    tbl_used                VARCHAR; -- table name that will be used
-    tbl_all_data            VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- if need to copy the data, this is the copied table name
-    tbl_train               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for training
-    tbl_valid               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for validation
-    col_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- column name for random id
-    tbl_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table for random ID mapping
-    row_num                 INTEGER;
-    explore_value           VARCHAR;
-    explore_type            VARCHAR;
-    accum_count             INTEGER;
-    tbl_output_model        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model information
-    tbl_output_pred         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
-    tbl_output_error        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
-    tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
-    num_explore_param       INTEGER := array_upper(explore_values, 1);
-BEGIN
-    oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
-    EXECUTE 'SET client_min_messages TO warning';
+PythonFunction(validation, cross_validation, cross_validation_general)
+$$ LANGUAGE plpythonu;
+-- DECLARE
+--     oldClientMinMessages    VARCHAR;
+--     tbl_used                VARCHAR; -- table name that will be used
+--     tbl_all_data            VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- if need to copy the data, this is the copied table name
+--     tbl_train               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for training
+--     tbl_valid               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for validation
+--     col_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- column name for random id
+--     tbl_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table for random ID mapping
+--     row_num                 INTEGER;
+--     explore_value           VARCHAR;
+--     explore_type            VARCHAR;
+--     accum_count             INTEGER;
+--     tbl_output_model        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model information
+--     tbl_output_pred         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store model predictions
+--     tbl_output_error        VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table to store error for each validation
+--     tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
+--     num_explore_param       INTEGER := array_upper(explore_values, 1);
+-- BEGIN
+--     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+--     EXECUTE 'SET client_min_messages TO warning';
 
-    IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
-        PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
-        tbl_used := tbl_all_data;
-    ELSIF id_is_random THEN -- unique ID column is given and is random
-        tbl_used := data_tbl; -- nothing needs to be done to the original data table
-    ELSE -- the provided unique ID is not random, create a table mapping the given ID to a random ID
-        PERFORM MADLIB_SCHEMA.__cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id);
-        tbl_used := data_tbl;
-    END IF;
+--     IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
+--         PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id);
+--         tbl_used := tbl_all_data;
+--     ELSIF id_is_random THEN -- unique ID column is given and is random
+--         tbl_used := data_tbl; -- nothing needs to be done to the original data table
+--     ELSE -- the provided unique ID is not random, create a table mapping the given ID to a random ID
+--         PERFORM MADLIB_SCHEMA.__cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id);
+--         tbl_used := data_tbl;
+--     END IF;
  
-    explore_type := MADLIB_SCHEMA.__cv_param_type_explored(modelling_params, modelling_params_type, param_explored);
+--     explore_type := MADLIB_SCHEMA.__cv_param_type_explored(modelling_params, modelling_params_type, param_explored);
  
-    -- k-fold cross-validation
-    EXECUTE 'SELECT count(*) FROM '|| data_tbl INTO row_num;
+--     -- k-fold cross-validation
+--     EXECUTE 'SELECT count(*) FROM '|| data_tbl INTO row_num;
  
-    IF fold_num <= 1 THEN
-        RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!';
-    END IF;
+--     IF fold_num <= 1 THEN
+--         RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!';
+--     END IF;
     
-    IF upto_fold < 1 OR upto_fold > fold_num THEN
-        RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!';
-    END IF;
+--     IF upto_fold < 1 OR upto_fold > fold_num THEN
+--         RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!';
+--     END IF;
 
-    accum_count := 0;
-    FOR k IN 1..upto_fold LOOP
-        -- split data into train and validation parts
-        IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
-            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
-        ELSE
-            PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id, row_num,
-                                                    tbl_train, tbl_valid, fold_num, k);
-        END IF;
+--     accum_count := 0;
+--     FOR k IN 1..upto_fold LOOP
+--         -- split data into train and validation parts
+--         IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
+--             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k);
+--         ELSE
+--             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id, row_num,
+--                                                     tbl_train, tbl_valid, fold_num, k);
+--         END IF;
 
-        FOR k1 IN 1..num_explore_param LOOP
-            explore_value := explore_values[k1];
+--         FOR k1 IN 1..num_explore_param LOOP
+--             explore_value := explore_values[k1];
         
-            -- try to be as general as possible
-            -- validation using each explore_value
-            -- train
-            PERFORM MADLIB_SCHEMA.__cv_funcall_general(
-                modelling_func, modelling_params, modelling_params_type,
-                tbl_train, col_random_id, param_explored, explore_value,
-                NULL, tbl_output_model);
+--             -- try to be as general as possible
+--             -- validation using each explore_value
+--             -- train
+--             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
+--                 modelling_func, modelling_params, modelling_params_type,
+--                 tbl_train, col_random_id, param_explored, explore_value,
+--                 NULL, tbl_output_model);
    
-            -- validate
-            PERFORM MADLIB_SCHEMA.__cv_funcall_general(
-                predict_func, predict_params, predict_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value,
-                tbl_output_model, tbl_output_pred);
+--             -- validate
+--             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
+--                 predict_func, predict_params, predict_params_type,
+--                 tbl_valid, col_random_id, param_explored, explore_value,
+--                 tbl_output_model, tbl_output_pred);
    
-            -- measure the error of the validation part
-            PERFORM MADLIB_SCHEMA.__cv_funcall_general(
-                metric_func, metric_params, metric_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value,
-                tbl_output_pred, tbl_output_error);
+--             -- measure the error of the validation part
+--             PERFORM MADLIB_SCHEMA.__cv_funcall_general(
+--                 metric_func, metric_params, metric_params_type,
+--                 tbl_valid, col_random_id, param_explored, explore_value,
+--                 tbl_output_pred, tbl_output_error);
                 
-            -- accumulate the measured error result
-            accum_count := accum_count + 1;
-            IF accum_count = 1 THEN
-                EXECUTE '
-                    DROP TABLE IF EXISTS '|| tbl_accum_error ||';
-                    CREATE TEMP TABLE '|| tbl_accum_error ||' AS
-                        SELECT
-                            '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
-                            '|| tbl_output_error ||'.*
-                        FROM
-                            '|| tbl_output_error;
-            ELSE
-                EXECUTE '
-                    INSERT INTO '|| tbl_accum_error ||'
-                        SELECT
-                            '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
-                            '|| tbl_output_error ||'.*
-                        FROM
-                            '|| tbl_output_error;
-            END IF;
+--             -- accumulate the measured error result
+--             accum_count := accum_count + 1;
+--             IF accum_count = 1 THEN
+--                 EXECUTE '
+--                     DROP TABLE IF EXISTS '|| tbl_accum_error ||';
+--                     CREATE TEMP TABLE '|| tbl_accum_error ||' AS
+--                         SELECT
+--                             '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
+--                             '|| tbl_output_error ||'.*
+--                         FROM
+--                             '|| tbl_output_error;
+--             ELSE
+--                 EXECUTE '
+--                     INSERT INTO '|| tbl_accum_error ||'
+--                         SELECT
+--                             '|| explore_value ||'::'|| explore_type ||' AS '|| param_explored ||',
+--                             '|| tbl_output_error ||'.*
+--                         FROM
+--                             '|| tbl_output_error;
+--             END IF;
             
-        END LOOP;
-    END LOOP;
+--         END LOOP;
+--     END LOOP;
 
-    PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, param_explored);
+--     PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, param_explored);
 
-    -- clean up
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_train;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_valid;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_model;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_pred;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_error;
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_accum_error;
+--     -- clean up
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_all_data;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_train;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_valid;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_random_id;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_model;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_pred;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_output_error;
+--     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_accum_error;
 
-    EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--     EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 ----------------------------------------------------------------
 /*
     summarize the result
 */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_summarize_result(
-    tbl_accum_error     VARCHAR,
-    tbl_result          VARCHAR,
-    param_explored       VARCHAR
-) RETURNS VOID AS $$
-DECLARE
-    cols        VARCHAR[];
-    col         VARCHAR;
-    counts      INTEGER;
-    sizes       INTEGER;
-    num_cols    INTEGER;
-BEGIN
-    EXECUTE '
-        SELECT array_agg(column_name::VARCHAR)
-        FROM information_schema.columns
-        WHERE table_name = '''|| tbl_accum_error ||''''
-        INTO cols;
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__cv_summarize_result(
+--     tbl_accum_error     VARCHAR,
+--     tbl_result          VARCHAR,
+--     param_explored       VARCHAR
+-- ) RETURNS VOID AS $$
+-- DECLARE
+--     cols        VARCHAR[];
+--     col         VARCHAR;
+--     counts      INTEGER;
+--     sizes       INTEGER;
+--     num_cols    INTEGER;
+-- BEGIN
+--     EXECUTE '
+--         SELECT array_agg(column_name::VARCHAR)
+--         FROM information_schema.columns
+--         WHERE table_name = '''|| tbl_accum_error ||''''
+--         INTO cols;
         
-    counts := 0;
-    num_cols := array_upper(cols, 1);
-    FOR k IN 1..num_cols LOOP
-        col := cols[k];
+--     counts := 0;
+--     num_cols := array_upper(cols, 1);
+--     FOR k IN 1..num_cols LOOP
+--         col := cols[k];
 
-        counts := counts + 1;
-        IF counts = 1 THEN
-            EXECUTE '
-                DROP TABLE IF EXISTS '|| tbl_result ||';
-                CREATE TABLE '|| tbl_result ||' AS
-                    SELECT '|| param_explored ||'
-                    FROM '|| tbl_accum_error ||'
-                    GROUP BY '|| param_explored ||'
-                    ORDER BY '|| param_explored;
-        ELSE
-             EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_avg DOUBLE PRECISION DEFAULT 0';
-             EXECUTE '
-                UPDATE '|| tbl_result ||' SET '|| col ||'_avg = avgs FROM (
-                         SELECT
-                             '|| param_explored ||',
-                             avg('|| col ||') as avgs
-                         FROM '|| tbl_accum_error ||'
-                         GROUP BY '|| param_explored ||'
-                     ) t
-                     WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;-- ||';
-              EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_stddev DOUBLE PRECISION DEFAULT 0';
-              EXECUTE '
-                UPDATE '|| tbl_result ||'
-                    SET '|| col ||'_stddev = stds
-                    FROM (
-                        SELECT
-                            '|| param_explored ||',
-                            stddev('|| col ||') as stds
-                        FROM '|| tbl_accum_error ||'
-                        GROUP BY '|| param_explored ||'
-                    ) t
-                    WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;
-        END IF;
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+--         counts := counts + 1;
+--         IF counts = 1 THEN
+--             EXECUTE '
+--                 DROP TABLE IF EXISTS '|| tbl_result ||';
+--                 CREATE TABLE '|| tbl_result ||' AS
+--                     SELECT '|| param_explored ||'
+--                     FROM '|| tbl_accum_error ||'
+--                     GROUP BY '|| param_explored ||'
+--                     ORDER BY '|| param_explored;
+--         ELSE
+--              EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_avg DOUBLE PRECISION DEFAULT 0';
+--              EXECUTE '
+--                 UPDATE '|| tbl_result ||' SET '|| col ||'_avg = avgs FROM (
+--                          SELECT
+--                              '|| param_explored ||',
+--                              avg('|| col ||') as avgs
+--                          FROM '|| tbl_accum_error ||'
+--                          GROUP BY '|| param_explored ||'
+--                      ) t
+--                      WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;-- ||';
+--               EXECUTE 'ALTER TABLE '|| tbl_result ||' ADD COLUMN '|| col ||'_stddev DOUBLE PRECISION DEFAULT 0';
+--               EXECUTE '
+--                 UPDATE '|| tbl_result ||'
+--                     SET '|| col ||'_stddev = stds
+--                     FROM (
+--                         SELECT
+--                             '|| param_explored ||',
+--                             stddev('|| col ||') as stds
+--                         FROM '|| tbl_accum_error ||'
+--                         GROUP BY '|| param_explored ||'
+--                     ) t
+--                     WHERE t.'|| param_explored ||' = '|| tbl_result ||'.'|| param_explored;
+--         END IF;
+--     END LOOP;
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
     modelling_func          VARCHAR,    -- function for setting up the model
@@ -843,7 +833,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
     module_name         VARCHAR,
-    args                VARCHAR[],
+    func_args           VARCHAR[],
     param_to_try        VARCHAR,
     param_values        DOUBLE PRECISION[],
     data_id             VARCHAR,
@@ -851,30 +841,12 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
     validation_result   VARCHAR,
     fold_num            INTEGER
 ) RETURNS VOID AS $$
-DECLARE
-    args_string         VARCHAR;
-BEGIN
-    IF module_name = 'ridge' THEN
-        args_string := MADLIB_SCHEMA.__ridge_cv_args(args, param_to_try, param_values, data_id,
-                                                    id_is_random, validation_result, fold_num);
-        EXECUTE 'SELECT MADLIB_SCHEMA.ridge_newton_cv('|| args_string ||')';
-        RETURN;
-    END IF;
-
-    IF module_name = 'lasso' THEN
-        args_string := MADLIB_SCHEMA.__lasso_cv_args(args, param_to_try, param_values, data_id,
-                                                    id_is_random, validation_result, fold_num);
-        EXECUTE 'SELECT MADLIB_SCHEMA.lasso_igd_cv('|| args_string ||')';
-        RETURN;
-    END IF;
-
-    RAISE EXCEPTION 'No module is named as %. Either it does not exist, or it is not supported by this function yet. You can try to us the function of cross_validation_general().', module_name;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+PythonFunction(validation, cross_validation, cross_validation)
+$$ LANGUAGE plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
     module_name         VARCHAR,
-    args                VARCHAR[],
+    func_args                VARCHAR[],
     param_to_try        VARCHAR,
     param_values        DOUBLE PRECISION[],
     data_id             VARCHAR,
