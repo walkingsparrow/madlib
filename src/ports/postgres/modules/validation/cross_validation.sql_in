@@ -444,3 +444,20 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(module_name VARCHAR)
 RETURNS VARCHAR AS $$
 PythonFunction(validation, cross_validation, cross_validation_help)
 $$ LANGUAGE plpythonu;
+
+------------------------------------------------------------------------
+
+/**
+ * @brief Print the supported module names for cross_validation
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation()
+RETURNS VARCHAR AS $$
+DECLARE
+    msg     VARCHAR;
+BEGIN
+    msg := 'cross_validation function now supports
+linear Ridge and linear LASSO. Use ridge
+or lasso as the first argument.';
+    return msg;
+END;
+$$ LANGUAGE plpgsql STRICT;
