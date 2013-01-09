@@ -14,7 +14,7 @@ def __ridge_cv_args(schema_madlib, func_args, param_to_try,
                     param_values, data_id,
                     id_is_random, validation_result, fold_num):
     """
-    Generate argument list for the ridge_newton_cv, used in the CV wrapper.
+    Generate argument list for the __ridge_newton_cv, used in the CV wrapper.
     
     Cross validation (CV) uses a universal interface for all the modules that it supports. Each module should
     provide its own adaptor to convert the inputs from the universal interface to the inputs that the
@@ -409,7 +409,7 @@ def __ridge_newton_cv_preprocess(kwargs):
     else:
         # the provided unique ID is not random, create
         # a table mapping the given ID to a random ID
-        __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id)
+        __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id)
         tbl_used = data_tbl
 
     # original data row number
@@ -497,7 +497,7 @@ def __ridge_accumulate_error(accum_count, tbl_accum_error, param_value, error):
     
 def __ridge_normalization_cv_restore(coef_count, **kwargs):
     """
-    Function needed by both ridge and lasso cross validation functions:
+    Function used by both ridge and lasso cross validation functions:
     
     Restore the fitting coefficients to the original scales without using
     extra table to avoid transaction lock limits.
@@ -553,6 +553,10 @@ def __ridge_newton_cv(**kwargs):
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to warning")
 
+    # copy data if needed,
+    # update name space,
+    # check the validity of fold_num,
+    # create table to store all the fitting coefficients
     __ridge_newton_cv_preprocess(kwargs)
 
     upto_fold = kwargs["upto_fold"]
@@ -564,12 +568,24 @@ def __ridge_newton_cv(**kwargs):
     accum_count = 0
     coef_count = 0
     for k in range(upto_fold):
+        # create training and validation sets
+        # and normalize the training set if requested by
+        # the user (parameter normalization in func_args is True)
         __ridge_newton_cv_split_and_normalization(k, kwargs)
         row_num_train = kwargs["row_num_train"]
         
         for value in lambda_values:
             coef_count += 1
+
+            # Re-scaling of lambda
+            # so that same results can be produced 
+            # as R MASS package's lm.ridge function.
+            # glmnet package produces different result,
+            # which is due to a bug (but the bug actually does not
+            # affect the final optimum fitting result)
             effective_lambda = value * row_num_train
+            
+            # actually compute the fitting coefficients
             plpy.execute("""
                 insert into {tbl_coef}
                     select {coef_count}, result, 0
@@ -590,9 +606,12 @@ def __ridge_newton_cv(**kwargs):
                        **kwargs))
        
             if normalization:
+                # restore the fitting coefficients to the original scale
+                # without introducing new tables
                 coef_count += 1
                 __ridge_normalization_cv_restore(coef_count, **kwargs)
-         
+
+            # directly compute error
             error = plpy.execute("""
                 select avg((real_value - pred)^2) as error
                 from (
@@ -604,11 +623,14 @@ def __ridge_newton_cv(**kwargs):
                 ) t
             """.format(coef_count = coef_count, **kwargs))[0]["error"]
 
+            # append error into one table
             accum_count += 1
             __ridge_accumulate_error(accum_count, tbl_accum_error, value, error)
-            
+
+    # for each lambda value, compute the average and standard deviation of errors
     __cv_summarize_result(tbl_accum_error, validation_result, "lambda")
 
+    # clean up the temporary tables
     plpy.execute("""
         drop table if exists {tbl_all_data};
         drop table if exists {tbl_train};
@@ -624,3 +646,30 @@ def __ridge_newton_cv(**kwargs):
     plpy.execute("set client_min_messages to " + old_msg_level)
 
     return None
+
+## ========================================================================
+
+def __ridge_newton_cv_help():
+    return """
+    Allowed modelling function arguments:
+
+    * tbl_source - the data source table,
+    * col_ind_var - independent variable column name,
+    * col_dep_var - dependent variable column name,
+    * tbl_output - output table of ridge (as an intermediate table of CV, it will be ignored if is given here)
+    * lambda - the regulation parameter (in CV lambda is given as the parameter values to try, and any value given here will be ignored)
+    * normalization - whether normalize the data (better convergence, consistent with R default and slower speed)
+
+    Usage example:
+
+    select madlib.cross_validation(
+        'ridge',
+        '{normalization = True, col_ind_var = val, col_dep_var = dep, tbl_source = cvtest}',
+        'lambda',
+        '{0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2}'::double precision[],
+        NULL::varchar, -- no unique ID associated with rows
+        False,  -- if there is a unique ID, whether it is random
+        'validation_result',
+        10    -- cross validation fold
+    );
+    """

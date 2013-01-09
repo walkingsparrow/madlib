@@ -2,8 +2,10 @@
 import math
 from convex.ridge import __ridge_cv_args
 from convex.ridge import __ridge_newton_cv
+from convex.ridge import __ridge_newton_cv_help
 from convex.lasso_igd import __lasso_cv_args
 from convex.lasso_igd import __lasso_igd_cv
+from convex.lasso_igd import __lasso_igd_cv_help
 from validation.cv_utils import __cv_unique_string
 from validation.cv_utils import __cv_copy_data_with_id
 from validation.cv_utils import __cv_split_data_using_id_col
@@ -11,30 +13,91 @@ from validation.cv_utils import __cv_split_data_using_id_tbl
 from validation.cv_utils import __cv_summarize_result
 import plpy
 
+## ========================================================================
+
 def cross_validation(schema_madlib, module_name, func_args, param_to_try,
                      param_values, data_id, id_is_random,
                      validation_result, fold_num, **kwargs):
-    if module_name == "ridge":
+    """
+    Wrapper for cross validation.
+    
+    Cross validation (CV) uses a universal interface for all the modules that it supports. Each module should
+    provide its own adaptor to convert the inputs from the universal interface to the inputs that the
+    module's CV function recognize.
+
+    @param schema_madlib Name of the MADlib schema, properly escaped/quoted
+    @param func_args A string list with each item having the form of "arg = value". It gives the arguments
+                     needed by the modelling function in the cross validation.
+    @param param_to_try The name of the parameter in the modelling function that CV will run through. For Ridge
+                        regression, this one must be "lambda"
+    @param param_values The different values that CV will run through.
+    @param data_id Whether the data table has a unique ID associated with each row. If data_id exists, then
+                   it would be be much easier to split the data into training and validation portions. Otherwise,
+                   CV function will copy the original data (only copy the part used in the calculation) and add
+                   a random ID for each row.
+    @param id_is_random If data_id is not None, then whether this ID is randomly assigned to each row. If it is
+                        not, then a mapping table will be created, mapping the original non-random ID to a
+                        random ID.
+    @param validation_result The table name to store the result of CV. It has 3 columns: lamda value, MSE error
+                             average, and MSE error standard deviation.
+    @param fold_num The cross validation fold number.
+
+    The output is a dict with all parameters and their values for ridge's CV function __ridge_newton_cv
+    """
+    if module_name.lower() == "ridge":
         args_string = __ridge_cv_args(schema_madlib, func_args, param_to_try, param_values, data_id, id_is_random, validation_result, fold_num)
         __ridge_newton_cv(**args_string)
         return None
 
-    if module_name == "lasso":
+    if module_name.lower() == "lasso":
         args_string = __lasso_cv_args(schema_madlib, func_args, param_to_try, param_values, data_id, id_is_random, validation_result, fold_num)
         __lasso_igd_cv(**args_string)
         return None
 
-    plpy.error("No module is named as {0}. Either it does not exist, or it is not supported by this function yet. You can try to us the function of cross_validation_general().".format(module_name));
+    plpy.error("No module is named as {0}. Either it does not exist, or it is not supported by this function yet. You can try to use the function of cross_validation_general().\n".format(module_name));
     return None
 
+## ========================================================================
+
+def cross_validation_help(schema_madlib, module_name, **kwargs):
+    """
+    Print out how to call this CV function for the module. Especially
+    the necessary func_args will be print out.
+    """
+    if module_name.lower() == "ridge":
+        return __ridge_newton_cv_help()
+
+    if module_name.lower() == "lasso":
+        return __lasso_igd_cv_help()
+
+    plpy.error("No module is named as {0}. Either it does not exist, or it is not supported by this function yet. You can try to use the function of cross_validation_general().\n".format(module_name));
+    return None
+    
+## ========================================================================
+    
 def __cv_combine_params_type_general(params, params_type, tbl_data,
                                      col_random_id, param_explored,
                                      explore_value, tbl_input,
                                      tbl_output):
+    """
+    Create argument list for SQL functions for training, validation and metric measuring
+
+    @param params A string list of parameter names
+    @param params_type A string list of parameter types
+    @param tbl_data Data table name (training, validation)
+    @param col_random_id The random ID column, a string
+    @param param_explored The name that CV runs through
+    @param explore_value The current value of param_explored that is under study, already converted to string
+    @param tbl_input The input table name for SQL function
+    @param tbl_output The output table name for SQL function
+
+    Output is a string, where all parameters are force-casted into their type.
+    """
     if len(params) != len(params_type):
         plpy.error('Parameter number should be equal to the type number!')
         
     rst = ""
+    # The special keywords
     opts = set(["%data%", "%id%", "%error%", "%model%", "%prediction%", param_explored])
     for i in range(len(params)):
         if params[i] not in opts:
@@ -62,9 +125,18 @@ def __cv_combine_params_type_general(params, params_type, tbl_data,
             rst = rst + ", "
     return rst
 
+## ========================================================================
+    
 def __cv_funcall_general(func, params, params_type, tbl_data, col_random_id,
                          param_explored, explore_value, tbl_input,
                          tbl_output):
+    """
+    Call training, validation or metric measuring function
+
+    @param func The name of the SQL function to be called, a string
+
+    For all other parameters, see the doc string of __cv_combine_params_type_general
+    """
     arg_string = __cv_combine_params_type_general(
         params, params_type, tbl_data, col_random_id,
         param_explored, explore_value, tbl_input, tbl_output
@@ -72,13 +144,23 @@ def __cv_funcall_general(func, params, params_type, tbl_data, col_random_id,
     plpy.execute("select {func}({arg_string})".format(func = func, arg_string = arg_string))
     return None
 
-## find the type of exploring parameter
+## ========================================================================
+    
 def __cv_param_type_explored(params, params_type, param_explored):
+    """
+    Find the type of exploring parameter
+
+    @param params A string list of parameter names
+    @param params_type A string list of parameter types
+    @param param_explored The name that CV runs through
+    """
     for i in range(len(params)):
         if params[i] == param_explored:
             return params_type[i]
     return None
-    
+
+## ========================================================================
+
 ## perform cross validation
 def cross_validation_general(
         schema_madlib,
@@ -91,6 +173,12 @@ def cross_validation_general(
         fold_num, upto_fold,
         data_cols,
         **kwargs):
+    """
+    A general framework that runs cross-validation for modules that are
+    consistent with certain SQL API.
+
+    Sed dev-doc for details.
+    """
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to warning")
 
@@ -116,12 +204,18 @@ def cross_validation_general(
                   tbl_random_id = tbl_random_id,
                   tbl_output_model = tbl_output_model,
                   tbl_output_pred = tbl_output_pred)
-    
+
     if data_id is None:
+        # unique ID column is not given, has to copy the data and create the ID
         __cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id)
         tbl_used = tbl_all_data
+    elif id_is_random:
+        # unique ID column is given and is random
+        tbl_used = data_tbl
     else:
-        __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id, data_id)
+        # the provided unique ID is not random, create a table
+        # mapping the given ID to a random ID
+        __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id)
         tbl_used = data_tbl
 
     row_num = plpy.execute("select count(*) as row_num from " + data_tbl)[0]["row_num"]
@@ -134,6 +228,7 @@ def cross_validation_general(
 
     accum_count = 0
     for k in range(upto_fold):
+        # split data into train and validation parts
         if (data_id is None) or (data_id is not None and id_is_random):
             __cv_split_data_using_id_col(tbl_used, data_cols, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k+1)
         else:
@@ -177,9 +272,11 @@ def cross_validation_general(
                             {tbl_output_error}.*
                         from {tbl_output_error}                             
                 """.format(explore_value = explore_value, **kwargs))
-                
+
+    # compute the averages and standard deviations for all measured metrics (not necessary one)
     __cv_summarize_result(tbl_accum_error, validation_result, param_explored)
 
+    # clean up the temporary tables
     plpy.execute("""
         drop table if exists {tbl_all_data};
         drop table if exists {tbl_train};
