@@ -74,8 +74,7 @@ BEGIN
         'price',
         'test_ridge_model',
         0,
-        False,
-        4
+        False
         );
 
     PERFORM assert(
@@ -90,8 +89,7 @@ BEGIN
         'price',
         'test_ridge_model1',
         0.1,
-        False,
-        4
+        False
         );
 
     PERFORM assert(
@@ -126,12 +124,10 @@ BEGIN
         'price',
         'test_lasso_model',
         0,
-        0.003,
-        1000,
-        1e-10,
         False,
-        4,
-        15
+        0.01,
+        5000,
+        1e-10
         );
 
     PERFORM assert(
@@ -154,12 +150,10 @@ BEGIN
         'price',
         'test_lasso_model',
         0.06,
+        False,
         0.003,
         1000,
-        1e-10,
-        False,
-        4,
-        15
+        1e-10
         );
 
     EXECUTE 'SELECT (@ coefficients[1]) + (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
