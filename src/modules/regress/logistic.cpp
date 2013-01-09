@@ -294,8 +294,8 @@ logregr_cg_step_final::run(AnyType &args) {
         // Do a direction restart (Powell restart)
         // Note: This is testing whether state.beta < 0 if state.beta were
         // assigned according to Polak-Ribière
-        if (std::abs(dot(state.gradNew, gradNewMinusGrad)
-            / dot(state.grad, state.grad)) <= std::numeric_limits<double>::denorm_min()) state.beta = 0;
+        if (dot(state.gradNew, gradNewMinusGrad)
+            / dot(state.grad, state.grad) <= std::numeric_limits<double>::denorm_min()) state.beta = 0;
 
         // d_k = g_k - beta_k * d_{k-1}
         state.dir = state.gradNew - state.beta * state.dir;
