@@ -20,6 +20,8 @@ from convex.ridge import __ridge_restore_linear_coef_scales_sql
 from convex.ridge import __ridge_accumulate_error
 from validation.cv_utils import __cv_summarize_result
 
+## ========================================================================
+
 def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
     col_ind_var, col_dep_var, drop_table, **kwargs):
     """
@@ -33,6 +35,8 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
     @param rel_source Name of the relation containing input points
     @param col_ind_var Name of the independent variables column
     @param col_dep_var Name of the dependent variable column
+    @param drop_table Boolean, whether to use IterationController (True) or
+                      IterationControlledNoTableDrop (False)
     @param kwargs We allow the caller to specify additional arguments (all of
         which will be ignored though). The purpose of this is to allow the
         caller to unpack a dictionary whose element set is a superset of
@@ -88,9 +92,47 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
                 break
     return iterationCtrl.iteration
 
+## ========================================================================
+    
 def __lasso_cv_args(schema_madlib, func_args, param_to_try,
                     param_values, data_id,
                     id_is_random, validation_result, fold_num):
+    """
+    Generate argument list for the __lasso_igd_cv, used in the CV wrapper.
+    
+    Cross validation (CV) uses a universal interface for all the modules that it supports. Each module should
+    provide its own adaptor to convert the inputs from the universal interface to the inputs that the
+    module's CV function recognize.
+
+    @param schema_madlib Name of the MADlib schema, properly escaped/quoted
+    @param func_args A string list with each item having the form of "arg = value". It gives the arguments
+                     needed by the modelling function in the cross validation.
+    @param param_to_try The name of the parameter in the modelling function that CV will run through. For Ridge
+                        regression, this one must be "lambda"
+    @param param_values The different values that CV will run through.
+    @param data_id Whether the data table has a unique ID associated with each row. If data_id exists, then
+                   it would be be much easier to split the data into training and validation portions. Otherwise,
+                   CV function will copy the original data (only copy the part used in the calculation) and add
+                   a random ID for each row.
+    @param id_is_random If data_id is not None, then whether this ID is randomly assigned to each row. If it is
+                        not, then a mapping table will be created, mapping the original non-random ID to a
+                        random ID.
+    @param validation_result The table name to store the result of CV. It has 3 columns: lamda value, MSE error
+                             average, and MSE error standard deviation.
+    @param fold_num The cross validation fold number.
+
+    The output is a dict with all parameters and their values for ridge's CV function __ridge_newton_cv
+    """
+    # lasso regression modelling function accepts the following parameters:
+    # tbl_source - the data source table,
+    # col_ind_var - independent variable column name,
+    # col_dep_var - dependent variable column name,
+    # tbl_output - output table of ridge (of no use and will be ignored)
+    # lambda - the regulation parameter (of no use and will be ignored)
+    # normalization - whether normalize the data (better convergence, consistent with R default and slower speed)
+    # stepsize - step size for incremental gradient descent (IGD) optimization method
+    # num_iterations - max iteration allowed
+    # tolerance - two consecutive states difference tolenrance
     allowed_args = set(["tbl_source", "col_ind_var", "col_dep_var", "tbl_output", "lambda", "normalization", "stepsize", "num_iterations", "tolerance"])
 
     name_value = dict()
@@ -167,14 +209,47 @@ def __lasso_cv_args(schema_madlib, func_args, param_to_try,
     
     return name_value
 
+## ========================================================================
+    
 def __lasso_igd_cv(**kwargs):
+    """
+    Cross validation for ridge without lock limits.
+
+    The output is a table which has 3 columns: lamda value, MSE error average,
+    and MSE error standard deviation.
+
+    Parameters:
+    schema_madlib -- Name of the MADlib schema, properly escaped/quoted
+    func_args -- A string list with each item having the form of "arg = value". It gives the arguments
+                 needed by the modelling function in the cross validation.
+    param_to_try -- The name of the parameter in the modelling function that CV will run through. For Ridge
+                    regression, this one must be "lambda"
+    param_values -- The different values that CV will run through.
+    data_id -- Whether the data table has a unique ID associated with each row. If data_id exists, then
+               it would be be much easier to split the data into training and validation portions. Otherwise,
+               CV function will copy the original data (only copy the part used in the calculation) and add
+               a random ID for each row.
+    id_is_random -- If data_id is not None, then whether this ID is randomly assigned to each row. If it is
+                    not, then a mapping table will be created, mapping the original non-random ID to a
+                    random ID.
+    validation_result -- The table name to store the result of CV. It has 3 columns: lamda value, MSE error
+                         average, and MSE error standard deviation.
+    fold_num -- The cross validation fold number.
+    """
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to error")
 
+    # copy data if needed,
+    # update name space,
+    # check the validity of fold_num,
+    # create table to store all the fitting coefficients
     __ridge_newton_cv_preprocess(kwargs)
+
+    # two tables used only in lasso 
     kwargs.update(dict(tbl_lasso_igd_args = __cv_unique_string(),
                        tbl_lasso_igd_state = __cv_unique_string()))
-    
+
+    # parameter table
     plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**kwargs))
     plpy.execute("""select {schema_madlib}.__lasso_execute_using_igd_args('
         drop table if exists pg_temp.{tbl_lasso_igd_args};
@@ -204,18 +279,31 @@ def __lasso_igd_cv(**kwargs):
     accum_count = 0
     coef_count = 0
     for k in range(upto_fold):
+        # create training and validation sets
+        # and normalize the training set if requested by
+        # the user (parameter normalization in func_args is True)
         __ridge_newton_cv_split_and_normalization(k, kwargs)
+
         row_num_train = kwargs["row_num_train"]
         dep_std = kwargs["dep_std"]
+
         plpy.execute("update pg_temp.{tbl_lasso_igd_args} set total_rows = {row_num_train}".format(**kwargs))
         
         for value in lambda_values:
             coef_count += 1
+
+            # Re-scaling of lambda
+            # so that same results can be produced 
+            # as R glmnet package's shooting algorithm
             effective_lambda = value * row_num_train / dep_std
-            plpy.execute("update pg_temp.{tbl_lasso_igd_args} set lambda = {effective_lambda}".format(effective_lambda = effective_lambda,
-                                                                                                      **kwargs))
+            plpy.execute("update pg_temp.{tbl_lasso_igd_args} set lambda = {effective_lambda}".format(
+                effective_lambda = effective_lambda,
+                **kwargs))
+
+            # iteration without dropping any tables
             iteration_run = compute_lasso_igd(schema_madlib, tbl_lasso_igd_args, tbl_lasso_igd_state,
                                               tbl_train, col_ind_var, col_dep_var, False)
+            # actually compute the fitting coefficients for only one step
             plpy.execute("""
                 insert into {tbl_coef}
                     select {coef_count}, (result).coefficients, 0
@@ -229,26 +317,12 @@ def __lasso_igd_cv(**kwargs):
                        **kwargs))
 
             if normalization:
+                # restore the fitting coefficients to the original scale
+                # without introducing new tables
                 coef_count += 1
-                sql_query = __ridge_restore_linear_coef_scales_sql(
-                                col_coef = "coef",
-                                dimension = kwargs["dimension"],
-                                tbl_ind_scales = kwargs["tbl_ind_scales"],
-                                tbl_dep_scale = kwargs["tbl_dep_scale"],
-                                tbl_coef = "{tbl_coef} where id = {coef_count} - 1".format(coef_count = coef_count, **kwargs)
-                )
-                plpy.execute("""
-                    insert into {tbl_coef}
-                        select
-                            {coef_count},
-                            coef,
-                            intercept
-                        from (
-                            {sql_query}
-                        ) t
-                """.format(coef_count = coef_count, sql_query = sql_query,
-                           **kwargs))
+                __ridge_normalization_cv_restore(coef_count, **kwargs)
 
+            # directly compute error
             error = plpy.execute("""
                 select avg((real_value - pred)^2) as error
                 from (
@@ -260,11 +334,14 @@ def __lasso_igd_cv(**kwargs):
                 ) t
             """.format(coef_count = coef_count, **kwargs))[0]["error"]
 
+            # append error into one table
             accum_count += 1
             __ridge_accumulate_error(accum_count, tbl_accum_error, value, error)
-            
+
+    # for each lambda value, compute the average and standard deviation of errors
     __cv_summarize_result(tbl_accum_error, validation_result, "lambda")
 
+    # clean up the temporary tables
     plpy.execute("""
         drop table if exists {tbl_all_data};
         drop table if exists {tbl_train};
@@ -285,30 +362,80 @@ def __lasso_igd_cv(**kwargs):
 
 ## ========================================================================
 
+def __lasso_igd_cv_help():
+    return """
+    Allowed modelling function arguments:
+
+    * tbl_source - the data source table,
+    * col_ind_var - independent variable column name,
+    * col_dep_var - dependent variable column name,
+    * tbl_output - output table of ridge (as an intermediate table of CV, it will be ignored if is given here)
+    * lambda - the regulation parameter (in CV lambda is given as the parameter values to try, and any value given here will be ignored)
+    * normalization - whether normalize the data (better convergence, consistent with R default and slower speed)
+    * stepsize - step size for incremental gradient descent (IGD) optimization method
+    * num_iterations - max iteration allowed
+    * tolerance - two consecutive states difference tolenrance
+
+    Usage example:
+
+    select madlib.cross_validation(
+        'lasso',
+        '{normalization=True, tbl_source=cvtest, col_ind_var=val, col_dep_var=dep, stepsize=0.1, num_iterations=100, tolerance=0.0001}',
+        'lambda',
+        '{0.1,0.11,0.12,0.13,0.14,0.15,0.16,0.17,0.18,0.19,0.2,0.21,0.22,0.23,0.24,0.25,0.26,0.27}'::double precision[],
+        NULL::varchar, -- no unique ID associated with rows
+        False,  -- if there is a unique ID, whether it is random
+        'validation_result',
+        10    -- cross validation fold
+    );
+    """
+
+## ========================================================================
+## ========================================================================
+## ========================================================================
+    
 class IterationControllerNoTableDrop (IterationController):
     """
     IterationController but without table dropping
+    
     Useful if one wants to use it in cross validation
     where dropping tables in a loop would use up all the locks
     and get "out of memory" error
     """
+    ## ------------------------------------------------------------------------
+    
     def __init__(self, rel_args, rel_state, stateType,
                  temporaryTables = True,
                  truncAfterIteration = False,
                  schema_madlib = "MADLIB_SCHEMA_MISSING",
                  verbose = False,
                  **kwargs):
+        # Need to call super class's init method to initialize
+        # member fields
         IterationController.__init__(self, rel_args, rel_state, stateType,
                                      temporaryTables, truncAfterIteration,
                                      schema_madlib, verbose, **kwargs)
+        # self.kwargs["rel_state"] = "pg_temp" + rel_state, but for testing 
+        # the existence of a table, schema name should not be used together
         self.state_exists = plpy.execute("select exists(select * from information_schema.tables where table_name = '{0}')".format(rel_state))[0]['exists']
+        # The current total row number of rel_state table
         if self.state_exists:
             self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]
 
+    ## ------------------------------------------------------------------------
+            
     def update(self, newState):
+        """
+        Update state of calculation. In ridge case, the state is an
+        array of double precision[].
+        """
         newState = newState.format(iteration = self.iteration, **self.kwargs)
         self.iteration += 1
         if self.state_exists and self.iteration <= self.state_row_num:
+            # If the rel_state table already exists, and
+            # iteration number is smaller than total row number,
+            # use UPDATE instead of append. UPDATE does not use
+            # extra locks.
             self.runSQL("""
                 update {rel_state} set _state = ({newState})
                 where _iteration = {iteration}
@@ -316,6 +443,8 @@ class IterationControllerNoTableDrop (IterationController):
                        newState = newState,
                        **self.kwargs))
         else:
+            # rel_state table is newly created, and
+            # append data to this table
             self.runSQL("""
                 INSERT INTO {rel_state}
                     SELECT
@@ -325,8 +454,15 @@ class IterationControllerNoTableDrop (IterationController):
                        newState = newState,
                        **self.kwargs))
 
+    ## ------------------------------------------------------------------------
+            
     def __enter__(self):
+        """
+        __enter__ and __exit__ methods are special. They are automatically called
+        when using "with" block.
+        """
         if self.state_exists is False:
+            # create rel_state table when it does not already exist
             IterationController.__enter__(self)
         self.inWith = True
         return self
