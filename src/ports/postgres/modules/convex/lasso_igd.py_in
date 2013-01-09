@@ -417,7 +417,7 @@ class IterationControllerNoTableDrop (IterationController):
                                      schema_madlib, verbose, **kwargs)
         # self.kwargs["rel_state"] = "pg_temp" + rel_state, but for testing 
         # the existence of a table, schema name should not be used together
-        self.state_exists = plpy.execute("select exists(select * from information_schema.tables where table_name = '{0}')".format(rel_state))[0]['exists']
+        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{0}'".format(rel_state))[0]['count'] == 1
         # The current total row number of rel_state table
         if self.state_exists:
             self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]

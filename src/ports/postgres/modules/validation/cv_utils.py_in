@@ -73,20 +73,21 @@ def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored):
     @param param_explored Name of the parameter that CV runs through, a string
     """
     cols = plpy.execute("select array_agg(column_name::varchar) as col from information_schema.columns where table_name = '" + tbl_accum_error + "'")[0]["col"]
-    kwargs = dict(tbl_accum_error = tbl_accum_error, tbl_result = tbl_result, param_explored = param_explored)
-    counts = 0
+
+    kwargs = dict(tbl_accum_error = tbl_accum_error,
+                  tbl_result = tbl_result,
+                  param_explored = param_explored)
+    plpy.execute("""
+        drop table if exists {tbl_result};
+        create table {tbl_result} as
+            select {param_explored}
+            from {tbl_accum_error}
+            group by {param_explored}
+            order by {param_explored}
+    """.format(**kwargs))
+
     for col in cols:
-        counts += 1
-        if counts == 1:
-            plpy.execute("""
-                drop table if exists {tbl_result};
-                create table {tbl_result} as
-                    select {param_explored}
-                    from {tbl_accum_error}
-                    group by {param_explored}
-                    order by {param_explored}
-            """.format(**kwargs))
-        else:
+      if col != param_explored:
             plpy.execute("alter table " + tbl_result + " add column " + col + "_avg double precision default 0")
             plpy.execute("""
                 update {tbl_result} set {col}_avg = avgs from
