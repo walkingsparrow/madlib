@@ -66,10 +66,11 @@ Null values are not expected.
 If  normalization = False, the output has the following format
 
   Output:
-  <pre>  coefficients | loss | normalization
-  -------+--------------+-------------------
+  <pre>  coefficients | intercept | loss | normalization
+  -------+--------------+---------+----------
         ...
   </pre>
+where <em>intercept</em> is always 0 since it is not fitted separately.
 
   Otherwise, the mean values and standard deviations of both independent variables and dependent variable will be output.
   <pre> coefficients | intercept | ind_ar_mean | ind_var_std | dep_var_mean | dep_var_std | loss | normalization
@@ -79,7 +80,7 @@ If  normalization = False, the output has the following format
 
 where <em>loss</em> is the value of the first equation above.
   
-- Get the \b prediction on a data set using the fitted model, where <em>intercept</em> presents if it exists:
+- Get the \b prediction on a data set using the fitted model:
 <pre>
 SELECT madlib.lasso_linear_igd_predict(<em>coefficients</em>, <em>independentVariables</em>') + intercept
 FROM sourceTableName, modelTableName;
