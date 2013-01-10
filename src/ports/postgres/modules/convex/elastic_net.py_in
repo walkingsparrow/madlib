@@ -1,0 +1,73 @@
+
+import plpy
+from convex.elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
+
+## ========================================================================
+
+def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
+    """
+    Given a response family name or optimizer name, print out the related
+    information.
+
+    If a family name is given, print out the supported optimizer together
+    with its default optimizer.
+    
+    If an optimizer name is given, print out the necessary parameters.
+    """
+    pass
+
+## ========================================================================
+
+## lambda is a keyword of Python, try to avoid using
+## it, so use lambda_value instead
+def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                      lambda_value, alpha, normalization, family,
+                      optimizer, optimizer_params, **kwargs):
+    """
+    A wrapper for all variants of elastic net regulation.
+
+    @param tbl_source        Name of data source table
+    @param col_ind_var       Name of independent variable column,
+                             independent variable is an array
+    @param col_dep_var       Name of dependent variable column
+    @param tbl_result        Name of the table to store the results,
+                             will return fitting coefficients and
+                             likelihood
+    @param lambda_value      The regulation parameter
+    @param alpha             The elastic net parameter, [0, 1]
+    @param normalization     Whether to normalize the variables
+    @param family            Response type, 'gaussian' or 'binomial'
+    @param optimizer         The optimization algorithm, for example 'igd'
+    @param optimizer_params  Parameters of the above optimizer, the format
+                             is '{arg = value, ...}'::varchar[]
+    """
+    # Special case for ridge linear regression
+    if ((family.lower() == "gaussian" or family.lower() == "linear") and
+        optimizer.lower() == "igd" and
+        alpha == 0):
+        plpy.execute("""select {schema_madlib}.ridge_newton_train(
+                            {tbl_source}, {col_ind_var}, {col_dap_var},
+                            {tbl_result}, {lambda}, {normalization}
+        )""".format(schema_madlib = schema_madlib,
+                    col_ind_var = col_ind_var,
+                    col_dep_var = col_dep_var,
+                    tbl_result = tbl_result,
+                    lambda_value = lambda_value,
+                    normalization = normalization))
+    
+    if ((family.lower() == "gaussian" or family.lower() == "linear") and
+        optimizer.lower() == "igd"):
+        __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, lambda_value, alpha,
+                                         normalization, optimizer_params, **kwargs)
+        return None
+
+    if ((family.lower() == "binomial" or family.lower() == "logistic") and
+        optimizer.lower() == "igd"):
+        __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, lambda_value, alpha,
+                                         normalization, optimizer_params, **kwargs)
+        return None
+
+
+    
