@@ -23,6 +23,16 @@ Mathematically, this model seeks to find a weight vector \f$w\f$ (also referred 
 \f[\min_{w \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m - y_m)^2 \right] + \lambda \|w\|_1,\f]
 where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$ are values of the dependent variable, \f$m = 1,...,M\f$.
 
+To get better convergence, one can rescale the value of each element of x
+\f[ x' \leftarrow \frac{x - \bar{x}}{\sigma_x} \f]
+and
+\f[y' \leftarrow y - \bar{y} \f]
+and then fit 
+\f[\min_{w' \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w'^{t} x'_m - y'_m)^2 \right] + \frac{\lambda}{2} \|w'\|_1,\f]
+At the end of the calculation, the orginal scales will be restored and an intercept term will be obtained at the same time as a by-product.
+
+Note that fitting after scaling is not equivalent to directly fitting.
+
 @input
 
 The <b>training examples</b> is expected to be of the following form:
@@ -41,36 +51,42 @@ Null values are not expected.
 - Get the vector of coefficients \f$ \boldsymbol w \f$:
 
 <pre>SELECT madlib.lasso_igd_run(
-    '<em>modelTableName</em>', '<em>sourceTableName</em>', '<em>independentVariables</em>', '<em>dependentVariables</em>' 
-    [, <em>independentVariableDimension</em> [, <em>stepSize</em> [, <em>lambda</em> [, <em>totalRows</em> [, 
-    <em>numberOfIterations</em>, <em>tolerance</em> ]]]]]); 
+    '<em>tbl_source</em>', -- data table
+    '<em>col_ind_var</em>', -- independent variable column name
+    '<em>col_dep_var</em>', -- dependent variable column name
+    '<em>tbl_output</em>', -- table to store result
+    '<em>lambda</em>', -- regulation parameter
+    '<em>normalization</em>', -- whether to scale x
+    '<em>stepsize</em>', -- IGD step size, default 0.01
+    '<em>num_iterations</em>', -- IGD max number of iterations, default 100
+    '<em>tolerance</em>'  -- IGD tolerance, default 0.000001
+); 
 </pre>
+
+If  normalization = False, the output has the following format
 
   Output:
-  <pre>      id | coefficients | loss
-  -------+--------------+--------
+  <pre>  coefficients | loss | normalization
+  -------+--------------+-------------------
         ...
   </pre>
-  The default value of \f$ \lambda \f$ is 0.1. The model table can contain multiple fits to different data sets, and each fit has a unique id number.
-- Get the prediction on a data set using the fitted model:
+
+  Otherwise, the mean values and standard deviations of both independent variables and dependent variable will be output.
+  <pre> coefficients | intercept | ind_ar_mean | ind_var_std | dep_var_mean | dep_var_std | loss | normalization
+  ------------------+------------+------------+------------+--------------+-------------+--------+--------
+  ...
+  </pre>
+
+where <em>loss</em> is the value of the first equation above.
+  
+- Get the \b prediction on a data set using the fitted model, where <em>intercept</em> presents if it exists:
 <pre>
-SELECT madlib.lasso_igd_predict('<em>coefficients</em>', '<em>independentVariables</em>')
-FROM sourceTableName, modelTableName WHERE modelTableName.id=fitId;
+SELECT madlib.lasso_linear_igd_predict(<em>coefficients</em>, <em>independentVariables</em>') + intercept
+FROM sourceTableName, modelTableName;
 </pre>
 
-- Input data normalization:\n
-we offer IGD solver (optimizer) for LASSO. IGD is expected to be fastwhen the input data has a lot of examples. 
+We offer IGD solver (optimizer) for LASSO. IGD is expected to be fastwhen the input data has a lot of examples. 
 But IGD suffers slow convergence rate if the input features is not well-conditioned or a bad stepsize is given. 
-Before functions are called, we suggest that the features got normalized to have mean (average) to be 0.0, and 
-standard deviation to be 1.0.
-
-- Stepsize choice:\n
-Both solvers will output the loss value for the each iteration. In a simple description, a good stepsize is the 
-maximal positive number that guarantees decreases of loss values iteration by iteration. Usually, users can try 
-0.01 first, and then follow this rule until the loss does not change much within reasonable numbers of iterations. 
-If stepsize \f$\alpha\f$ is too large (loss is increasing), then \f$\alpha / 10\f$ should be tried next; otherwise 
-\f$\alpha * 10\f$. The factor \f$10\f$ can be shrinked later for a more accurate stepsize if needed.
-
 
 @examp
 
@@ -90,13 +106,11 @@ mydb=# INSERT INTO lasso_data values ({0.15, -1.3}, -1.3);
 \endcode   
 -# call lasso_igd_run() to learn coefficients, e.g.:  
 \code
-mydb=# SELECT madlib.lasso_igd_run('lasso_model', 'lasso_data', 'ind_var', 'dep_var', 2, 0.01, 0.1, 1000, 10, 1e-6);
+mydb=# SELECT madlib.lasso_igd_train('lasso_data', 'ind_var', 'dep_var', 'lasso_model', 0.1, True);
 \endcode
--# call lasso_igd_predict() to predict results. you usually need the model id output from the learning query to locate the model, assuming 1, e.g.:  
 \code
-mydb=# select madlib.lasso_igd_predict(coefficients, ind_var)
-mydb-# from lasso_data, lasso_model
-mydb-# where lasso_model.id = 1;
+mydb=# select madlib.lasso_linear_igd_predict(coefficients, ind_var) + intercept
+mydb-# from lasso_data, lasso_model;
 \endcode
 
 
@@ -232,7 +246,7 @@ CREATE FUNCTION MADLIB_SCHEMA.lasso_igd_train(
     lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
     normalization   BOOLEAN, /*+ DEFAULT f to save computation */
     stepsize        DOUBLE PRECISION, /*+ DEFAULT 0.01 */
-    num_iterations  INTEGER, /*+ DEFAULT 10 */
+    num_iterations  INTEGER, /*+ DEFAULT 100 */
     tolerance       DOUBLE PRECISION /*+ DEFAULT 0.000001 */
 ) RETURNS VOID AS $$
 DECLARE
@@ -265,7 +279,7 @@ BEGIN
         PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
                                                     tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
-        EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
+        -- EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
     ELSE
         tbl_inter := tbl_source;
         dep_std := 1;
@@ -293,7 +307,7 @@ BEGIN
             $5 AS num_iterations, 
             $6 AS tolerance;
         ',
-        dimension, stepsize, lambda*total_rows/dep_std, total_rows, num_iterations, tolerance);
+        dimension, stepsize, lambda*total_rows, total_rows, num_iterations, tolerance);
 
     -- Perform acutal computation.
     -- Unfortunately, Greenplum and PostgreSQL <= 8.2 do not have conversion
@@ -454,7 +468,7 @@ $$ LANGUAGE plpgsql VOLATILE;
  * @param ind_var  Features (independent variables)
  *
  */
-CREATE FUNCTION MADLIB_SCHEMA.__lasso_linear_igd_predict(
+CREATE FUNCTION MADLIB_SCHEMA.lasso_linear_igd_predict(
         coefficients    DOUBLE PRECISION[],
         ind_var         DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION
@@ -481,7 +495,7 @@ BEGIN
         CREATE TABLE '|| tbl_prediction ||' AS
             SELECT
                 '|| tbl_new_data ||'.'|| id_var ||' AS id,
-                MADLIB_SCHEMA.__lasso_linear_igd_predict(
+                MADLIB_SCHEMA.lasso_linear_igd_predict(
                     coefficients,
                     '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
                 FROM
@@ -497,242 +511,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-------------------------------------------------------------------------
-/*
-    cross validation for lasso only
-*/
-/**
- * @brief Run cross validation for ridge regression
- *
- * This function does not have the limitation on the number of lambda values
- */
- 
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__lasso_igd_cv(
---     tbl_source          VARCHAR,
---     data_id             VARCHAR,
---     id_is_random        BOOLEAN,
---     col_ind_var         VARCHAR,
---     col_dep_var         VARCHAR,
---     lambda_values       DOUBLE PRECISION[],
---     normalization       BOOLEAN,
---     stepsize            DOUBLE PRECISION, /*+ DEFAULT 0.01 */
---     num_iterations      INTEGER, /*+ DEFAULT 10 */
---     tolerance           DOUBLE PRECISION, /*+ DEFAULT 0.000001 */
---     fold_num            INTEGER,
---     upto_fold           INTEGER,
---     validation_result   VARCHAR
--- ) RETURNS VOID AS $$
--- DECLARE
---     oldClientMinMessages    VARCHAR;
---     tbl_used                VARCHAR; -- table name that will be used
---     tbl_all_data            VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- if need to copy the data, this is the copied table name
---     tbl_inter               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name before normalization
---     tbl_train               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for training
---     tbl_valid               VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table name for validation
---     col_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- column name for random id
---     tbl_random_id           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- table for random ID mapping
---     tbl_coef                VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_accum_error         VARCHAR := MADLIB_SCHEMA.__cv_unique_string();  -- accumulate the error information
---     row_num                 INTEGER;
---     row_num_train           INTEGER;
---     data_cols               VARCHAR[];
---     error                   DOUBLE PRECISION;
---     lambda                  DOUBLE PRECISION;
---     dimension               INTEGER;
---     accum_count             INTEGER;
---     coef_count              INTEGER;
---     tbl_ind_scales          VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_dep_scale           VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     dep_std                 DOUBLE PRECISION := 1;
---     num_lambda_values       INTEGER := array_upper(lambda_values, 1);
---     tbl_lasso_igd_args      VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_lasso_igd_state     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     iteration_run           INTEGER;
--- BEGIN
---     oldClientMinMessages :=  (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
---     EXECUTE 'SET client_min_messages TO error';
-
---     data_cols := array[col_ind_var, col_dep_var];
---     IF data_id IS NULL THEN -- unique ID column is not given, has to copy the data and create the ID
---         PERFORM MADLIB_SCHEMA.__cv_copy_data_with_id(tbl_source, data_cols, tbl_all_data, col_random_id);
---         tbl_used := tbl_all_data;
---     ELSIF id_is_random THEN -- unique ID column is given and is random
---         tbl_used := tbl_source; -- nothing needs to be done to the original data table
---     ELSE -- the provided unique ID is not random, create a table mapping the given ID to a random ID
---         PERFORM MADLIB_SCHEMA.__cv_generate_random_id(tbl_source, data_id, tbl_random_id, col_random_id, data_id);
---         tbl_used := tbl_source;
---     END IF;
-
---     -- k-fold cross-validation
---     EXECUTE 'SELECT count(*) FROM '|| tbl_source INTO row_num;
---     EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
-    
---     IF fold_num <= 1 THEN
---         RAISE EXCEPTION 'Cross validation total fold number should be larger than 1!';
---     END IF;
-    
---     IF upto_fold < 1 OR upto_fold > fold_num THEN
---         RAISE EXCEPTION 'Cannot run with cross validation fold smalled than 1 or larger than total fold number!';
---     END IF;
-
---     EXECUTE '
---         DROP TABLE IF EXISTS '|| tbl_coef ||';
---         CREATE TEMP TABLE '|| tbl_coef ||' (id integer, coef double precision[], intercept double precision)
---     ';
-
---     PERFORM MADLIB_SCHEMA.create_schema_pg_temp();
---     PERFORM MADLIB_SCHEMA.__lasso_execute_using_igd_args('
---         DROP TABLE IF EXISTS pg_temp.'|| tbl_lasso_igd_args ||';
---         CREATE TABLE pg_temp.'|| tbl_lasso_igd_args ||' AS
---             SELECT 
---                 $1 AS dimension, 
---                 $2 AS stepsize,
---                 $3 AS lambda,
---                 $4 AS total_rows,
---                 $5 AS num_iterations, 
---                 $6 AS tolerance;',
---         dimension, stepsize, 0, 0, num_iterations, tolerance);
-    
---     accum_count := 0;
---     coef_count := 0;
---     FOR k IN 1..upto_fold LOOP
---         --raise warning '% ***********', k;
---         -- split data into train and validation parts
---         IF (data_id IS NULL) OR (data_id IS NOT NULL AND id_is_random) THEN
---             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, col_random_id, row_num, tbl_inter, tbl_valid, fold_num, k);
---         ELSE
---             PERFORM MADLIB_SCHEMA.__cv_split_data(tbl_used, tbl_random_id, col_random_id, data_id,
---                                                 row_num, tbl_inter, tbl_valid, fold_num, k);
---         END IF;
-
---         EXECUTE 'SELECT count(*) FROM '|| tbl_inter INTO row_num_train;
-
---         -- normalization the training table
---         IF normalization THEN
---             PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_inter, col_ind_var, row_num_train, dimension, tbl_ind_scales);
---             PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_inter, col_dep_var, row_num_train, tbl_dep_scale);
---             PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_inter, col_ind_var, dimension, col_dep_var,
---                                                         tbl_ind_scales, tbl_dep_scale, tbl_train);
---             EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
---         ELSE
---             tbl_train := tbl_inter;
---         END IF;
-
---         EXECUTE 'UPDATE pg_temp.'|| tbl_lasso_igd_args ||' SET total_rows = '|| row_num_train;
- 
---         FOR k1 IN 1..num_lambda_values LOOP
---             lambda := lambda_values[k1];
---             --raise warning '******* %', k1;
-
---             EXECUTE 'UPDATE pg_temp.'|| tbl_lasso_igd_args ||' SET lambda = '|| lambda * row_num_train / dep_std;
-            
---             iteration_run := MADLIB_SCHEMA.__compute_lasso_igd(tbl_lasso_igd_args, tbl_lasso_igd_state,
---                                                             tbl_train, col_ind_var, col_dep_var);
-
---             coef_count := coef_count + 1;
---             EXECUTE '
---                 INSERT INTO ' || tbl_coef || '
---                     SELECT
---                         '|| coef_count ||',
---                         (result).coefficients,
---                         0
---                     FROM (
---                         SELECT MADLIB_SCHEMA.__lasso_igd_result(_state) AS result
---                         FROM '|| tbl_lasso_igd_state ||'
---                         WHERE _iteration = ' || iteration_run || '
---                     ) t
---             ';
-
---             IF normalization THEN
---                 coef_count := coef_count + 1;
---                 EXECUTE '
---                     INSERT INTO '|| tbl_coef ||'
---                     SELECT
---                         '|| coef_count ||',
---                         coefficients,
---                         intercept + dep_avg
---                     FROM (
---                         SELECT
---                             array_agg(val ORDER BY attr) AS coefficients,
---                             sum(intercept_tmp) AS intercept,
---                             max(dep_avg) AS dep_avg
---                         FROM (
---                             SELECT
---                                 subq2.attr,
---                                 (
---                                     CASE WHEN std = 0 THEN
---                                         0.
---                                     ELSE
---                                         coef * dep_std / std
---                                     END
---                                 ) AS val,
---                                 (
---                                     CASE WHEN std = 0 THEN
---                                         0.
---                                     ELSE
---                                         - coef * dep_std * mean / std
---                                     END
---                                 ) AS intercept_tmp,
---                                 dep_avg
---                             FROM
---                                 '|| tbl_ind_scales ||',
---                                 '|| tbl_dep_scale ||',
---                                 (
---                                     SELECT
---                                         generate_series(1, '|| dimension::VARCHAR ||') AS attr,
---                                         unnest(coef) AS coef
---                                     FROM '|| tbl_coef ||'
---                                     WHERE id = '|| coef_count - 1 ||'
---                                 ) AS subq2
---                             WHERE '|| tbl_ind_scales ||'.attr = subq2.attr
---                         ) AS subq3
---                     ) AS subq1                
---                 ';            
---             END IF;
-                    
---             EXECUTE '
---                 SELECT
---                     avg((real_value - pred)^2)
---                 FROM (
---                     SELECT
---                         MADLIB_SCHEMA.__lasso_linear_igd_predict(coef, '|| tbl_valid ||'.'|| col_ind_var ||') + intercept AS pred,
---                         '|| tbl_valid ||'.'|| col_dep_var ||' AS real_value
---                     FROM '|| tbl_valid ||', '|| tbl_coef ||'
---                     WHERE '|| tbl_coef ||'.id = '|| coef_count ||'
---                     ) t
---                 ' INTO error;
-            
---             -- accumulate the measured error result
---             accum_count := accum_count + 1;
---             IF accum_count = 1 THEN
---                 EXECUTE '
---                     CREATE TEMP TABLE '|| tbl_accum_error ||' (lambda DOUBLE PRECISION, mean_squared_error DOUBLE PRECISION)';
---                 EXECUTE '
---                     INSERT INTO '|| tbl_accum_error ||' VALUES ('|| lambda ||', '|| error ||')';
---             ELSE
---                 EXECUTE '
---                     INSERT INTO '|| tbl_accum_error ||' VALUES ('|| lambda ||', '|| error ||')';
---             END IF;
-            
---         END LOOP;
---     END LOOP;
-
---     PERFORM MADLIB_SCHEMA.__cv_summarize_result(tbl_accum_error, validation_result, 'lambda');
-
---     EXECUTE '
---         DROP TABLE IF EXISTS '|| tbl_all_data ||';
---         DROP TABLE IF EXISTS '|| tbl_train ||';
---         DROP TABLE IF EXISTS '|| tbl_inter ||';
---         DROP TABLE IF EXISTS '|| tbl_valid ||';
---         DROP TABLE IF EXISTS '|| tbl_random_id ||';
---         DROP TABLE IF EXISTS '|| tbl_coef ||';
---         DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
---         DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
---         DROP TABLE IF EXISTS '|| tbl_accum_error ||';
---         DROP TABLE IF EXISTS pg_temp.'|| tbl_lasso_igd_args ||';
---         DROP TABLE IF EXISTS pg_temp.'|| tbl_lasso_igd_state;
-
---     EXECUTE 'SET client_min_messages TO ' || oldClientMinMessages;
--- END;
--- $$ LANGUAGE plpgsql VOLATILE;
 
