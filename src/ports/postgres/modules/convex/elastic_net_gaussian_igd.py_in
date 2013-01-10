@@ -1,0 +1,209 @@
+
+import plpy
+from validation.cv_utils import __cv_unique_string
+
+## ========================================================================
+
+def __igd_params_parser(optimizer_params):
+    """
+    Parse IGD parameters.
+    """
+    allowed_params = set(["stepsize", "num_interations", "tolerance"])
+    name_value = dict()
+    # default values
+    name_value["stepsize"] = 0.01 
+    name_value["num_iterations"] = 100 
+    name_value["tolerance"] = 0.000001
+    
+    for s in optimizer_params:
+        items = s.split("=")
+        if (len(items) != 2):
+            plpy.error("Optimizer parameter list has incorrect format!")
+        param_name = item[0].strip()
+        param_value = item[1].strip()
+
+        if param_name not in allowed_params:
+            plpy.error("{0} is not a valid parameter name for the IGD optimizer.".format(param_name))
+
+        if param_name == "stepsize":
+            name_value["stepsize"] = float(param_value)
+
+        if param_name == "num_iterations":
+            name_value["num_iterations"] = int(param_value)
+
+        if param_name == "tolerance":
+            name_value["tolerance"] = float(param_value)
+
+    return name_value
+
+## ========================================================================
+
+def __tbl_dimension_rownum(tbl, col_ind_var):
+    """
+    Measure the dimension and row number of source data table
+    """
+        # independent variable array length
+    dimension = plpy.execute("""
+                             select max(array_upper({col_ind_var},1)) as dimension
+                             from {tbl_source}
+                             """.format(tbl_source = tbl_source))[0]["dimension"]
+    # total row number of data source table
+    row_num = plpy.execute("""
+                           select count(*) from {tbl_source}
+                           """.format(tbl_source = tbl_source))[0]["count"]
+
+    return (dimension, row_num)
+
+## ========================================================================
+
+def __igd_create_tbl_args(**args):
+    """
+    create the temporary schema and argument table used in IGD iterations
+    """
+    plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
+
+    effective_lambda = args["lambda"] * args[total_rows]
+    plpy.execute("""
+                 drop table if exists pg_temp.{tbl_igd_args};
+                 
+                 create table pg_temp.{tbl_igd_args} (
+                    dimension       integer,
+                    stepsize        double precision,
+                    lambda          double precision,
+                    total_rows      integer,
+                    num_iterations  integer,
+                    tolerance       double precision);
+
+                 insert into pg_temp.{tbl_igd_args} values
+                    ({dimension}, {stepsize}, {effective_lambda}, {total_rows},
+                     {num_iterations}, {tolerance})
+                 """.format(effective_lambda = effective_lambda,
+                            **args))
+
+    return None
+    
+## ========================================================================
+
+def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                         dimension, row_num, lambda_value, alpha,
+                         normalization, optimizer_params_dict):
+    """
+    Construct the dict used by a series of SQL queries in IGD optimizer.
+    """
+    args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
+                tbl_data = tbl_source, # argument name used in normalization
+                col_ind_var = col_ind_var, col_dep_var = col_dep_var,
+                lamda = lambda_value, alpha = alpha,
+                dimension = dimension, row_num = row_num,
+                normalization = normalization)
+
+    # Add the optimizer parameters
+    args.update(optimizer_params_dict)
+
+    # Table names useful when normalizing the original data
+    # Note: in order to be consistent with the calling convention
+    # of the normalization functions, multiple elements of the dict
+    # actually have the same value. This is a price that one has to pay
+    # if he wants to save typing argument names by using **args as the
+    # function argument.
+    tbl_ind_scales = __cv_unique_string()
+    tbl_dep_scale = __cv_unique_string()
+    tbl_data_scaled = __cv_unique_string()
+    args.update(tbl_scale = tbl_dep_scale, tbl_dep_scale = tbl_dep_scale,
+                tbl_scales = tbl_ind_scales, tbl_ind_scales = tbl_ind_scales,
+                tbl_data_scaled = tbl_data_scaled)
+
+    # Table names used in IGD iterations
+    args.update(tbl_igd_state = __cv_unique_string(),
+                tbl_igd_args = __cv_unique_string())
+    
+    return args
+
+## ========================================================================
+
+def __igd_cleanup_temp_tbls(**args):
+    """
+    Drop all temporary tables used by IGD optimizer,
+    including tables used in the possible normalization
+    and IGD iterations.
+    """
+    plpy.execute("""
+                 drop table if exists {tbl_ind_scales};
+                 drop table if exists {tbl_dep_scale};
+                 drop table if exists {tbl_data_scaled};
+                 drop table if exists pg_temp.{tbl_igd_args};
+                 drop table if exists pg_temp.{tbl_igd_state};
+                 """.format(**args))
+    return None
+
+## ========================================================================
+
+def __normalize_data(**args):
+    """
+    Compute the scaling factors for independent and dependent
+    variables, and then scale the original data.
+
+    The output is stored in tbl_data_scaled
+    """
+    __ridge_ind_var_scales(**args)
+    __ridge_dep_var_scale(**args)
+    __ridge_normalize_data(**args)
+
+    return None
+    
+## ========================================================================
+
+def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
+                                     col_dep_var, lambda_value, alpha,
+                                     normalization, optimizer_params, **kwargs):
+    """
+    Fit linear model with elastic net regulation using IGD optimization.
+
+    @param tbl_source        Name of data source table
+    @param col_ind_var       Name of independent variable column,
+                             independent variable is an array
+    @param col_dep_var       Name of dependent variable column
+    @param tbl_result        Name of the table to store the results,
+                             will return fitting coefficients and
+                             likelihood
+    @param lambda_value      The regulation parameter
+    @param alpha             The elastic net parameter, [0, 1]
+    @param normalization     Whether to normalize the variables
+    @param optimizer_params  Parameters of the above optimizer, the format
+                             is '{arg = value, ...}'::varchar[]
+    """
+    old_msg_level = plpy.execute("""
+                                 select setting from pg_settings
+                                 where name='client_min_messages'
+                                 """)[0]['setting']
+    plpy.execute("set client_min_messages to error")
+
+    (dimension, row_num) = __tbl_dimension_rownum(tbl_source, col_ind_var)
+
+    # generate a full dict to ease the following string format
+    # including several temporary table names
+    args = __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                                dimension, row_num, lambda_value, alpha, normalization,
+                                __igd_params_parser(optimizer_params))
+
+    # use normalized data or not
+    if normalization:
+        __normalize_data(**args)
+        tbl_used = tbl_data_scaled
+    else:
+        tbl_used = tbl_source
+
+    # create the temp table that passes parameter values to IGD optimizer
+    __igd_create_tbl_args(**args)
+
+    # perform the actual calculation
+    iteration_run = __compute_gaussian_igd(schema_madlib, args["tbl_igd_args"],
+                                           args["tbl_igd_state"], tbl_used,
+                                           col_ind_var, col_dep_var, True)
+
+    
+    
+    # cleanup    
+    __igd_cleanup_temp_tbls(**args)
+    plpy.execute("set client_min_messages to " + old_msg_level)
+    return None
