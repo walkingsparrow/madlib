@@ -72,13 +72,14 @@ def __igd_create_tbl_args(**args):
                     dimension       integer,
                     stepsize        double precision,
                     lambda          double precision,
+                    alpha           double precision,
                     total_rows      integer,
                     num_iterations  integer,
                     tolerance       double precision);
 
                  insert into pg_temp.{tbl_igd_args} values
-                    ({dimension}, {stepsize}, {effective_lambda}, {total_rows},
-                     {num_iterations}, {tolerance})
+                    ({dimension}, {stepsize}, {effective_lambda}, {alpha},
+                     {total_rows}, {num_iterations}, {tolerance})
                  """.format(effective_lambda = effective_lambda,
                             **args))
 
@@ -269,6 +270,56 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
         the required arguments by this function.
     
     @return The iteration number (i.e., the key) with which to look up the
-        result in \c rel_state
+        result in \c tbl_state
     """
+    if drop_table:
+        iterationCtrl = IterationController(
+            rel_args = tbl_args,
+            rel_state = tbl_state,
+            stateType = "double precision[]",
+            truncAfterIteration = False,
+            schema_madlib = schema_madlib, # Identifiers start here
+            rel_source = tbl_source,
+            col_ind_var = col_ind_var,
+            col_dep_var = col_dep_var)
+    else:
+        iterationCtrl = IterationControllerNoTableDrop(
+            rel_args = tbl_args,
+            rel_state = tbl_state,
+            stateType = "double precision[]",
+            truncAfterIteration = False,
+            schema_madlib = schema_madlib, # Identifiers start here
+            rel_source = tbl_source,
+            col_ind_var = col_ind_var,
+            col_dep_var = col_dep_var)
+
+    with iterationCtrl as it:
+        it.iteration = 0
+        while True:
+            it.update("""
+                      select
+                        {schema_madlib}.__gaussian_igd_step(
+                            (_src.{col_ind_var})::double precision[],
+                            (_src.{col_dep_var})::double precision,
+                            (select _state from {tbl_state}
+                                where _iteration = {iteration}),
+                            (_args.dimension)::integer,
+                            (_args.stepsize)::double precision,
+                            (_args.lambda)::double precision,
+                            (_args.alpha)::double precision,
+                            (_args.total_rows)::integer)
+                      from {rel_source} as _src, {rel_args} as _args
+                      """)
+
+            if it.test("""
+                       {iteration} > _args.num_iterations or
+                       {schema_madlib}.__gaussian_igd_state_diff(
+                            (select _state from {rel_state}
+                                where _iteration = {iteration} - 1),
+                            (select _state from {rel_state}
+                                where _iteration = {iteration})) < _args.tolerance
+                       """):
+                break
+
+    return iterationCtrl.iteration
     

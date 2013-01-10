@@ -26,7 +26,7 @@ m4_include(`SQLCommon.m4') --'
  * @param optimizer         The optimization algorithm, for example 'igd'
  * @param optimizer_params  Parameters of the above optimizer, the format is '{arg = value, ...}'::varchar[]
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     tbl_source          VARCHAR,
     col_ind_var         VARCHAR,
     col_dep_var         VARCHAR,
@@ -46,7 +46,7 @@ $$ LANGUAGE plpythonu;
 /**
  * @brief Help function, to print out the supported families
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train()
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train ()
 RETURNS VARCHAR AS $$
 DECLARE
     str     VARCHAR;
@@ -65,8 +65,78 @@ $$ LANGUAGE plpgsql STRICT;
  * @param family_or_optimizer   Response type, 'gaussian' or 'binomial', or
  * optimizer type
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     regress_family  VARCHAR
 ) RETURNS VARCHAR AS $$
 PythonFunction(convex, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
+
+------------------------------------------------------------------------
+-- Compute the solution for just one step ------------------------------
+------------------------------------------------------------------------
+
+CREATE TYPE MADLIB_SCHEMA.__elastic_net_result AS (
+    coefficients    DOUBLE PRECISION[],
+    likelihood      DOUBLE PRECISION
+);
+
+/**
+ * @internal
+ * @brief Perform one iteration step of IGD for linear models
+ */
+CREATE OR REPLACE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step (
+    ind_var         DOUBLE PRECISION[],
+    dep_var         DOUBLE PRECISION,
+    pre_state       DOUBLE PRECISION[],
+    lambda          DOUBLE PRECISION,
+    alpha           DOUBLE PRECISION,
+    dimension       INTEGER,
+    stepsize        DOUBLE PRECISION,
+    total_rows      INTEGER
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__gassian_igd_transition,
+    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
+    FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
+    InitCond = '{0,0,0,0,0,0,0,0}'
+);
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
+    in_state        DOUBLE PRECISION[],
+    ind_var         DOUBLE PRECISION[],
+    dep_var         DOUBLE PRECISION,
+    pre_state       DOUBLE PRECISION[],
+    lambda          DOUBLE PRECISION,
+    alpha           DOUBLE PRECISION,
+    dimension       INTEGER,
+    stepsize        DOUBLE PRECISION,
+    total_rows      INTEGER
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'gaussian_igd_transition'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_merge (
+    state1          DOUBLE PRECISION[],
+    state2          DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'gaussian_igd_merge'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_final (
+    in_state        DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'gaussian_igd_final'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_state_diff (
+    state1          DOUBLE PRECISION[],
+    state2          DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', 'internal_gaussian_igd_state_diff'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
+    in_state        DOUBLE PRECISION[]
+) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
+'MODULE_PATHNAME', 'internal_gaussian_igd_result'
+LANGUAGE C IMMUTABLE STRICT;
