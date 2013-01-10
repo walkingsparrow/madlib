@@ -21,7 +21,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 ## lambda is a keyword of Python, try to avoid using
 ## it, so use lambda_value instead
 def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
-                      lambda_value, alpha, normalization, family,
+                      tbl_result, lambda_value, alpha, normalization, family,
                       optimizer, optimizer_params, **kwargs):
     """
     A wrapper for all variants of elastic net regulation.
@@ -58,14 +58,14 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     if ((family.lower() == "gaussian" or family.lower() == "linear") and
         optimizer.lower() == "igd"):
         __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
-                                         col_dep_var, lambda_value, alpha,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
                                          normalization, optimizer_params, **kwargs)
         return None
 
     if ((family.lower() == "binomial" or family.lower() == "logistic") and
         optimizer.lower() == "igd"):
         __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
-                                         col_dep_var, lambda_value, alpha,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
                                          normalization, optimizer_params, **kwargs)
         return None
 
