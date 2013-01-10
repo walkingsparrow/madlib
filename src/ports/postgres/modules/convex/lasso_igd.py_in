@@ -295,7 +295,7 @@ def __lasso_igd_cv(**kwargs):
             # Re-scaling of lambda
             # so that same results can be produced 
             # as R glmnet package's shooting algorithm
-            effective_lambda = value * row_num_train / dep_std
+            effective_lambda = value * row_num_train 
             plpy.execute("update pg_temp.{tbl_lasso_igd_args} set lambda = {effective_lambda}".format(
                 effective_lambda = effective_lambda,
                 **kwargs))
@@ -327,7 +327,7 @@ def __lasso_igd_cv(**kwargs):
                 select avg((real_value - pred)^2) as error
                 from (
                     select
-                        {schema_madlib}.__lasso_linear_igd_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
+                        {schema_madlib}.lasso_linear_igd_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
                         {tbl_valid}.{col_dep_var} as real_value
                     from {tbl_valid}, {tbl_coef}
                     where {tbl_coef}.id = {coef_count}

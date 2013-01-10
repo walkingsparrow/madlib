@@ -139,15 +139,14 @@ def __ridge_dep_var_scale(**kwargs):
 
     This function is also used in lasso.
     """
-    scale_factor = math.sqrt(1. - 1./float(kwargs["row_num"]))
     plpy.execute("""
         drop table if exists {tbl_scale};
         create temp table {tbl_scale} as
             select
                 avg({col_dep_var}) as dep_avg,
-                stddev({col_dep_var}) * {scale_factor} as dep_std
+                1 as dep_std
             from {tbl_data}
-    """.format(scale_factor = scale_factor, **kwargs))
+    """.format(**kwargs))
     return None
 
 ## ========================================================================
@@ -472,8 +471,8 @@ def __ridge_newton_cv_split_and_normalization(k, kwargs):
         __ridge_ind_var_scales(tbl_data = tbl_inter, col_ind_var = col_ind_var, row_num = row_num_train, dimension = dimension, tbl_scales = tbl_ind_scales)
         __ridge_dep_var_scale(tbl_data = tbl_inter, col_dep_var = col_dep_var, row_num = row_num_train, tbl_scale = tbl_dep_scale)
         __ridge_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale, tbl_data_scaled = tbl_train)
-        dep_std = plpy.execute("select dep_std as std from " + tbl_dep_scale)[0]["std"]
-        kwargs["dep_std"] = dep_std
+        # dep_std = plpy.execute("select dep_std as std from " + tbl_dep_scale)[0]["std"]
+        kwargs["dep_std"] = 1
     else:
         kwargs["tbl_train"] = tbl_inter
 
@@ -616,7 +615,7 @@ def __ridge_newton_cv(**kwargs):
                 select avg((real_value - pred)^2) as error
                 from (
                     select
-                        {schema_madlib}.__ridge_linear_newton_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
+                        {schema_madlib}.ridge_linear_newton_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
                         {tbl_valid}.{col_dep_var} as real_value
                     from {tbl_valid}, {tbl_coef}
                     where {tbl_coef}.id = {coef_count}
