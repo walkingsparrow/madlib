@@ -80,6 +80,8 @@ CREATE TYPE MADLIB_SCHEMA.__elastic_net_result AS (
     likelihood      DOUBLE PRECISION
 );
 
+------------------------------------------------------------------------
+
 /**
  * @internal
  * @brief Perform one iteration step of IGD for linear models
@@ -101,6 +103,8 @@ CREATE OR REPLACE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step (
     InitCond = '{0,0,0,0,0,0,0,0}'
 );
 
+--
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
     in_state        DOUBLE PRECISION[],
     ind_var         DOUBLE PRECISION[],
@@ -115,6 +119,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
 'MODULE_PATHNAME', 'gaussian_igd_transition'
 LANGUAGE C IMMUTABLE;
 
+--
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_merge (
     state1          DOUBLE PRECISION[],
     state2          DOUBLE PRECISION[]
@@ -122,11 +128,15 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_merge (
 'MODULE_PATHNAME', 'gaussian_igd_merge'
 LANGUAGE C IMMUTABLE STRICT;
 
+--
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_final (
     in_state        DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION[] AS
 'MODULE_PATHNAME', 'gaussian_igd_final'
 LANGUAGE C IMMUTABLE STRICT;
+
+--
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_state_diff (
     state1          DOUBLE PRECISION[],
@@ -134,6 +144,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_state_diff (
 ) RETURNS DOUBLE PRECISION AS
 'MODULE_PATHNAME', 'internal_gaussian_igd_state_diff'
 LANGUAGE C IMMUTABLE STRICT;
+
+--
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
     in_state        DOUBLE PRECISION[]
