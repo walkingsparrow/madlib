@@ -393,10 +393,8 @@ public:
     struct AlgoState {
         typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
         typename HandleTraits<Handle>::ReferenceToDouble loss;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap
-            incrModel;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap
-            gradient;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrModel;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
     } algo;
 };
 
@@ -646,10 +644,123 @@ public:
     } algo;
 };
 
+// ------------------------------------------------------------------------
+// For elastic regulation
+// ------------------------------------------------------------------------
+
+template <class Handle>
+class ENRegularizedGLMIGDState {
+    template <class OtherHandle>
+    friend class ENRegularizedGLMIGDState;
+
+public:
+    ENRegularizedGLMIGDState(const AnyType &inArray) : mStorage(inArray.getAs<Handle>()) {
+        rebind();
+    }
+
+    /**
+     * @brief Convert to backend representation
+     *
+     * We define this function so that we can use State in the
+     * argument list and as a return type.
+     */
+    inline operator AnyType() const {
+        return mStorage;
+    }
+
+    /**
+     * @brief Allocating the incremental gradient state.
+     */
+    inline void allocate(const Allocator &inAllocator, uint32_t inDimension) {
+        mStorage = inAllocator.allocateArray<double, dbal::AggregateContext,
+                dbal::DoZero, dbal::ThrowBadAlloc>(arraySize(inDimension));
+
+        task.dimension.rebind(&mStorage[0]);
+        task.dimension = inDimension;
+        
+        rebind();
+    }
+
+    /**
+     * @brief We need to support assigning the previous state
+     */
+    template <class OtherHandle>
+    ENRegularizedGLMIGDState &operator=(const ENRegularizedGLMIGDState<OtherHandle> &inOtherState) {
+        for (size_t i = 0; i < mStorage.size(); i++) {
+            mStorage[i] = inOtherState.mStorage[i];
+        }
+
+        return *this;
+    }
+
+    /**
+     * @brief Reset the intra-iteration fields.
+     */
+    inline void reset() {
+        algo.numRows = 0;
+        algo.loss = 0.;
+        algo.incrModel = task.model;
+    }
+
+    static inline uint32_t arraySize(const uint32_t inDimension) {
+        return 7 + 3 * inDimension;
+    }
+
+protected:
+    /**
+     * @brief Rebind to a new storage array.
+     *
+     * Array layout (iteration refers to one aggregate-function call):
+     * Inter-iteration components (updated in final function):
+     * - 0: dimension (dimension of the model)
+     * - 1: stepsize (step size of gradient steps)
+     * - 2: lambda (regularization term)
+     * - 3: alpha (elastic term)
+     * - 4: totalRows (needed for amortizing lambda)
+     * - 5: model (coefficients)
+     *
+     * Intra-iteration components (updated in transition step):
+     * - 5 + dimension: numRows (number of rows processed in this iteration)
+     * - 6 + dimension: loss (sum of loss for each rows)
+     * - 7 + dimension: incrModel (volatile model for incrementally update)
+     * - 7 + 2 * dimension: gradient (volatile temp variable to have model type)
+     */
+    void rebind() {
+        task.dimension.rebind(&mStorage[0]);
+        task.stepsize.rebind(&mStorage[1]);
+        task.lambda.rebind(&mStorage[2]);
+        task.alpha.rebind(&mStorage[3]);
+        task.totalRows.rebind(&mStorage[4]);
+        task.model.rebind(&mStorage[5], task.dimension);
+
+        algo.numRows.rebind(&mStorage[5 + task.dimension]);
+        algo.loss.rebind(&mStorage[6 + task.dimension]);
+        algo.incrModel.rebind(&mStorage[7 + task.dimension], task.dimension);
+        algo.gradient.rebind(&mStorage[7 + 2 * task.dimension], task.dimension);
+    }
+
+    Handle mStorage;
+
+public:
+    struct TaskState {
+        typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
+        typename HandleTraits<Handle>::ReferenceToDouble stepsize;
+        typename HandleTraits<Handle>::ReferenceToDouble lambda;
+        typename HandleTraits<Handle>::ReferenceToDouble alpha;
+        typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap model;
+    } task;
+
+    struct AlgoState {
+        typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
+        typename HandleTraits<Handle>::ReferenceToDouble loss;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrModel;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
+    } algo;
+};
+
 } // namespace convex
-
 } // namespace modules
-
 } // namespace madlib
 
 #endif
