@@ -14,11 +14,13 @@ from utilities.control import IterationController
 from utilities.control import MinWarning
 from validation.cv_utils import __cv_unique_string
 from convex.ridge import __ridge_newton_cv_preprocess
-from convex.ridge import __ridge_newton_cv_split_and_normalization
+from convex.ridge import __ridge_newton_cv_split
+from convex.ridge import __ridge_newton_cv_normalization
 from convex.ridge import __ridge_normalization_cv_restore
 from convex.ridge import __ridge_restore_linear_coef_scales_sql
 from convex.ridge import __ridge_accumulate_error
 from validation.cv_utils import __cv_summarize_result
+from validation.cv_utils import __cv_validation_rows
 
 ## ========================================================================
 
@@ -276,19 +278,38 @@ def __lasso_igd_cv(**kwargs):
     tbl_train = kwargs["tbl_train"]
     col_ind_var = kwargs["col_ind_var"]
     col_dep_var = kwargs["col_dep_var"]
+
+    tbl_start_end_rows = __cv_unique_string()
+    kwargs["tbl_start_end_rows"] = tbl_start_end_rows
+    plpy.execute("""
+                 drop table if exists {tbl_start_end_rows};
+                 create temp table {tbl_start_end_rows} (start_row integer, end_row integer);
+                 """.format(tbl_start_end_rows = tbl_start_end_rows))
+    plpy.execute("insert into {tbl_start_end_rows} values (0, 0)".format(tbl_start_end_rows = tbl_start_end_rows))
+
+    # create training and validation sets
+    # using View
+    __ridge_newton_cv_split(kwargs)
     
     accum_count = 0
     coef_count = 0
     for k in range(upto_fold):
-        # create training and validation sets
-        # and normalize the training set if requested by
-        # the user (parameter normalization in func_args is True)
-        __ridge_newton_cv_split_and_normalization(k, kwargs)
-
-        row_num_train = kwargs["row_num_train"]
+        (start_row, end_row) =  __cv_validation_rows(kwargs["row_num"], kwargs["fold_num"], k + 1)
+        row_num_train = kwargs["row_num"] - end_row + start_row
+        plpy.execute("""
+                     update {tbl_start_end_rows} set
+                         start_row = {start_row},
+                         end_row = {end_row}
+                     """.format(tbl_start_end_rows = tbl_start_end_rows,
+                                start_row = start_row, end_row = end_row))
         dep_std = kwargs["dep_std"]
 
-        plpy.execute("update pg_temp.{tbl_lasso_igd_args} set total_rows = {row_num_train}".format(**kwargs))
+        # and normalize the training set if requested by
+        # the user (parameter normalization in func_args is True)
+        __ridge_newton_cv_normalization(kwargs)
+
+        plpy.execute("update pg_temp.{tbl_lasso_igd_args} set total_rows = {row_num_train}".format(row_num_train = row_num_train,
+                                                                                                   **kwargs))
         
         for value in lambda_values:
             coef_count += 1
@@ -344,17 +365,18 @@ def __lasso_igd_cv(**kwargs):
 
     # clean up the temporary tables
     plpy.execute("""
-        drop table if exists {tbl_all_data};
-        drop table if exists {tbl_train};
-        drop table if exists {tbl_inter};
-        drop table if exists {tbl_valid};
-        drop table if exists {tbl_random_id};
-        drop table if exists {tbl_coef};
-        drop table if exists {tbl_ind_scales};
-        drop table if exists {tbl_dep_scale};
-        drop table if exists {tbl_accum_error};
-        drop table if exists pg_temp.{tbl_lasso_igd_args};
-        drop table if exists pg_temp.{tbl_lasso_igd_state}
+        drop table if exists {tbl_all_data} cascade;
+        drop view if exists {tbl_train} cascade;
+        drop view if exists {tbl_inter} cascade;
+        drop view if exists {tbl_valid} cascade;
+        drop table if exists {tbl_random_id} cascade;
+        drop table if exists {tbl_coef} cascade;
+        drop view if exists {tbl_ind_scales} cascade;
+        drop view if exists {tbl_dep_scale} cascade;
+        drop table if exists {tbl_accum_error} cascade;
+        drop table if exists pg_temp.{tbl_lasso_igd_args} cascade;
+        drop table if exists pg_temp.{tbl_lasso_igd_state} cascade;
+        drop table if exists {tbl_start_end_rows} cascade
     """.format(**kwargs))
 
     plpy.execute("set client_min_messages to " + old_msg_level)

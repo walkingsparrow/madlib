@@ -275,12 +275,11 @@ BEGIN
     
     -- normaliza the data
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, total_rows, dimension, tbl_ind_scales);
-        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, total_rows, tbl_dep_scale);
+        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
+        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
         PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
                                                     tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
-        -- EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
     ELSE
         tbl_inter := tbl_source;
         dep_std := 1;
@@ -330,26 +329,6 @@ BEGIN
             intercept       DOUBLE PRECISION,
             loss            DOUBLE PRECISION,
             normalization   BOOLEAN)';
-
-    -- A work-around for GPDB not supporting RETURNING for INSERT
-    -- We generate an id using nextval before INSERT 
-    -- EXECUTE '
-    -- SELECT nextval(' || quote_literal(rel_output || '_id_seq') ||'::regclass)'
-    -- INTO model_id;
-
-    -- output model
-    -- Retrieve result from state table and insert it
-    -- DROP TABLE IF EXISTS __lasso_igd_results_temp_storage;
-    /*
-    EXECUTE '
-        CREATE TEMP TABLE __lasso_igd_results_temp_storage AS
-        (
-            SELECT MADLIB_SCHEMA.internal_lasso_igd_result(_state) AS result
-            FROM _madlib_lasso_igd_state
-            WHERE _iteration = ' || iteration_run || '
-        );
-    ';
-    */
     
     EXECUTE '
         INSERT INTO ' || tbl_inter_result || '
@@ -366,18 +345,10 @@ BEGIN
                                                                 dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
         EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
     END IF;
-    
-/*
-    EXECUTE '
-    SELECT loss
-    FROM ' || rel_output || '
-    WHERE id = ' || model_id
-    INTO loss;
-*/
 
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
-        DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
-        DROP TABLE IF EXISTS '|| tbl_data_scaled ||';
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||' CASCADE;
+        DROP TABLE IF EXISTS '|| tbl_dep_scale ||' CASCADE;
+        DROP VIEW IF EXISTS '|| tbl_data_scaled ||' CASCADE;
         DROP TABLE IF EXISTS pg_temp.'|| tbl_lasso_igd_state ||';
         DROP TABLE IF EXISTS pg_temp.'|| tbl_lasso_igd_args;
 
@@ -386,19 +357,6 @@ BEGIN
     END IF;
 
     EXECUTE 'SET client_min_messages TO ' || old_messages;
-
-/*
-    -- return description
-    RAISE NOTICE '
-        Finished LASSO using incremental gradient 
-            * table : % (%, %)
-        Results:
-            * loss = %
-        Output:
-            * view : SELECT * FROM % WHERE id = %',
-        rel_source, col_ind_var, col_dep_var, loss, rel_output, model_id;
-*/
-
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 

@@ -226,14 +226,31 @@ def cross_validation_general(
     if upto_fold < 1 or upto_fold > fold_num:
         plpy.error("Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
 
+    tbl_start_end_rows = __cv_unique_string()
+    plpy.execute("""
+                 drop table if exists {tbl_start_end_rows};
+                 create temp table {tbl_start_end_rows} (start_row integer, end_row integer);
+                 """.format(tbl_start_end_rows = tbl_start_end_rows))
+    plpy.execute("insert into {tbl_start_end_rows} values (0, 0)".format(tbl_start_end_rows = tbl_start_end_rows))
+
+    # split data into train and validation parts (using views)
+    if (data_id is None) or (data_id is not None and id_is_random):
+        __cv_split_data_using_id_col(tbl_used, data_cols, col_random_id,
+                                     tbl_start_end_rows, tbl_train, tbl_valid)
+    else:
+        __cv_split_data_using_id_tbl(tbl_used, data_cols, tbl_random_id, col_random_id,
+                                     data_id, tbl_start_end_rows, tbl_train, tbl_valid)
+
     accum_count = 0
     for k in range(upto_fold):
-        # split data into train and validation parts
-        if (data_id is None) or (data_id is not None and id_is_random):
-            __cv_split_data_using_id_col(tbl_used, data_cols, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k+1)
-        else:
-            __cv_split_data_using_id_tbl(tbl_used, data_cols, tbl_random_id, col_random_id, data_id, row_num, tbl_train, tbl_valid, fold_num, k+1)
-
+        (start_row, end_row) =  __cv_validation_rows(row_num, fold_num, k + 1)
+        plpy.execute("""
+                     update {tbl_start_end_rows} set
+                        start_row = {start_row},
+                        end_row = {end_row}
+                     """.format(tbl_start_end_rows = tbl_start_end_rows,
+                                start_row = start_row, end_row = end_row))
+ 
         # try to be as general as possible
         # validation using each explore_value
         for explore_value in explore_values:

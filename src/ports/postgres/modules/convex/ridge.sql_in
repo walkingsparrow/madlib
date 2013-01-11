@@ -220,8 +220,8 @@ BEGIN
     EXECUTE 'SELECT max(array_upper(' || col_ind_var || ', 1)) FROM ' || tbl_source INTO dimension;
     
     IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, row_num, dimension, tbl_ind_scales);
-        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, row_num, tbl_dep_scale);
+        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, dimension, tbl_ind_scales);
+        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, tbl_dep_scale);
         PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
                                                     tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
         tbl_inter := tbl_data_scaled;
@@ -267,9 +267,9 @@ BEGIN
         EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
     END IF;
 
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
-            DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
-            DROP TABLE IF EXISTS '|| tbl_data_scaled;
+    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||' CASCADE;
+            DROP TABLE IF EXISTS '|| tbl_dep_scale ||' CASCADE;
+            DROP VIEW IF EXISTS '|| tbl_data_scaled ||' CASCADE';
 
     IF normalization THEN
         EXECUTE 'DROP TABLE IF EXISTS '|| tbl_inter_result;
@@ -377,7 +377,6 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_ind_var_scales(
     tbl_data        VARCHAR,
     col_ind_var     VARCHAR,
-    row_num         INTEGER,
     dimension       INTEGER,
     tbl_scales      VARCHAR
 ) RETURNS VOID AS $$
@@ -388,7 +387,6 @@ $$ LANGUAGE plpythonu;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_dep_var_scale(
     tbl_data        VARCHAR,
     col_dep_var     VARCHAR,
-    row_num         INTEGER,
     tbl_scale       VARCHAR     -- scale including mean and std
 ) RETURNS VOID AS $$
 PythonFunction(convex, ridge, __ridge_dep_var_scale)
