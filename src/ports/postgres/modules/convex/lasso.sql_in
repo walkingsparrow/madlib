@@ -366,7 +366,7 @@ BEGIN
                                                                 dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
         EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
     END IF;
-
+    
 /*
     EXECUTE '
     SELECT loss
