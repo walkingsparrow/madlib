@@ -195,89 +195,11 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
     tbl_output      VARCHAR,
-    lambda          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
+    lambda_value          DOUBLE PRECISION, /*+ DEFAULT 0.1 */
     normalization   BOOLEAN -- default f to save computation amount
 ) RETURNS VOID AS $$
-DECLARE
-    tbl_inter           VARCHAR;
-    text_src            VARCHAR;
-    coef                DOUBLE PRECISION[];
-    old_messages        VARCHAR;
-    tbl_ind_scales      VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
-    tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
-    tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
-    tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
-    row_num             INTEGER;
-    dep_std             DOUBLE PRECISION;
-    dimension           INTEGER;
-    use_temp            VARCHAR;
-BEGIN
-    old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
-    EXECUTE 'SET client_min_messages TO warning';
-
-    -- EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
-    EXECUTE 'SELECT count(*) FROM '|| tbl_source INTO row_num;
-    EXECUTE 'SELECT max(array_upper(' || col_ind_var || ', 1)) FROM ' || tbl_source INTO dimension;
-    
-    IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, row_num, dimension, tbl_ind_scales);
-        PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, row_num, tbl_dep_scale);
-        PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
-                                                    tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
-        tbl_inter := tbl_data_scaled;
-        EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
-    ELSE
-        tbl_inter := tbl_source;
-        dep_std := 1;
-    END IF;
-    
-    -- create result table if it does not exist
-    IF normalization IS False THEN
-        tbl_inter_result := tbl_output;
-        use_temp := '';
-    ELSE
-        use_temp := 'TEMP';
-    END IF;
-    EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_inter_result ||';
-        CREATE '|| use_temp ||' TABLE ' || tbl_inter_result || ' (
-            coefficients    DOUBLE PRECISION[],
-            intercept       DOUBLE PRECISION,
-            normalization   BOOLEAN)';
-
-    EXECUTE '
-        INSERT INTO ' || tbl_inter_result || '
-        SELECT result, 0, False
-        FROM (
-            SELECT MADLIB_SCHEMA.__ridge_newton_result(
-                MADLIB_SCHEMA.__ridge_newton_step(
-                    ('|| tbl_inter ||'.'|| col_ind_var ||')::FLOAT8[],
-                    ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
-                    (NULL)::FLOAT8[],
-                    ('|| dimension ||')::INT2,
-                    ('|| lambda * row_num ||')::FLOAT8
-                    )
-                ) AS result
-            FROM '|| tbl_inter ||' 
-            ) subq';
-
-    IF normalization THEN
-        PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', '{normalization}'::VARCHAR[],
-                                                                dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
-        EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
-    END IF;
-
-    EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
-            DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
-            DROP TABLE IF EXISTS '|| tbl_data_scaled;
-
-    IF normalization THEN
-        EXECUTE 'DROP TABLE IF EXISTS '|| tbl_inter_result;
-    END IF;
-            
-    EXECUTE 'SET client_min_messages TO ' || old_messages;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+PythonFunction(convex, ridge, ridge_newton_train)
+$$ LANGUAGE plpythonu;
 
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     rel_source      VARCHAR,

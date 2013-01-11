@@ -4,10 +4,92 @@ import math
 from validation.cv_utils import __cv_unique_string
 from validation.cv_utils import __cv_produce_col_name_string
 from validation.cv_utils import __cv_copy_data_with_id
+from validation.cv_utils import __cv_generate_random_id
 from validation.cv_utils import __cv_split_data_using_id_col
 from validation.cv_utils import __cv_split_data_using_id_tbl
 from validation.cv_utils import __cv_summarize_result
 
+## ========================================================================
+
+def ridge_newton_train (schema_madlib, tbl_source, col_ind_var,
+                        col_dep_var, tbl_output, lambda_value,
+                        normalization, **kwargs):
+    old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
+    plpy.execute("set client_min_messages to warning")
+
+    row_num = plpy.execute("select count(*) from " + tbl_source)[0]["count"]
+    dimension = plpy.execute("select max(array_upper({0},1)) as d from {1}".format(col_ind_var, tbl_source))[0]["d"]
+
+    tbl_ind_scales = __cv_unique_string()
+    tbl_dep_scale = __cv_unique_string()
+    args = dict(tbl_data = tbl_source, col_ind_var = col_ind_var,
+                col_dep_var = col_dep_var, dimension = dimension,
+                row_num = row_num, tbl_scales = tbl_ind_scales,
+                tbl_scale = tbl_dep_scale, tbl_ind_scales = tbl_ind_scales,
+                tbl_dep_scale = tbl_dep_scale, schema_madlib = schema_madlib)
+    
+    if normalization:
+        __ridge_ind_var_scales(**args)
+        __ridge_dep_var_scale(**args)
+
+    if normalization:
+        tbl_inter_result = __cv_unique_string()
+        use_temp = "temp"
+    else:
+        tbl_inter_result = tbl_output
+        use_temp = ""
+
+    plpy.execute("""
+                 drop table if exists {tbl_inter_result};
+                 create {use_temp} table {tbl_inter_result} (
+                    coefficients    double precision[],
+                    intercept       double precision,
+                    normalization   boolean)
+                 """.format(tbl_inter_result = tbl_inter_result,
+                            use_temp = use_temp,
+                            **args))
+    inter_src = tbl_source
+    if normalization:
+        inter_src = "(" + __ridge_normalize_data_query(**args) + ") tmp"
+
+    plpy.execute("""
+                 insert into {tbl_inter_result}
+                 select result, 0, False
+                 from (
+                    select {schema_madlib}.__ridge_newton_result(
+                    {schema_madlib}.__ridge_newton_step(
+                        ({col_ind_var})::float8[],
+                        ({col_dep_var})::float8, 
+                        (null)::float8[],
+                        ({dimension})::int2,
+                        ({effective_lambda})::float8
+                        )
+                    ) as result
+                 from {inter_src}
+             ) subq
+                 """.format(effective_lambda = lambda_value * row_num,
+                            inter_src = inter_src,
+                            tbl_inter_result = tbl_inter_result,
+                            **args))
+
+    if normalization:
+        __ridge_restore_linear_coef_scales(tbl_coef = tbl_inter_result,
+                                           col_coef = 'coefficients',
+                                           col_others = ["normalization"],
+                                           tbl_origin_coef = tbl_output,
+                                           **args)
+
+    plpy.execute("""
+                 drop table if exists {tbl_ind_scales};
+                 drop table if exists {tbl_dep_scale};
+                 """.format(**args))
+
+    if normalization:
+        plpy.execute("drop table if exists " + tbl_inter_result)
+        
+    plpy.execute("set client_min_messages to " + old_msg_level)
+    return None
+    
 ## ========================================================================
 
 def __ridge_cv_args(schema_madlib, func_args, param_to_try,
@@ -100,7 +182,7 @@ def __ridge_cv_args(schema_madlib, func_args, param_to_try,
     return name_value
 
 ## ========================================================================
-    
+
 def __ridge_ind_var_scales(**kwargs):
     """
     The mean and standard deviation for each element of the independent variable,
@@ -150,33 +232,10 @@ def __ridge_dep_var_scale(**kwargs):
     return None
 
 ## ========================================================================
-    
-def __ridge_normalize_data(**kwargs):
-    """
-    Normalize the independent and dependent variables using the calculated mean's and std's
-    in __ridge_ind_var_scales and __ridge_dep_var_scale.
 
-    Compute the scaled variables by: scaled_value = (origin_value - mean) / std, and special
-    care is needed if std is zero.
-    
-    The output is a table with scaled independent and dependent variables.
-
-    This function is also used in lasso.
-
-    Parameters:
-    tbl_data -- original data
-    col_ind_var -- independent variables column 
-    dimension -- length of independent variable array
-    col_dep_var -- dependent variable column
-    tbl_ind_scales -- independent variables scales array
-    tbl_dep_scale -- dependent variable scale 
-    tbl_data_scaled -- scaled data result
-    """
-    # intermediate table name to avoid name conflicts 
+def __ridge_normalize_data_query(**kwargs):
     foos = __cv_unique_string()
-    plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
-    plpy.execute("""
-        create temp table {tbl_data_scaled} as
+    return """
             select
                 array_agg(val order by attr ) as {col_ind_var},
                 max(dep_var) as {col_dep_var}
@@ -211,7 +270,38 @@ def __ridge_normalize_data(**kwargs):
                 where {tbl_ind_scales}.attr = {foos}.attr
             ) as t
             group by ids
-    """.format(foos = foos, **kwargs))
+    """.format(foos = foos, **kwargs)
+    
+## ========================================================================
+    
+def __ridge_normalize_data(**kwargs):
+    """
+    Normalize the independent and dependent variables using the calculated mean's and std's
+    in __ridge_ind_var_scales and __ridge_dep_var_scale.
+
+    Compute the scaled variables by: scaled_value = (origin_value - mean) / std, and special
+    care is needed if std is zero.
+    
+    The output is a table with scaled independent and dependent variables.
+
+    This function is also used in lasso.
+
+    Parameters:
+    tbl_data -- original data
+    col_ind_var -- independent variables column 
+    dimension -- length of independent variable array
+    col_dep_var -- dependent variable column
+    tbl_ind_scales -- independent variables scales array
+    tbl_dep_scale -- dependent variable scale 
+    tbl_data_scaled -- scaled data result
+    """
+    # intermediate table name to avoid name conflicts 
+    plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
+    sql_query = __ridge_normalize_data_query(**kwargs)
+    plpy.execute("""
+        create temp table {tbl_data_scaled} as
+                 {sql_query}
+    """.format(sql_query = sql_query, **kwargs))
     return None
 
 ## ========================================================================
@@ -405,6 +495,7 @@ def __ridge_newton_cv_preprocess(kwargs):
     elif id_is_random:
         # unique ID column is given and is random
         tbl_used = data_tbl
+        kwargs["col_random_id"] = data_id
     else:
         # the provided unique ID is not random, create
         # a table mapping the given ID to a random ID
@@ -460,17 +551,22 @@ def __ridge_newton_cv_split_and_normalization(k, kwargs):
 
     col_data = [col_ind_var, col_dep_var]
     if (data_id is None) or (data_id is not None and id_is_random):
-        __cv_split_data_using_id_col(tbl_used, col_data, col_random_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+        (sql_inter, sql_valid) = __cv_split_data_using_id_col_query(tbl_used, col_data, col_random_id, row_num, fold_num, k+1)
     else:
-        __cv_split_data_using_id_tbl(tbl_used, col_data, tbl_random_id, col_random_id, data_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+        (sql_inter, sql_valid) = __cv_split_data_using_id_tbl_query(tbl_used, col_data, tbl_random_id, col_random_id, data_id, row_num, fold_num, k+1)
 
+    kwargs["tbl_inter"] = sql_inter
+    kwargs["tbl_valid"] = sql_valid
     row_num_train = plpy.execute("select count(*) as n from " + tbl_inter)[0]["n"]
     kwargs["row_num_train"] = row_num_train
     
     if normalization:
-        __ridge_ind_var_scales(tbl_data = tbl_inter, col_ind_var = col_ind_var, row_num = row_num_train, dimension = dimension, tbl_scales = tbl_ind_scales)
-        __ridge_dep_var_scale(tbl_data = tbl_inter, col_dep_var = col_dep_var, row_num = row_num_train, tbl_scale = tbl_dep_scale)
-        __ridge_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale, tbl_data_scaled = tbl_train)
+        __ridge_ind_var_scales(tbl_data = "(" + sql_inter + ") t1", col_ind_var = col_ind_var,
+                               row_num = row_num_train, dimension = dimension, tbl_scales = tbl_ind_scales)
+        __ridge_dep_var_scale(tbl_data = "(" + sql_inter + ") t1", col_dep_var = col_dep_var,
+                              row_num = row_num_train, tbl_scale = tbl_dep_scale)
+        kwargs["tbl_train"] = "(" + __ridge_normalize_data_query(tbl_data = "(" + sql_inter + ") t1", **args) + ") tmp"
+        # __ridge_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale, tbl_data_scaled = tbl_train)
         # dep_std = plpy.execute("select dep_std as std from " + tbl_dep_scale)[0]["std"]
         kwargs["dep_std"] = 1
     else:

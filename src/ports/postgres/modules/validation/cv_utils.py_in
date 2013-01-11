@@ -167,6 +167,32 @@ def __cv_validation_rows(row_num, fold_num, which_fold):
 
 ## ========================================================================
 
+def __cv_split_data_using_id_col_query(rel_source, col_data, col_id, row_num,
+                                       fold_num, which_fold):
+    col_string = __cv_produce_col_name_string(rel_source, col_data)
+    (start_row, end_row) = __cv_validation_rows(row_num, fold_num, which_fold)
+    kwargs = dict(rel_train = rel_train, rel_source = rel_source,
+                  col_id = col_id, start_row = start_row,
+                  rel_valid = rel_valid,
+                  end_row = end_row, col_string = col_string)
+    # Extract the training part of data,
+    # which corresponds to rows outside of [start_row, end_row).
+    # Extract the validation part of data,
+    # which corresponds to rows inside of [start_row, end_row).
+    sql_train = """
+                select {col_id}, {col_string} from {rel_source}
+                where {col_id} < {start_row}
+                  or {col_id} >= {end_row}
+                """.format(**kwargs)
+    sql_valid = """
+                select {col_id}, {col_string} from {rel_source}
+                where {col_id} >= {start_row}
+                  and {col_id} < {end_row}
+                """.format(**kwargs)
+    return (sql_train, sql_valid)
+    
+## ========================================================================
+
 def __cv_split_data_using_id_col(rel_source, col_data, col_id, row_num,
                                  rel_train, rel_valid, fold_num, which_fold):
     """
@@ -182,31 +208,57 @@ def __cv_split_data_using_id_col(rel_source, col_data, col_id, row_num,
     @param fold_num How many fold cross validation
     @param which_fold Which fold will be used as validation part?
     """
-    col_string = __cv_produce_col_name_string(rel_source, col_data)
+    (sql_train, sql_valid) = __cv_split_data_using_id_col_query(rel_source, col_data, col_id, row_num,
+                                                                fold_num, which_fold)
+    plpy.execute("""     
+        drop table if exists {rel_train};
+        create temp table {rel_train} as {sql_train}
+
+        drop table if exists {rel_valid};
+        create temp table {rel_valid} as {sql_valid}
+    """.format(sql_train = sql_train, sql_valid = sql_valid, **kwargs))
+    return None
+
+## ========================================================================
+
+def __cv_split_data_using_id_tbl_query(rel_origin, col_data, rel_random_id,
+                                       random_id, origin_id, row_num,
+                                       fold_num, which_fold):
+    col_string = __cv_produce_col_name_string(rel_origin, col_data)
     (start_row, end_row) = __cv_validation_rows(row_num, fold_num, which_fold)
-    kwargs = dict(rel_train = rel_train, rel_source = rel_source,
-                  col_id = col_id, start_row = start_row,
-                  rel_valid = rel_valid,
-                  end_row = end_row, col_string = col_string)
+    kwargs = dict(rel_origin = rel_origin, rel_random_id = rel_random_id,
+                  random_id = random_id, origin_id = origin_id,
+                  rel_train = rel_train, rel_valid = rel_valid,
+                  start_row = start_row, end_row = end_row,
+                  col_string = col_string)
     # Extract the training part of data,
     # which corresponds to rows outside of [start_row, end_row).
     # Extract the validation part of data,
     # which corresponds to rows inside of [start_row, end_row).
-    plpy.execute("""     
-        drop table if exists {rel_train};
-        create temp table {rel_train} as
-            select {col_id}, {col_string} from {rel_source}
-            where {col_id} < {start_row}
-                 or {col_id} >= {end_row};
+    sql_train = """
+            select {rel_random_id}.{random_id}, {col_string}
+            from {rel_origin}, {rel_random_id}
+            where
+                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
+                and (
+                 {rel_random_id}.{random_id} < {start_row}
+                 or
+                 {rel_random_id}.{random_id} >= {end_row}
+    """.format(**kwargs)
 
-        drop table if exists {rel_valid};
-        create temp table {rel_valid} as
-            select {col_id}, {col_string} from {rel_source}
-            where {col_id} >= {start_row}
-                 and {col_id} < {end_row}
+    sql_valid = """
+            select {rel_random_id}.{random_id}, {col_string}
+            from {rel_origin}, {rel_random_id}
+            where
+                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
+                and (
+                 {rel_random_id}.{random_id} >= {start_row}
+                 and
+                 {rel_random_id}.{random_id} < {end_row}
+             )
     """.format(**kwargs))
-    return None
 
+    return (sql_train, sql_valid)
 ## ========================================================================
 
 def __cv_split_data_using_id_tbl(rel_origin, col_data, rel_random_id,
@@ -230,39 +282,15 @@ def __cv_split_data_using_id_tbl(rel_origin, col_data, rel_random_id,
     @param fold_num How many fold cross validation
     @param which_fold Which fold will be used as validation part?
     """
-    col_string = __cv_produce_col_name_string(rel_origin, col_data)
-    (start_row, end_row) = __cv_validation_rows(row_num, fold_num, which_fold)
-    kwargs = dict(rel_origin = rel_origin, rel_random_id = rel_random_id,
-                  random_id = random_id, origin_id = origin_id,
-                  rel_train = rel_train, rel_valid = rel_valid,
-                  start_row = start_row, end_row = end_row,
-                  col_string = col_string)
-    # Extract the training part of data,
-    # which corresponds to rows outside of [start_row, end_row).
-    # Extract the validation part of data,
-    # which corresponds to rows inside of [start_row, end_row).
+    (sql_train, sql_valid) = __cv_split_data_using_id_tbl_query(
+                                rel_origin, col_data, rel_random_id,
+                                random_id, origin_id, row_num,
+                                fold_num, which_fold)
     plpy.execute("""
         drop table if exists {rel_train};
-        create temp table {rel_train} as
-            select {rel_random_id}.{random_id}, {col_string}
-            from {rel_origin}, {rel_random_id}
-            where
-                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
-                and (
-                 {rel_random_id}.{random_id} < {start_row}
-                 or
-                 {rel_random_id}.{random_id} >= {end_row};
+        create temp table {rel_train} as {sql_train}
 
         drop table if exists {rel_valid};
-        create temp table {rel_valid} as
-            select {rel_random_id}.{random_id}, {col_string}
-            from {rel_origin}, {rel_random_id}
-            where
-                {rel_origin}.{origin_id} = {rel_random_id}.{origin_id}
-                and (
-                 {rel_random_id}.{random_id} >= {start_row}
-                 and
-                 {rel_random_id}.{random_id} < {end_row}
-             )
-    """.format(**kwargs))
+        create temp table {rel_valid} as {sql_valid}
+    """.format(sql_train = sql_train, sql_valid = sql_valid, **kwargs))
     return None
