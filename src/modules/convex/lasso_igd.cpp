@@ -70,7 +70,6 @@ lasso_igd_transition::run(AnyType &args) {
             state.allocate(*this, dimension); // with zeros
             state.task.stepsize = stepsize;
             state.task.lambda = lambda; // regularized_igd.hpp uses lambda / totalRows instead of lambda itself
-            //state.task.lambda = lambda * totalRows; // compensate regularized_igd.hpp lambda
             state.task.totalRows = totalRows;
         }
         // resetting in either case
@@ -128,11 +127,11 @@ lasso_igd_final::run(AnyType &args) {
     if (state.algo.numRows == 0) { return Null(); }
 
     // finalizing
-    GLML1Regularizer::loss(state.task.model, state.task.lambda);
+    //GLML1Regularizer::loss(state.task.model, state.task.lambda);
     OLSIGDAlgorithm::final(state);
     
     // for stepsize tuning
-    dberr << "loss: " << state.algo.loss << std::endl;
+    //dberr << "loss: " << state.algo.loss << std::endl;
  
     return state;
 }
@@ -146,7 +145,7 @@ internal_lasso_igd_distance::run(AnyType &args) {
     RegularizedGLMIGDState<ArrayHandle<double> > stateRight = args[1];
 
     return std::abs((stateLeft.algo.loss - stateRight.algo.loss)
-            / stateRight.algo.loss);
+                    / stateRight.algo.loss);
 }
 
 /**
@@ -154,17 +153,18 @@ internal_lasso_igd_distance::run(AnyType &args) {
  */
 AnyType
 internal_lasso_igd_result::run(AnyType &args) {
-    RegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
+    RegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
 
-    double l1Norm = 0.;
-    Index i;
-    for (i = 0; i < state.task.model.rows(); i ++) {
-        l1Norm += std::abs(state.task.model(i));
-    }
-    
+    // double l1Norm = 0.;
+    // Index i;
+    // for (i = 0; i < state.task.model.rows(); i ++) {
+    //     l1Norm += std::abs(state.task.model(i));
+    // }
+
     AnyType tuple;
     tuple << state.task.model
-        << static_cast<double>(state.algo.loss);
+          << static_cast<double>(state.algo.loss) +
+        (double)(GLML1Regularizer::loss(state.task.model, state.task.lambda));
 
     return tuple;
 }
