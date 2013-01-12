@@ -22,10 +22,15 @@ DECLARE_UDF(convex, gaussian_igd_final)
  * @brief Linear regression (incremental gradient): Difference in
  *     log-likelihood between two transition states
  */
-DECLARE_UDF(convex, internal_gaussian_igd_distance)
+DECLARE_UDF(convex, internal_gaussian_igd_state_diff)
 
 /**
  * @brief Linear regression (incremental gradient): Convert
  *     transition state to result tuple
  */
 DECLARE_UDF(convex, internal_gaussian_igd_result)
+
+/**
+ * @brief (incremental gradient): Prediction
+ */
+DECLARE_UDF(convex, gaussian_igd_predict)

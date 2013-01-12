@@ -152,3 +152,17 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
 'MODULE_PATHNAME', 'internal_gaussian_igd_result'
 LANGUAGE C IMMUTABLE STRICT;
+
+--
+/**
+ * @brief Prediction use learned coefficients for a given example
+ *
+ * @param coefficients  Weight vector (hyperplane, classifier)
+ * @param ind_var  Features (independent variables)
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.gaussian_igd_predict (
+    coefficients    DOUBLE PRECISION[],
+    ind_var         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', 'gaussian_igd_predict'
+LANGUAGE C IMMUTABLE STRICT;
