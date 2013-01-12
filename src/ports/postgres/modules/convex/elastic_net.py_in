@@ -21,7 +21,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 ## lambda is a keyword of Python, try to avoid using
 ## it, so use lambda_value instead
 def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
-                      tbl_result, lambda_value, alpha, normalization, family,
+                      tbl_result, lambda_value, alpha, normalization, regress_family,
                       optimizer, optimizer_params, **kwargs):
     """
     A wrapper for all variants of elastic net regulation.
@@ -42,27 +42,28 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                              is '{arg = value, ...}'::varchar[]
     """
     # Special case for ridge linear regression
-    if ((family.lower() == "gaussian" or family.lower() == "linear") and
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "igd" and
         alpha == 0):
         plpy.execute("""select {schema_madlib}.ridge_newton_train(
                             {tbl_source}, {col_ind_var}, {col_dap_var},
                             {tbl_result}, {lambda}, {normalization}
         )""".format(schema_madlib = schema_madlib,
+                    tbl_source = tbl_source,
                     col_ind_var = col_ind_var,
                     col_dep_var = col_dep_var,
                     tbl_result = tbl_result,
                     lambda_value = lambda_value,
                     normalization = normalization))
     
-    if ((family.lower() == "gaussian" or family.lower() == "linear") and
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "igd"):
         __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                          col_dep_var, tbl_result, lambda_value, alpha,
                                          normalization, optimizer_params, **kwargs)
         return None
 
-    if ((family.lower() == "binomial" or family.lower() == "logistic") and
+    if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
         optimizer.lower() == "igd"):
         __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
                                          col_dep_var, tbl_result, lambda_value, alpha,

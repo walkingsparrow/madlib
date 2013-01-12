@@ -13,4 +13,5 @@
 #include "logit_newton.hpp"
 #include "ridge_newton.hpp"
 #include "lasso_igd.hpp"
+#include "elastic_net_gaussian_igd.hpp"
 
