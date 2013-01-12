@@ -2,6 +2,14 @@
 #include "dbconnector/dbconnector.hpp"
 #include "elastic_net_gaussian_igd.hpp"
 
+#include "task/ols.hpp"
+#include "task/elastic_net.hpp"
+#include "algo/igd.hpp"
+#include "algo/regularized_igd.hpp"
+#include "type/tuple.hpp"
+#include "type/model.hpp"
+#include "type/state.hpp"
+
 namespace madlib {
 namespace modules {
 namespace convex {
@@ -9,17 +17,13 @@ namespace convex {
 // This 4 classes contain public static methods that can be called
 typedef ElasticNet<GLMModel > GLMENRegularizer;
 
-typedef RegularizedIGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
-                       OLS<GLMModel, GLMTuple >,
-                       GLMENRegularizer > OLSENRegularizedIGDAlgorithm;
+typedef ENRegularizedIGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
+                         OLS<GLMModel, GLMTuple >,
+                         GLMENRegularizer > OLSENRegularizedIGDAlgorithm;
 
 typedef IGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
             ENRegularizedGLMIGDState<ArrayHandle<double> >,
             OLS<GLMModel, GLMTuple > > OLSIGDAlgorithm;
-
-typedef Loss<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
-             ENRegularizedGLMIGDState<ArrayHandle<double> >,
-             OLS<GLMModel, GLMTuple > > OLSLossAlgorithm;
 
 // ------------------------------------------------------------------------
 
@@ -28,13 +32,13 @@ typedef Loss<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
 
    It is called for each tuple.
 
-   The input AnyType has 9 args: in_state. ind_var, dep_var,
+   The input AnyType has 9 args: state. ind_var, dep_var,
    pre_state, lambda, alpha, dimension, stepsize, totalrows
 */
 AnyType
 gaussian_igd_transition::run (AnyType& args)
 {
-    ENRegularizedGLMIGDState<MutableArrayHandle<double> > in_state = args[0];
+    ENRegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
     
     // initialize the state if working on the first tuple
     if (state.algo.numRows == 0)
@@ -42,8 +46,8 @@ gaussian_igd_transition::run (AnyType& args)
         if (!args[3].isNull())
         {
             ENRegularizedGLMIGDState<ArrayHandle<double> > pre_state = args[3];
-            in_state.allocate(*this, pre_state.task.dimension);
-            in_state = pre_state;
+            state.allocate(*this, pre_state.task.dimension);
+            state = pre_state;
         }
         else
         {
@@ -51,13 +55,13 @@ gaussian_igd_transition::run (AnyType& args)
             double alpha = args[5].getAs<double>();
             int dimension = args[6].getAs<int>();
             double stepsize = args[7].getAs<double>();
-            double total_rows = args[8].getAs<int>();
+            int total_rows = args[8].getAs<int>();
 
-            in_state.allocate(*this, dimension);
-            in_state.task.stepsize = stepsize;
-            in_state.task.lambda = lambda;
-            in_state.task.alpha = alpha;
-            in_state.task.total_rows = total_rows;
+            state.allocate(*this, dimension);
+            state.task.stepsize = stepsize;
+            state.task.lambda = lambda;
+            state.task.alpha = alpha;
+            state.task.totalRows = total_rows;
         }
         state.reset();
     }
@@ -71,7 +75,6 @@ gaussian_igd_transition::run (AnyType& args)
 
     // Now do the transition step
     OLSENRegularizedIGDAlgorithm::transition(state, tuple);
-    OLSLossAlgorithm::transition(state, tuple);
     state.algo.numRows ++;
 
     return state;
@@ -95,7 +98,6 @@ gaussian_igd_merge::run (AnyType& args)
 
     // Merge states together
     OLSIGDAlgorithm::merge(stateLeft, stateRight);
-    OLSLossAlgorithm::merge(stateLeft, stateRight);
     
     // The following numRows update, cannot be put above, because the model
     // averaging depends on their original values
@@ -120,12 +122,8 @@ gaussian_igd_final::run (AnyType& args)
     if (state.algo.numRows == 0) { return Null(); }
 
     // finalizing
-    // GLMENRegularizer::loss(in_state.task.model, in_state.task.lambda, in_state.task.alpha);
     OLSIGDAlgorithm::final(state);
-    
-    // for stepsize tuning
-    // dberr << "loss: " << in_state.algo.loss << std::endl;
- 
+
     return state;
 }
 
@@ -145,7 +143,7 @@ internal_gaussian_igd_state_diff::run (AnyType& args)
     int n = state1.task.model.rows();
     for (i = 0; i < n; i++)
     {
-        diff += std::abs(state1.task.model(i) - state2.task.model(i))
+        diff += std::abs(state1.task.model(i) - state2.task.model(i));
     }
 
     return diff / n;
@@ -181,7 +179,7 @@ gaussian_igd_predict::run (AnyType& args)
 
     return OLS<MappedColumnVector, GLMTuple>::predict(model, indVar);
 }
-
+ 
 } // namespace convex 
 } // namespace modules
 } // namespace convex
