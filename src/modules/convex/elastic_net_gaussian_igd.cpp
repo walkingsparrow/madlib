@@ -83,7 +83,7 @@ gaussian_igd_transition::run (AnyType& args)
  * @brief Perform the perliminary aggregation function: Merge transition states
  */
 AnyType
-gaussian_igd_merge::run (AnyType &args)
+gaussian_igd_merge::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<MutableArrayHandle<double> > stateLeft = args[0];
     ENRegularizedGLMIGDState<ArrayHandle<double> > stateRight = args[1];
@@ -110,7 +110,7 @@ gaussian_igd_merge::run (AnyType &args)
  * @brief Perform the final step
  */
 AnyType
-gaussian_igd_final::run (AnyType &args)
+gaussian_igd_final::run (AnyType& args)
 {
     // We request a mutable object. Depending on the backend, this might perform
     // a deep copy.
@@ -135,21 +135,20 @@ gaussian_igd_final::run (AnyType &args)
  * @brief Return the difference in RMSE between two states
  */
 AnyType
-internal_gaussian_igd_state_diff::run (AnyType &args)
+internal_gaussian_igd_state_diff::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<ArrayHandle<double> > state1 = args[0];
     ENRegularizedGLMIGDState<ArrayHandle<double> > state2 = args[1];
 
-    // return std::abs((state1.algo.loss - state2.algo.loss) / state2.algo.loss);
-    double diff = 0;
-    
+    double diff = 0;    
     Index i;
-    for (i = 0; i < state1.task.model.rows(); i++)
+    int n = state1.task.model.rows();
+    for (i = 0; i < n; i++)
     {
         diff += std::abs(state1.task.model(i) - state2.task.model(i))
     }
 
-    return diff;
+    return diff / n;
 }
 
 // ------------------------------------------------------------------------
@@ -158,24 +157,31 @@ internal_gaussian_igd_state_diff::run (AnyType &args)
  * @brief Return the coefficients and diagnostic statistics of the state
  */
 AnyType
-internal_gaussian_igd_result::run (AnyType &args)
+internal_gaussian_igd_result::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
-
-    double l1Norm = 0.;
-    Index i;
-    for (i = 0; i < state.task.model.rows(); i ++) {
-        l1Norm += std::abs(state.task.model(i));
-    }
     
     AnyType tuple;
-    tuple << state.task.model
-        << static_cast<double>(state.algo.loss);
+    tuple << state.task.model;
 
     return tuple;
 }
 
-    
+// ------------------------------------------------------------------------
+
+/**
+ * @brief Compute w \dot x, where w is the vector of coefficients
+ */
+AnyType
+gaussian_igd_predict::run (AnyType& args)
+{
+    using madlib::dbal::eigen_integration::MappedColumnVector;
+    MappedColumnVector model = args[0].getAs<MappedColumnVector>();
+    MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
+
+    return OLS<MappedColumnVector, GLMTuple>::predict(model, indVar);
+}
+
 } // namespace convex 
 } // namespace modules
 } // namespace convex

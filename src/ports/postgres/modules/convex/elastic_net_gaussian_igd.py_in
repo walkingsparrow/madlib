@@ -224,7 +224,7 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
 
     plpy.execute("""
                  insert into {tbl_inter_result}
-                    select (result).coefficients, 0, (result).likelihood, False
+                    select (result).coefficients, 0, 0, False
                     from (
                         select {schema_madlib}.__gaussian_igd_result(_state) as result
                         from {tbl_igd_state}
@@ -232,6 +232,23 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                     ) t
                  """.format(iteration_tun = iteration_run, **args))
 
+    # compute the likelihood
+    plpy.execute("""
+                 update {tbl_inter_result} set likelihood = like from (
+                    select
+                        sum(({col_dep_var} - {schema_madlib}.gaussian_igd_predict(coefficients, {col_ind_var}))^2) / 2.
+                        + lambda_value * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1) as like
+                    from
+                        {tbl_inter_result},
+                        (
+                            select sum(coef^2) as module_2, sum(abs(coef)) as module_1,
+                            from (
+                                select unnest(coefficients) as coef
+                                from {tbl_inter_result}
+                            ) s
+                        ) t
+                 """)
+    
     if normalization:
         __ridge_restore_linear_coef_scales_sql(tbl_coef = args["tbl_inter_result"],
                                                col_coef = "coefficients",
@@ -239,7 +256,7 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                                tbl_origin_coef = tbl_result,
                                                **args)
         plpy.execute("update {tbl_result} set normalization = True".format(**args))
-    
+
     # cleanup    
     __igd_cleanup_temp_tbls(**args)
     if normalization:
