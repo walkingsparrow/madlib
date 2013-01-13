@@ -19,6 +19,10 @@ from convex.ridge import __ridge_normalization_cv_restore
 from convex.ridge import __ridge_restore_linear_coef_scales_sql
 from convex.ridge import __ridge_accumulate_error
 from validation.cv_utils import __cv_summarize_result
+from convex.ridge import __ridge_ind_var_scales
+from convex.ridge import __ridge_dep_var_scale
+from convex.ridge import __ridge_normalize_data
+from convex.ridge import __ridge_restore_linear_coef_scales
 
 ## ========================================================================
 
@@ -391,6 +395,108 @@ def __lasso_igd_cv_help():
     );
     """
 
+## ========================================================================
+
+def lasso_igd_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                    tbl_output, lambda_value, normalization, stepsize,
+                    num_iterations, tolerance, **kwargs):
+    old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
+    plpy.execute("set client_min_messages to error")
+
+    # __validation_arguments()
+
+    args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
+                col_ind_var = col_ind_var, col_dep_var = col_dep_var,
+                tbl_output = tbl_output, lambda_value = lambda_value,
+                stepsize = stepsize, num_iterations = num_iterations,
+                tolerance = tolerance,
+                tbl_ind_scales = __cv_unique_string(),
+                tbl_dep_scale = __cv_unique_string(),
+                tbl_data_scaled = __cv_unique_string(),
+                tbl_lasso_igd_args = __cv_unique_string(),
+                tbl_lasso_igd_state = __cv_unique_string())
+    row_num = plpy.execute("select count(*) from " + tbl_source)[0]["count"]
+    dimension = plpy.execute("""
+                             select max(array_upper({col_ind_var},1)) as d
+                             from {tbl_source}
+                             """.format(**args))[0]["d"]
+    args.update(dimension = dimension, row_num = row_num)    
+    
+    if normalization:
+        __ridge_ind_var_scales(tbl_data = tbl_source, col_ind_var = col_ind_var, row_num = row_num, dimension = dimension, tbl_scales = args["tbl_ind_scales"])
+        __ridge_dep_var_scale(tbl_data = tbl_source, col_dep_var = col_dep_var, row_num = row_num, tbl_scale = args["tbl_dep_scale"])
+        __ridge_normalize_data(tbl_data = tbl_source, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = args["tbl_ind_scales"], tbl_dep_scale = args["tbl_dep_scale"], tbl_data_scaled = args["tbl_data_scaled"])
+        tbl_inter = args["tbl_data_scaled"]
+        use_temp = "temp"
+        tbl_inter_result = __cv_unique_string()
+    else:
+        tbl_inter = tbl_source
+        tbl_inter_result = tbl_output
+        use_temp = ""
+
+    args.update(tbl_inter = tbl_inter,
+                tbl_inter_result = tbl_inter_result,
+                use_temp = use_temp)
+
+    effective_lambda = lambda_value * row_num
+    plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
+    plpy.execute("""select {schema_madlib}.__lasso_execute_using_igd_args('
+        drop table if exists pg_temp.{tbl_lasso_igd_args};
+        create table pg_temp.{tbl_lasso_igd_args} as
+            select 
+                $1 as dimension, 
+                $2 as stepsize,
+                $3 as lambda,
+                $4 as total_rows,
+                $5 AS num_iterations, 
+                $6 AS tolerance;',
+        {dimension}, {stepsize}, {effective_lambda}, {row_num}, {num_iterations}, {tolerance})
+    """.format(effective_lambda = effective_lambda, **args))
+
+    iteration_run = compute_lasso_igd(schema_madlib, args["tbl_lasso_igd_args"], args["tbl_lasso_igd_state"], tbl_inter, col_ind_var, col_dep_var, True)
+
+    plpy.execute("""
+                 drop table if exists {tbl_inter_result};
+                 create {use_temp} table {tbl_inter_result} (
+                    coefficients    double precision[],
+                    intercept       double precision,
+                    log_likelihood  double precision,
+                    normalization   boolean)
+                 """.format(**args))
+    plpy.execute("""
+                 insert into {tbl_inter_result}
+                    select (result).coefficients, 0, (result).loss/{row_num},
+                 False
+                    from (
+                        select {schema_madlib}.__lasso_igd_result(_state) as result
+                        from {tbl_lasso_igd_state}
+                        where _iteration = {iteration_run}
+                    ) t
+                 """.format(iteration_run = iteration_run,
+                            **args))
+
+    if normalization:
+        __ridge_restore_linear_coef_scales(tbl_coef = tbl_inter_result,
+                                           col_coef = 'coefficients',
+                                           col_others = ["log_likelihood", "normalization"],
+                                           dimension = dimension,
+                                           tbl_ind_scales = args["tbl_ind_scales"],
+                                           tbl_dep_scale = args["tbl_dep_scale"],
+                                           tbl_origin_coef = tbl_output)
+        plpy.execute("update {tbl_output} set normalization = True".format(**args))
+        plpy.execute("drop table if exists {tbl_inter_result}".format(**args))
+
+    plpy.execute("""
+                 drop table if exists {tbl_ind_scales};
+                 drop table if exists {tbl_dep_scale};
+                 drop table if exists {tbl_data_scaled};
+                 drop table if exists {tbl_lasso_igd_state};
+                 drop table if exists {tbl_lasso_igd_args};
+                 """.format(**args))
+     
+    plpy.execute("set client_min_messages to " + old_msg_level)
+    return None
+     
 ## ========================================================================
 ## ========================================================================
 ## ========================================================================

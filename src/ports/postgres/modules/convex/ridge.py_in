@@ -675,3 +675,116 @@ def __ridge_newton_cv_help():
         10    -- cross validation fold
     );
     """
+
+## ========================================================================
+
+def ridge_newton_train (schema_madlib, tbl_source, col_ind_var,
+                        col_dep_var, tbl_output, lambda_value,
+                        normalization, **kwargs):
+    
+    
+def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
+                                col_dep_var, tbl_output, lambda_value,
+                                normalization, **kwargs):
+    old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
+    plpy.execute("set client_min_messages to warning")
+
+    # __validation_arguments()
+
+    args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
+                col_ind_var = col_ind_var, col_dep_var = col_dep_var,
+                tbl_output = tbl_output, lambda_value = lambda_value,
+                tbl_ind_scales = __cv_unique_string(),
+                tbl_dep_scale = __cv_unique_string(),
+                tbl_data_scaled = __cv_unique_string())
+    
+    row_num = plpy.execute("select count(*) from " + tbl_source)[0]["count"]
+    dimension = plpy.execute("""
+                             select max(array_upper({col_ind_var},1)) as d
+                             from {tbl_source}
+                             """.format(**args))[0]["d"]
+    args.update(dimension = dimension, row_num = row_num)
+    
+    if normalization:
+        __ridge_ind_var_scales(tbl_data = tbl_source, col_ind_var = col_ind_var, row_num = row_num, dimension = dimension, tbl_scales = args["tbl_ind_scales"])
+        __ridge_dep_var_scale(tbl_data = tbl_source, col_dep_var = col_dep_var, row_num = row_num, tbl_scale = args["tbl_dep_scale"])
+        __ridge_normalize_data(tbl_data = tbl_source, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = args["tbl_ind_scales"], tbl_dep_scale = args["tbl_dep_scale"], tbl_data_scaled = args["tbl_data_scaled"])
+        tbl_inter = args["tbl_data_scaled"]
+        use_temp = "temp"
+        tbl_inter_result = __cv_unique_string()
+    else:
+        tbl_inter = tbl_source
+        tbl_inter_result = tbl_output
+        use_temp = ""
+
+    args.update(tbl_inter = tbl_inter, tbl_inter_result = tbl_inter_result,
+                use_temp = use_temp)
+
+    plpy.execute("""
+                 drop table if exists {tbl_inter_result};
+                 create {use_temp} table {tbl_inter_result} (
+                    coefficients    double precision[],
+                    intercept       double precision,
+                    log_likelihood  double precision,
+                    normalization   boolean)
+                 """.format(**args))
+
+    plpy.execute("""
+                 insert into {tbl_inter_result}
+                 select result, 0, 0, False
+                 from (
+                    select {schema_madlib}.__ridge_newton_result(
+                        {schema_madlib}.__ridge_newton_step(
+                            ({tbl_inter}.{col_ind_var})::double precision[],
+                            ({tbl_inter}.{col_dep_var})::double precision,
+                            (NULL)::double precision[],
+                            {dimension}::int2,
+                            {effective_lambda}::double precision)
+                       ) as result
+                    from {tbl_inter}
+                 ) t                 
+                 """.format(effective_lambda = lambda_value * row_num,
+                            **args))
+
+    # update the log likelihood
+    plpy.execute("""
+                 update {tbl_inter_result} set log_likelihood = ll from
+                 (
+                    select loss + module_2 as ll
+                    from
+                        (
+                           select
+                               avg(({col_dep_var} - {schema_madlib}.ridge_linear_newton_predict(coefficients, {col_ind_var}))^2) / 2. as loss
+                           from
+                               {tbl_inter_result},
+                               {tbl_inter}
+                        ) s,
+                        (
+                           select {lambda_value} * sum(coef^2) *0.5 as module_2
+                           from (
+                              select unnest(coefficients) as coef
+                              from {tbl_inter_result}
+                           ) t1                 
+                         ) t
+                 ) t2
+                 """.format(**args))
+
+    if normalization:
+        __ridge_restore_linear_coef_scales(tbl_coef = tbl_inter_result,
+                                           col_coef = 'coefficients',
+                                           col_others = ["log_likelihood", "normalization"],
+                                           dimension = dimension,
+                                           tbl_ind_scales = args["tbl_ind_scales"],
+                                           tbl_dep_scale = args["tbl_dep_scale"],
+                                           tbl_origin_coef = tbl_output)
+        plpy.execute("update {tbl_output} set normalization = True".format(**args))
+        plpy.execute("drop table if exists {tbl_inter_result}".format(**args))
+
+    plpy.execute("""
+                 drop table if exists {tbl_ind_scales};
+                 drop table if exists {tbl_dep_scale};
+                 drop table if exists {tbl_data_scaled};
+                 """.format(**args))
+        
+    plpy.execute("set client_min_messages to " + old_msg_level)
+    return None
