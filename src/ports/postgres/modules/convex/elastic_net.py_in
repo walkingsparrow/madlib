@@ -14,12 +14,31 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     
     If an optimizer name is given, print out the necessary parameters.
     """
-    if family_or_optimizer == "gaussian" or family_or_optimizer == "linear":
+    if (family_or_optimizer.lower() == "gaussian" or
+        family_or_optimizer == "linear"):
         return """
         Supported optimizer: Incremental Gradient Descent method ('igd')
 
         For alpha = 0, Newton method ('newton') is also supported.
         """
+
+    if family_or_optimizer.lower() == "igd":
+        return """
+        Incremental Gradient Descent method
+
+        Parameters:
+        stepsize         - default 0.01
+        num_iterations   - default 100
+        tolenrance       - default 0.000001
+        """
+
+    if family_or_optimizer.lower() == "newton":
+        return "Newton method"
+        
+    return """
+    Not a supported response family or optimizer
+    """
+        
 
 ## ========================================================================
 
