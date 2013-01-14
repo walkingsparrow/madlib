@@ -23,6 +23,13 @@ from convex.ridge import __ridge_ind_var_scales
 from convex.ridge import __ridge_dep_var_scale
 from convex.ridge import __ridge_normalize_data
 from convex.ridge import __ridge_restore_linear_coef_scales
+from convex.validate_args import __is_tbl_exists
+from convex.validate_args import __is_tbl_exists_in_schema
+from convex.validate_args import __is_tbl_has_rows
+from convex.validate_args import __is_col_exists
+from convex.validate_args import __is_scalar_col_no_null
+from convex.validate_args import __is_array_col_same_dimension
+from convex.validate_args import __is_array_col_no_null
 
 ## ========================================================================
 
@@ -76,11 +83,11 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
             it.update("""
                 SELECT
                     {schema_madlib}.__lasso_igd_step(
-                        (_src.{col_ind_var})::FLOAT8[], 
+                        array_append((_src.{col_ind_var})::FLOAT8[],1::FLOAT8), 
                         (_src.{col_dep_var})::FLOAT8,
                         (SELECT _state FROM {rel_state}
                             WHERE _iteration = {iteration}),
-                        (_args.dimension)::INT4,
+                        (_args.dimension+1)::INT4,
                         (_args.stepsize)::FLOAT8,
                         (_args.lambda)::FLOAT8,
                         (_args.total_rows)::INT8)
@@ -213,10 +220,67 @@ def __lasso_cv_args(schema_madlib, func_args, param_to_try,
         plpy.error("tbl_source, col_ind_var and col_dep_var must be provided!")
     
     return name_value
+## ========================================================================
+
+def __lasso_igd_cv(**kwargs):
+    __lasso_igd_cv_validate_args(kwargs)
+    return __lasso_igd_cv_compute(**kwargs)
+    
+## ========================================================================
+
+def __lasso_igd_cv_validate_args(args):
+    if not __is_tbl_exists(args["data_tbl"]):
+        plpy.error("LASSO CV error: Data table does not exist!")
+
+    if __is_tbl_exists_in_schema(args["validation_result"]):
+        plpy.error("LASSO CV error: Output table already exists!")
+        
+    if not __is_tbl_has_rows(args["data_tbl"]):
+        plpy.error("LASSO CV error: Data table is empty!")
+
+    if not __is_col_exists(args["data_tbl"], [args["col_ind_var"], args["col_dep_var"]]):
+        plpy.error("LASSO CV error: Some column does not exist!")
+
+    if not __is_scalar_col_no_null(args["data_tbl"], args["col_dep_var"]):
+        plpy.error("LASSO CV error: Dependent variable has Null values! Please filter out Null values before using this function!")
+
+    if not __is_array_col_same_dimension(args["data_tbl"], args["col_ind_var"]):
+        plpy.error("LASSO CV error: Independent variable arrays have unequal lengths!")
+
+    if not __is_array_col_no_null(args["data_tbl"], args["col_ind_var"]):
+        plpy.error("LASSO CV error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+
+    for lambda_value in args["lambda_values"]:
+        if lambda_value < 0:
+            plpy.error("LASSO CV error: The regulation parameter lambda cannot be negative!")
+
+    fold_num = args["fold_num"]
+    upto_fold = args["upto_fold"]
+    if fold_num <= 1:
+        plpy.error("LASSO CV error: Cross validation total fold number should be larger than 1!")
+
+    if upto_fold < 1 or upto_fold > fold_num:
+        plpy.error("LASSO CV error: Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
+
+    row_num = plpy.execute("select count(*) from " + args["data_tbl"])[0]["count"]
+    if row_num <= fold_num:
+        plpy.error("LASSO CV error: Too few data! Fewer than fold_num.")
+
+    
+    if args["stepsize"] <= 0:
+        plpy.error("LASSO error: The step size must be positive!")
+
+    if args["num_iterations"] <= 0:
+        plpy.error("LASSO error: The num_iterations must be positive integer!")
+
+    if args["tolerance"] <= 0:
+        plpy.error("LASSO error: The tolerance must be positive!")
+
+    return None
 
 ## ========================================================================
     
-def __lasso_igd_cv(**kwargs):
+def __lasso_igd_cv_compute(**kwargs):
     """
     Cross validation for ridge without lock limits.
 
@@ -311,7 +375,10 @@ def __lasso_igd_cv(**kwargs):
             # actually compute the fitting coefficients for only one step
             plpy.execute("""
                 insert into {tbl_coef}
-                    select {coef_count}, (result).coefficients, 0
+                    select 
+                        {coef_count}, 
+                        (result).coefficients[1:{dimension}], 
+                        (result).coefficients[{dimension}+1]
                     from (
                         select {schema_madlib}.__lasso_igd_result(_state) as result
                         from {tbl_lasso_igd_state}
@@ -332,7 +399,7 @@ def __lasso_igd_cv(**kwargs):
                 select avg((real_value - pred)^2) as error
                 from (
                     select
-                        {schema_madlib}.lasso_linear_igd_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
+                        {schema_madlib}.lasso_linear_igd_predict(coef, intercept, {tbl_valid}.{col_ind_var}) as pred,
                         {tbl_valid}.{col_dep_var} as real_value
                     from {tbl_valid}, {tbl_coef}
                     where {tbl_coef}.id = {coef_count}
@@ -400,6 +467,63 @@ def __lasso_igd_cv_help():
 def lasso_igd_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                     tbl_output, lambda_value, normalization, stepsize,
                     num_iterations, tolerance, **kwargs):
+    (tbl_source, col_ind_var, col_dep_var,
+     tbl_output, lambda_value, normalization, stepsize,
+     num_iterations, tolerance) = __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
+                                                        tbl_output, lambda_value, normalization, stepsize,
+                                                        num_iterations, tolerance)
+
+    return  lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                                    tbl_output, lambda_value, normalization, stepsize,
+                                    num_iterations, tolerance, **kwargs)
+
+## ========================================================================
+
+def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
+                              tbl_output, lambda_value, normalization, stepsize,
+                              num_iterations, tolerance):
+    if not __is_tbl_exists(tbl_source):
+        plpy.error("LASSO error: Data table does not exist!")
+
+    if __is_tbl_exists_in_schema(tbl_output):
+        plpy.error("LASSO error: Output table already exists!")
+        
+    if not __is_tbl_has_rows(tbl_source):
+        plpy.error("LASSO error: Data table is empty!")
+
+    if not __is_col_exists(tbl_source, [col_ind_var, col_dep_var]):
+        plpy.error("LASSO error: Some column does not exist!")
+
+    if not __is_scalar_col_no_null(tbl_source, col_dep_var):
+        plpy.error("LASSO error: Dependent variable has Null values! Please filter out Null values before using this function!")
+
+    if not __is_array_col_same_dimension(tbl_source, col_ind_var):
+        plpy.error("LASSO error: Independent variable arrays have unequal lengths!")
+
+    if not __is_array_col_no_null(tbl_source, col_ind_var):
+        plpy.error("LASSO error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+
+    if lambda_value < 0:
+        plpy.error("LASSO error: The regulation parameter lambda cannot be negative!")
+
+    if stepsize <= 0:
+        plpy.error("LASSO error: The step size must be positive!")
+
+    if num_iterations <= 0:
+        plpy.error("LASSO error: The num_iterations must be positive integer!")
+
+    if tolerance <= 0:
+        plpy.error("LASSO error: The tolerance must be positive!")
+
+    return (tbl_source, col_ind_var, col_dep_var,
+            tbl_output, lambda_value, normalization, stepsize,
+            num_iterations, tolerance)
+                   
+## ========================================================================
+
+def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                            tbl_output, lambda_value, normalization, stepsize,
+                            num_iterations, tolerance, **kwargs):
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to error")
 
@@ -465,8 +589,11 @@ def lasso_igd_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_inter_result}
-                    select (result).coefficients, 0, (result).loss/{row_num},
-                 False
+                    select 
+                        (result).coefficients[1:{dimension}], 
+                        (result).coefficients[{dimension}+1], 
+                        (result).loss/{row_num},
+                        False
                     from (
                         select {schema_madlib}.__lasso_igd_result(_state) as result
                         from {tbl_lasso_igd_state}
@@ -523,8 +650,8 @@ class IterationControllerNoTableDrop (IterationController):
                                      temporaryTables, truncAfterIteration,
                                      schema_madlib, verbose, **kwargs)
         # self.kwargs["rel_state"] = "pg_temp" + rel_state, but for testing 
-        # the existence of a table, schema name should not be used together
-        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{0}'".format(rel_state))[0]['count'] == 1
+        # the existence of a table, schema name should be used together
+        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{0}' and table_schema = 'pg_temp'".format(rel_state))[0]['count'] == 1
         # The current total row number of rel_state table
         if self.state_exists:
             self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]
@@ -541,7 +668,7 @@ class IterationControllerNoTableDrop (IterationController):
         if self.state_exists and self.iteration <= self.state_row_num:
             # If the rel_state table already exists, and
             # iteration number is smaller than total row number,
-            # use UPDATE instead of append. UPDATE does not use
+            # use UPDATE instead of append. UP/tmp/madlib.mT37SL/convex/test/cross_validation.sql_in.logDATE does not use
             # extra locks.
             self.runSQL("""
                 update {rel_state} set _state = ({newState})

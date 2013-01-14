@@ -20,8 +20,8 @@ m4_include(`SQLCommon.m4') -- '
 
 This module implements ridge regression (linear regression with Tikhonov regularization [1]).
 Mathematically, this model seeks to find a weight vector \f$w\f$ (also referred as hyperplane) that, for any given training example set, minimizes:
-\f[\min_{w \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m - y_m)^2 \right] + \frac{\lambda}{2} \|w\|_2^2,\f]
-where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$ are values of the dependent variable, \f$m = 1,...,M\f$.
+\f[\min_{w \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right] + \frac{\lambda}{2} \|w\|_2^2,\f]
+where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$ are values of the dependent variable, \f$m = 1,...,M\f$. Note that \f[w_{0}\f] is not regularized.
 
 To get better convergence, one can rescale the value of each element of x
 \f[ x' \leftarrow \frac{x - \bar{x}}{\sigma_x} \f]
@@ -64,7 +64,6 @@ Null values are not expected.
   ----------------+--------------+---------------+-------------
         ...
   </pre>
-where <em>intercept</em> is always 0 since it is not fitted separately.
   
   Otherwise, the mean values and standard deviations of both independent variables and dependent variable will be output.
   <pre> coefficients | intercept | ind_ar_mean | ind_var_std | dep_var_mean | dep_var_std | log_likelihood | normalization
@@ -201,86 +200,8 @@ CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
 ) RETURNS VOID AS $$
 PythonFunction(convex, ridge, ridge_newton_train)
 $$ LANGUAGE plpythonu;
--- DECLARE
---     tbl_inter           VARCHAR;
---     text_src            VARCHAR;
---     coef                DOUBLE PRECISION[];
---     old_messages        VARCHAR;
---     tbl_ind_scales      VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_dep_scale       VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_data_scaled     VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     tbl_inter_result    VARCHAR := MADLIB_SCHEMA.__cv_unique_string();
---     row_num             INTEGER;
---     dep_std             DOUBLE PRECISION;
---     dimension           INTEGER;
---     use_temp            VARCHAR;
--- BEGIN
---     old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
---     EXECUTE 'SET client_min_messages TO warning';
 
---     -- EXECUTE 'SELECT max(array_upper('|| col_ind_var ||', 1)) FROM '|| tbl_source INTO dimension;
---     EXECUTE 'SELECT count(*) FROM '|| tbl_source INTO row_num;
---     EXECUTE 'SELECT max(array_upper(' || col_ind_var || ', 1)) FROM ' || tbl_source INTO dimension;
-    
---     IF normalization THEN
---         PERFORM MADLIB_SCHEMA.__ridge_ind_var_scales(tbl_source, col_ind_var, row_num, dimension, tbl_ind_scales);
---         PERFORM MADLIB_SCHEMA.__ridge_dep_var_scale(tbl_source, col_dep_var, row_num, tbl_dep_scale);
---         PERFORM MADLIB_SCHEMA.__ridge_normalize_data(tbl_source, col_ind_var, dimension, col_dep_var,
---                                                     tbl_ind_scales, tbl_dep_scale, tbl_data_scaled);
---         tbl_inter := tbl_data_scaled;
---         EXECUTE 'SELECT dep_std FROM '|| tbl_dep_scale INTO dep_std;
---     ELSE
---         tbl_inter := tbl_source;
---         dep_std := 1;
---     END IF;
-    
---     -- create result table if it does not exist
---     IF normalization IS False THEN
---         tbl_inter_result := tbl_output;
---         use_temp := '';
---     ELSE
---         use_temp := 'TEMP';
---     END IF;
---     EXECUTE '
---         DROP TABLE IF EXISTS '|| tbl_inter_result ||';
---         CREATE '|| use_temp ||' TABLE ' || tbl_inter_result || ' (
---             coefficients    DOUBLE PRECISION[],
---             intercept       DOUBLE PRECISION,
---             normalization   BOOLEAN)';
-
---     EXECUTE '
---         INSERT INTO ' || tbl_inter_result || '
---         SELECT result, 0, False
---         FROM (
---             SELECT MADLIB_SCHEMA.__ridge_newton_result(
---                 MADLIB_SCHEMA.__ridge_newton_step(
---                     ('|| tbl_inter ||'.'|| col_ind_var ||')::FLOAT8[],
---                     ('|| tbl_inter ||'.'|| col_dep_var ||')::FLOAT8, 
---                     (NULL)::FLOAT8[],
---                     ('|| dimension ||')::INT2,
---                     ('|| lambda * row_num ||')::FLOAT8
---                     )
---                 ) AS result
---             FROM '|| tbl_inter ||' 
---             ) subq';
-
---     IF normalization THEN
---         PERFORM MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(tbl_inter_result, 'coefficients', '{normalization}'::VARCHAR[],
---                                                                 dimension, tbl_ind_scales, tbl_dep_scale, tbl_output);
---         EXECUTE 'UPDATE '|| tbl_output ||' SET normalization =True';
---     END IF;
-
---     EXECUTE 'DROP TABLE IF EXISTS '|| tbl_ind_scales ||';
---             DROP TABLE IF EXISTS '|| tbl_dep_scale ||';
---             DROP TABLE IF EXISTS '|| tbl_data_scaled;
-
---     IF normalization THEN
---         EXECUTE 'DROP TABLE IF EXISTS '|| tbl_inter_result;
---     END IF;
-            
---     EXECUTE 'SET client_min_messages TO ' || old_messages;
--- END;
--- $$ LANGUAGE plpgsql VOLATILE;
+------------------------------------------------------------------------
 
 CREATE FUNCTION MADLIB_SCHEMA.ridge_newton_train(
     rel_source      VARCHAR,
@@ -303,6 +224,7 @@ $$ LANGUAGE plpgsql VOLATILE;
  */
 CREATE FUNCTION MADLIB_SCHEMA.ridge_linear_newton_predict(
     coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[])
 RETURNS DOUBLE PRECISION
 AS 'MODULE_PATHNAME', 'ridge_newton_predict'
@@ -330,15 +252,11 @@ BEGIN
                 '|| tbl_new_data ||'.'|| id_var ||' AS id,
                 MADLIB_SCHEMA.ridge_linear_newton_predict(
                     coefficients,
+                    intercept,
                     '|| tbl_new_data ||'.'|| ind_var ||') AS prediction
             FROM
                 '|| tbl_new_data ||',
                 '|| tbl_model;
-
-    EXECUTE 'SELECT normalization FROM '|| tbl_model INTO normalization;
-    IF normalization THEN
-        EXECUTE 'UPDATE '|| tbl_prediction ||' SET prediction = prediction + intercept FROM '|| tbl_model;
-    END IF;
 
     EXECUTE 'SET client_min_messages TO ' || old_messages;
 END;

@@ -52,9 +52,12 @@ L1<Model>::gradient(
     model_type                          &gradient)
 {
     Index i;
-    for (i = 0; i < model.rows(); i ++)
+    // for (i = 0; i < model.rows(); i++)
+    for (i = 0; i < model.rows()-1; i ++)
     {
-        // if (model(i) == 0.)
+        // //if (model(i) == 0.)
+        // //if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
+        // if (std::abs(model(i)) < 1e-4)
         // {
         //     if (std::abs(gradient(i)) > lambda) {
         //         gradient(i) -= lambda * sign(gradient(i));
@@ -67,8 +70,9 @@ L1<Model>::gradient(
         //     gradient(i) += lambda * sign(model(i));
         // }
         // =================================================================
-        if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
+        //if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
         //if (std::abs(model(i)) < 1e-10)
+        if (model(i) == 0)
         {
             // soft thresholding
              if (std::abs(gradient(i)) > lambda) {
@@ -92,7 +96,8 @@ L1<Model>::loss(
         const double                        &lambda) {
     double norm = 0.;
     Index i;
-    for (i = 0; i < model.rows(); i ++) {
+    // for (i = 0; i < model.rows(); i++) {
+    for (i = 0; i < model.rows()-1; i ++) {
         norm += std::abs(model(i));
     }
     return lambda * norm;

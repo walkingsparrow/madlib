@@ -8,7 +8,7 @@
 #define MADLIB_MODULES_CONVEX_TASK_OLS_HPP_
 
 #include <dbconnector/dbconnector.hpp>
-
+#include <fstream>
 namespace madlib {
 
 namespace modules {
@@ -46,7 +46,8 @@ public:
             const dependent_variable_type       &y);
     
     static dependent_variable_type predict(
-            const model_type                    &model, 
+            const model_type                    &model,
+            const double  &intercept,
             const independent_variables_type    &x);
 };
 
@@ -56,7 +57,8 @@ OLS<Model, Tuple, Hessian>::gradient(
         const model_type                    &model,
         const independent_variables_type    &x,
         const dependent_variable_type       &y,
-        model_type                          &gradient) {
+        model_type                          &gradient) 
+{
     double wx = dot(model, x);
     double r = wx - y;
     gradient += r * x;
@@ -68,7 +70,8 @@ OLS<Model, Tuple, Hessian>::hessian(
         const model_type                    & /* model */,
         const independent_variables_type    &x,
         const dependent_variable_type       & /* y */, 
-        hessian_type                        &hessian) {
+        hessian_type                        &hessian) 
+{
     hessian += x * trans(x);
 }
 
@@ -77,7 +80,8 @@ double
 OLS<Model, Tuple, Hessian>::loss(
         const model_type                    &model, 
         const independent_variables_type    &x, 
-        const dependent_variable_type       &y) {
+        const dependent_variable_type       &y) 
+{
     double wx = dot(model, x);
     return (wx - y) * (wx - y) / 2.;
 }
@@ -85,9 +89,11 @@ OLS<Model, Tuple, Hessian>::loss(
 template <class Model, class Tuple, class Hessian>
 typename Tuple::dependent_variable_type
 OLS<Model, Tuple, Hessian>::predict(
-        const model_type                    &model, 
+        const model_type                    &model,
+        const double    &intercept,
         const independent_variables_type    &x) {
-    double wx = dot(model, x);
+    // double wx = dot(model, x)
+    double wx = dot(model, x) + intercept;
     return wx;
 }
 

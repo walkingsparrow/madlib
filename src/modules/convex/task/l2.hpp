@@ -44,8 +44,11 @@ void
 L2<Model, Hessian>::gradient(
         const model_type                    &model,
         const double                        &lambda, 
-        model_type                          &gradient) {
-    gradient += lambda * model;
+        model_type                          &gradient) 
+{
+    Index i;
+    for (i = 0; i < model.rows()-1; i++)
+        gradient(i) += lambda * model(i);
 }
 
 template <class Model, class Hessian>
@@ -53,16 +56,24 @@ void
 L2<Model, Hessian>::hessian(
         const model_type                    &model,
         const double                        &lambda, 
-        hessian_type                        &hessian) {
-    hessian += lambda * hessian.Identity(model.rows(), model.rows());
+        hessian_type                        &hessian) 
+{
+    int n = model.rows();
+    hessian += lambda * hessian.Identity(n, n);
+    hessian(n-1, n-1) -= lambda;
 }
 
 template <class Model, class Hessian>
 double 
 L2<Model, Hessian>::loss(
         const model_type                    &model, 
-        const double                        &lambda) {
-    return lambda * dot(model, model) / 2;
+        const double                        &lambda) 
+{
+    Index i;
+    double s = 0.;
+    for (i = 0; i < model.rows()-1; i++)
+        s += model(i) * model(i);
+    return lambda * s / 2.;
 }
 
 } // namespace convex

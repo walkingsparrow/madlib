@@ -131,16 +131,16 @@ BEGIN
         );
 
     PERFORM assert(
-        relative_error(coefficients, ARRAY[0, -0.3251, 0.02179, 1.036]) < 5e-3,
+        relative_error(coefficients[2:4], ARRAY[-0.3251, 0.02179, 1.036]) < 5e-3,
         'LASSO with lambda = 0 (houses): Wrong results'
     ) FROM test_lasso_model;
 
     PERFORM assert(
-        loss < 3,
+        log_likelihood < 3,
         'LASSO with lambda = 0 (houses): Wrong results'
     ) FROM test_lasso_model;
 
-    EXECUTE 'SELECT (@ coefficients[1]) + (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
+    EXECUTE 'SELECT (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
             FROM test_lasso_model' INTO norm1;
 
     -- 2. with lambda > 0, l1-norm has decreased
@@ -148,7 +148,7 @@ BEGIN
         'houses_array_normalized',
         'features',
         'price',
-        'test_lasso_model',
+        'test_lasso_model1',
         0.06,
         False,
         0.003,
@@ -156,8 +156,8 @@ BEGIN
         1e-10
         );
 
-    EXECUTE 'SELECT (@ coefficients[1]) + (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
-            FROM test_lasso_model' INTO norm2;
+    EXECUTE 'SELECT (@ coefficients[2]) + (@ coefficients[3]) + (@ coefficients[4])
+            FROM test_lasso_model1' INTO norm2;
 
     raise notice 'norm1 is %', norm1;
     raise notice 'norm2 is %', norm2;

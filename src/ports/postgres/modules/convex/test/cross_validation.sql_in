@@ -62,6 +62,7 @@ returns void as $$
   --  minv  double precision;
     --maxv  double precision;
 begin
+    execute 'drop table if exists valid_rst_tbl_new';
     perform cross_validation_general(
         'madlib.ridge_newton_train',
         '{%data%, val, dep, %model%, lambda, True}'::varchar[],
@@ -105,6 +106,7 @@ select check_cv();
 create function check_cv_ridge()
 returns void as $$
 begin
+    execute 'drop table if exists validation_result';
     perform cross_validation(
     'ridge',
     '{normalization = True, col_ind_var = val, col_dep_var = dep, tbl_source = cvtest1}',
