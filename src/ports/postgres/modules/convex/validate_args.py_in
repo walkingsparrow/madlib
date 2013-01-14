@@ -4,9 +4,21 @@ import plpy
 ## ========================================================================
 
 def __is_tbl_exists(tbl):
-    return plpy.execute("select count(*) from information_schema.tables where table_name = '{0}'".format(tbl))[0]['count'] > 0
+    """
+    Whether a table exists in the database
+    """
+    names = tbl.split(".")
+    if len(names) == 1:
+        return plpy.execute("select count(*) from information_schema.tables where table_name = '{0}'".format(tbl))[0]['count'] > 0
+    elif len(names) == 2:
+        schema = names[0]
+        table = names[1]
+        return plpy.execute("select count(*) from information_schema.tables where table_name = '{table}' and table_schema = '{schema}'".format(table = table, schema = schema))[0]['count'] == 1
+    else:
+        plpy.error("Format error: Table name strange!")
 
-
+    return False
+    
 ## ========================================================================
 
 def __is_tbl_exists_in_schema(tbl):
