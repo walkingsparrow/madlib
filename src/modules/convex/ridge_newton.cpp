@@ -136,9 +136,11 @@ AnyType
 ridge_newton_predict::run(AnyType &args) {
     using madlib::dbal::eigen_integration::MappedColumnVector;
     MappedColumnVector model = args[0].getAs<MappedColumnVector>();
-    MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
 
-    return OLS<MappedColumnVector, GLMTuple>::predict(model, indVar);
+    double intercept = args[1].getAs<double>();
+    MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
+
+    return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
 }
 
 } // namespace convex

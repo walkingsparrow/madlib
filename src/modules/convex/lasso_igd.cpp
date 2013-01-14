@@ -155,12 +155,6 @@ AnyType
 internal_lasso_igd_result::run(AnyType &args) {
     RegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
 
-    // double l1Norm = 0.;
-    // Index i;
-    // for (i = 0; i < state.task.model.rows(); i ++) {
-    //     l1Norm += std::abs(state.task.model(i));
-    // }
-
     AnyType tuple;
     tuple << state.task.model
           << static_cast<double>(state.algo.loss) +
@@ -176,9 +170,11 @@ AnyType
 lasso_igd_predict::run(AnyType &args) {
     using madlib::dbal::eigen_integration::MappedColumnVector;
     MappedColumnVector model = args[0].getAs<MappedColumnVector>();
-    MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
 
-    return OLS<MappedColumnVector, GLMTuple>::predict(model, indVar);
+    double intercept = args[1].getAs<double>();
+    MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
+
+    return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
 }
 
 } // namespace convex

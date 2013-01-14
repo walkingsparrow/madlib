@@ -8,6 +8,13 @@ from validation.cv_utils import __cv_split_data_using_id_col
 from validation.cv_utils import __cv_split_data_using_id_tbl
 from validation.cv_utils import __cv_summarize_result
 from validation.cv_utils import __cv_generate_random_id
+from convex.validate_args import __is_tbl_exists
+from convex.validate_args import __is_tbl_has_rows
+from convex.validate_args import __is_col_exists
+from convex.validate_args import __is_tbl_exists_in_schema
+from convex.validate_args import __is_scalar_col_no_null
+from convex.validate_args import __is_array_col_same_dimension
+from convex.validate_args import __is_array_col_no_null
 
 ## ========================================================================
 
@@ -421,12 +428,6 @@ def __ridge_newton_cv_preprocess(kwargs):
 
     kwargs.update(dict(tbl_used = tbl_used, row_num = row_num, dimension = dimension))
 
-    if fold_num <= 1:
-        plpy.error("Cross validation total fold number should be larger than 1!")
-
-    if upto_fold < 1 or upto_fold > fold_num:
-        plpy.error("Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
-
     # table to append all fitting results
     # which are distinguished by id
     plpy.execute("""
@@ -526,8 +527,54 @@ def __ridge_normalization_cv_restore(coef_count, **kwargs):
                **kwargs))
 
 ## ========================================================================
-    
+
 def __ridge_newton_cv(**kwargs):
+    __ridge_newton_cv_validate_args(kwargs)
+    return __ridge_newton_cv_compute(**kwargs)
+
+## ========================================================================
+
+def __ridge_newton_cv_validate_args(args):
+    if not __is_tbl_exists(args["data_tbl"]):
+        plpy.error("Ridge CV error: Data table does not exist!")
+
+    if __is_tbl_exists_in_schema(args["validation_result"]):
+        plpy.error("Ridge CV error: Output table already exists!")
+        
+    if not __is_tbl_has_rows(args["data_tbl"]):
+        plpy.error("Ridge CV error: Data table is empty!")
+
+    if not __is_col_exists(args["data_tbl"], [args["col_ind_var"], args["col_dep_var"]]):
+        plpy.error("Ridge CV error: Some column does not exist!")
+
+    if not __is_scalar_col_no_null(args["data_tbl"], args["col_dep_var"]):
+        plpy.error("Ridge CV error: Dependent variable has Null values! Please filter out Null values before using this function!")
+
+    if not __is_array_col_same_dimension(args["data_tbl"], args["col_ind_var"]):
+        plpy.error("Ridge CV error: Independent variable arrays have unequal lengths!")
+
+    if not __is_array_col_no_null(args["data_tbl"], args["col_ind_var"]):
+        plpy.error("Ridge CV error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+
+    for lambda_value in args["lambda_values"]:
+        if lambda_value < 0:
+            plpy.error("Ridge CV error: The regulation parameter lambda cannot be negative!")
+
+    fold_num = args["fold_num"]
+    upto_fold = args["upto_fold"]
+    if fold_num <= 1:
+        plpy.error("Ridge CV error: Cross validation total fold number should be larger than 1!")
+
+    if upto_fold < 1 or upto_fold > fold_num:
+        plpy.error("Ridge CV error: Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
+
+    row_num = plpy.execute("select count(*) from " + args["data_tbl"])[0]["count"]
+    if row_num <= fold_num:
+        plpy.error("Ridge CV error: Too few data! Fewer than fold_num.")
+
+    return None
+    
+def __ridge_newton_cv_compute(**kwargs):
     """
     Cross validation for ridge without lock limits.
 
@@ -588,16 +635,17 @@ def __ridge_newton_cv(**kwargs):
             effective_lambda = value * row_num_train
             
             # actually compute the fitting coefficients
+            # manually include the intercept as the last fitting parameter
             plpy.execute("""
                 insert into {tbl_coef}
-                    select {coef_count}, result, 0
+                    select {coef_count}, result[1:{dimension}], result[{dimension}+1]
                     from (
                         select {schema_madlib}.__ridge_newton_result(
                             {schema_madlib}.__ridge_newton_step(
-                                ({tbl_train}.{col_ind_var})::float8[],
+                                array_append(({tbl_train}.{col_ind_var})::float8[], 1::float8),
                                 ({tbl_train}.{col_dep_var})::float8,
                                 NULL::float8[],
-                                {dimension}::int2,
+                                ({dimension}+1)::int2,
                                 ({effective_lambda})::float8
                             )
                         ) as result
@@ -618,7 +666,7 @@ def __ridge_newton_cv(**kwargs):
                 select avg((real_value - pred)^2) as error
                 from (
                     select
-                        {schema_madlib}.ridge_linear_newton_predict(coef, {tbl_valid}.{col_ind_var}) + intercept as pred,
+                        {schema_madlib}.ridge_linear_newton_predict(coef, intercept, {tbl_valid}.{col_ind_var}) as pred,
                         {tbl_valid}.{col_dep_var} as real_value
                     from {tbl_valid}, {tbl_coef}
                     where {tbl_coef}.id = {coef_count}
@@ -681,7 +729,49 @@ def __ridge_newton_cv_help():
 def ridge_newton_train (schema_madlib, tbl_source, col_ind_var,
                         col_dep_var, tbl_output, lambda_value,
                         normalization, **kwargs):
+    (tbl_source, col_ind_var,
+     col_dep_var, tbl_output,
+     lambda_value, normalization) = __ridge_validate_args(tbl_source, col_ind_var,
+                                                          col_dep_var, tbl_output,
+                                                          lambda_value, normalization)
     
+    return ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
+                                col_dep_var, tbl_output, lambda_value,
+                                normalization, **kwargs)
+
+## ========================================================================
+
+def __ridge_validate_args(tbl_source, col_ind_var,
+                          col_dep_var, tbl_output,
+                          lambda_value, normalization):
+    if not __is_tbl_exists(tbl_source):
+        plpy.error("Ridge error: Data table " + tbl_source + " does not exist!")
+
+    if __is_tbl_exists_in_schema(tbl_output):
+        plpy.error("Ridge error: Output table " + tbl_output + " already exists!")
+
+    if not __is_tbl_has_rows(tbl_source):
+        plpy.error("Ridge error: Data table " + tbl_source + " is empty!")
+
+    if not __is_col_exists(tbl_source, [col_ind_var, col_dep_var]):
+        plpy.error("Ridge error: Some column does not exist!")
+
+    if not __is_scalar_col_no_null(tbl_source, col_dep_var):
+        plpy.error("Ridge error: Dependent variable has Null values! Please filter out Null values before using this function!")
+
+    if not __is_array_col_same_dimension(tbl_source, col_ind_var):
+        plpy.error("Ridge error: Independent variable arrays have unequal lengths!")
+
+    if not __is_array_col_no_null(tbl_source, col_ind_var):
+        plpy.error("Ridge error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+
+    if lambda_value < 0:
+        plpy.error("Ridge error: The regulation parameter lambda cannot be negative!")
+
+    return (tbl_source, col_ind_var,
+            col_dep_var, tbl_output,
+            lambda_value, normalization)
+                   
     
 def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                                 col_dep_var, tbl_output, lambda_value,
@@ -731,14 +821,14 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
 
     plpy.execute("""
                  insert into {tbl_inter_result}
-                 select result, 0, 0, False
+                 select result[1:{dimension}], result[{dimension}+1], 0, False
                  from (
                     select {schema_madlib}.__ridge_newton_result(
                         {schema_madlib}.__ridge_newton_step(
-                            ({tbl_inter}.{col_ind_var})::double precision[],
+                            array_append(({tbl_inter}.{col_ind_var})::double precision[],1::double precision),
                             ({tbl_inter}.{col_dep_var})::double precision,
                             (NULL)::double precision[],
-                            {dimension}::int2,
+                            ({dimension}+1)::int2,
                             {effective_lambda}::double precision)
                        ) as result
                     from {tbl_inter}
@@ -754,7 +844,7 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                     from
                         (
                            select
-                               avg(({col_dep_var} - {schema_madlib}.ridge_linear_newton_predict(coefficients, {col_ind_var}))^2) / 2. as loss
+                               avg(({col_dep_var} - {schema_madlib}.ridge_linear_newton_predict(coefficients, intercept, {col_ind_var}))^2) / 2. as loss
                            from
                                {tbl_inter_result},
                                {tbl_inter}
