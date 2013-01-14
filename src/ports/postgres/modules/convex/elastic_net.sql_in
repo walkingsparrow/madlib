@@ -41,6 +41,21 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 PythonFunction(convex, elastic_net, elastic_net_train)
 $$ LANGUAGE plpythonu;
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    tbl_result          VARCHAR,
+    lambda_value        DOUBLE PRECISION,
+    alpha               DOUBLE PRECISION,
+    normalization       BOOLEAN,
+    regress_family      VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 'newton', '{NULL}'::VARCHAR[]);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 ------------------------------------------------------------------------
 
 /**
@@ -156,10 +171,12 @@ LANGUAGE C IMMUTABLE STRICT;
  * @brief Prediction use learned coefficients for a given example
  *
  * @param coefficients  Weight vector (hyperplane, classifier)
- * @param ind_var  Features (independent variables)
+ * @param intercept     Linear fitting intercept
+ * @param ind_var       Features (independent variables)
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.gaussian_igd_predict (
     coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
 'MODULE_PATHNAME', 'gaussian_igd_predict'
