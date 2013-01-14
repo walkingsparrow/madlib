@@ -77,11 +77,11 @@ If  normalization = False, the output has the following format
   ...
   </pre>
 
-where <em>log_likelihood</em> is the value of the first equation above.
+where <em>log_likelihood</em> is the negative value of the first equation above (up to a constant depending on the data set).
   
 - Get the \b prediction on a data set using the fitted model:
 <pre>
-SELECT madlib.lasso_linear_igd_predict(<em>coefficients</em>, <em>independentVariables</em>') + intercept
+SELECT madlib.lasso_linear_igd_predict(<em>coefficients</em>, <em>intercept</em>, <em>independentVariables</em>') 
 FROM sourceTableName, modelTableName;
 </pre>
 
@@ -109,7 +109,7 @@ mydb=# INSERT INTO lasso_data values ({0.15, -1.3}, -1.3);
 mydb=# SELECT madlib.lasso_igd_train('lasso_data', 'ind_var', 'dep_var', 'lasso_model', 0.1, True);
 \endcode
 \code
-mydb=# select madlib.lasso_linear_igd_predict(coefficients, ind_var) + intercept
+mydb=# select madlib.lasso_linear_igd_predict(coefficients, intercept, ind_var) + intercept
 mydb-# from lasso_data, lasso_model;
 \endcode
 
@@ -343,7 +343,6 @@ BEGIN
     EXECUTE 'SET client_min_messages TO warning';
 
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_prediction ||';
         CREATE TABLE '|| tbl_prediction ||' AS
             SELECT
                 '|| tbl_new_data ||'.'|| id_var ||' AS id,

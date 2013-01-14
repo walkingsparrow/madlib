@@ -535,6 +535,9 @@ def __ridge_newton_cv(**kwargs):
 ## ========================================================================
 
 def __ridge_newton_cv_validate_args(args):
+    """
+    Validate the arguments to __ridge_newton_cv
+    """
     if not __is_tbl_exists(args["data_tbl"]):
         plpy.error("Ridge CV error: Data table does not exist!")
 
@@ -583,11 +586,10 @@ def __ridge_newton_cv_compute(**kwargs):
 
     Parameters:
     schema_madlib -- Name of the MADlib schema, properly escaped/quoted
-    func_args -- A string list with each item having the form of "arg = value". It gives the arguments
-                 needed by the modelling function in the cross validation.
-    param_to_try -- The name of the parameter in the modelling function that CV will run through. For Ridge
-                    regression, this one must be "lambda"
-    param_values -- The different values that CV will run through.
+    data_tbl -- Name of data source table
+    col_ind_var -- Name of indepdendent variable (an array) column
+    col_dep_var -- Name of dependent variable (double) column
+    lambda_values -- An array of values for lambda (the regulation parameter)
     data_id -- Whether the data table has a unique ID associated with each row. If data_id exists, then
                it would be be much easier to split the data into training and validation portions. Otherwise,
                CV function will copy the original data (only copy the part used in the calculation) and add
@@ -598,6 +600,7 @@ def __ridge_newton_cv_compute(**kwargs):
     validation_result -- The table name to store the result of CV. It has 3 columns: lamda value, MSE error
                          average, and MSE error standard deviation.
     fold_num -- The cross validation fold number.
+    upto_fold -- Which fold number the function will run up to
     """
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to warning")
@@ -776,6 +779,14 @@ def __ridge_validate_args(tbl_source, col_ind_var,
 def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                                 col_dep_var, tbl_output, lambda_value,
                                 normalization, **kwargs):
+    """
+    @param tbl_source -- Name of data source table
+    @param col_ind_var -- Name of indepdendent variable (an array) column
+    @param col_dep_var -- Name of dependent variable (double) column
+    @param tbl_output -- Name of tabel to store results
+    @param lambda_value -- Value of teh regulation parameter
+    @param normalization -- Whether to normalize the dependent variables
+    """
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to warning")
 
@@ -840,7 +851,7 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
     plpy.execute("""
                  update {tbl_inter_result} set log_likelihood = ll from
                  (
-                    select loss + module_2 as ll
+                    select -(loss + module_2) as ll
                     from
                         (
                            select

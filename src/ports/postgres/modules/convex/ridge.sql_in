@@ -70,12 +70,12 @@ Null values are not expected.
   ------------------+------------+------------+------------+--------------+-------------+------------------+-------------
   ...
   </pre>
-  where <em>log_likelihood</em> is the value of the first equation above.
+  where <em>log_likelihood</em> is the negative value of the first equation above (up to a constant depending on the data set).
 
 <b> Make predictions</b>
 where <em>intercept</em> presents if it exists:
 <pre>
-SELECT madlib.ridge_linear_newton_predict(<em>coefficients</em>, <em>col_ind_var</em>) + <em>intercept</em>
+SELECT madlib.ridge_linear_newton_predict(<em>coefficients</em>, <em>intercept</em>, <em>col_ind_var</em>)
 FROM sourceTableName, modelTableName;
 </pre>
 
@@ -110,7 +110,7 @@ mydb=# INSERT INTO ridge_data values ({0.15, -1.3}, -1.3);
 mydb=# SELECT madlib.ridge_newton_train('ridge_data', 'ind_var', 'dep_var', 'ridge_model', 0.1, True);
 \endcode
 \code
-mydb=# select madlib.ridge_linear_newton_predict(coefficients, ind_var) + intercept
+mydb=# select madlib.ridge_linear_newton_predict(coefficients, intercept, ind_var)
 mydb-# from ridge_data, ridge_model;
 \endcode
 
@@ -246,7 +246,6 @@ BEGIN
     EXECUTE 'SET client_min_messages TO warning';
     
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_prediction ||';
         CREATE TABLE '|| tbl_prediction ||' AS
             SELECT
                 '|| tbl_new_data ||'.'|| id_var ||' AS id,
@@ -278,7 +277,6 @@ BEGIN
     EXECUTE 'SET client_min_messages TO warning';
 
     EXECUTE '
-        DROP TABLE IF EXISTS '|| tbl_error ||';
         CREATE TABLE '|| tbl_error ||' AS
         SELECT
             avg(('|| tbl_prediction ||'.prediction - '|| tbl_actual ||'.'|| values_actual ||')^2) as mean_squared_error

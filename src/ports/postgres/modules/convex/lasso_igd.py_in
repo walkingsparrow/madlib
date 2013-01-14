@@ -229,6 +229,9 @@ def __lasso_igd_cv(**kwargs):
 ## ========================================================================
 
 def __lasso_igd_cv_validate_args(args):
+    """
+    Validate the arguments for LASSO specific cross-validation
+    """
     if not __is_tbl_exists(args["data_tbl"]):
         plpy.error("LASSO CV error: Data table does not exist!")
 
@@ -289,11 +292,10 @@ def __lasso_igd_cv_compute(**kwargs):
 
     Parameters:
     schema_madlib -- Name of the MADlib schema, properly escaped/quoted
-    func_args -- A string list with each item having the form of "arg = value". It gives the arguments
-                 needed by the modelling function in the cross validation.
-    param_to_try -- The name of the parameter in the modelling function that CV will run through. For Ridge
-                    regression, this one must be "lambda"
-    param_values -- The different values that CV will run through.
+    data_tbl -- Name of data source table
+    col_ind_var -- Name of indepdendent variable (an array) column
+    col_dep_var -- Name of dependent variable (double) column
+    lambda_values -- An array of values for lambda (the regulation parameter)
     data_id -- Whether the data table has a unique ID associated with each row. If data_id exists, then
                it would be be much easier to split the data into training and validation portions. Otherwise,
                CV function will copy the original data (only copy the part used in the calculation) and add
@@ -482,6 +484,9 @@ def lasso_igd_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
 def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
                               tbl_output, lambda_value, normalization, stepsize,
                               num_iterations, tolerance):
+    """
+    Validate LASSO train function's arguments
+    """
     if not __is_tbl_exists(tbl_source):
         plpy.error("LASSO error: Data table does not exist!")
 
@@ -524,6 +529,17 @@ def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
 def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                             tbl_output, lambda_value, normalization, stepsize,
                             num_iterations, tolerance, **kwargs):
+    """
+    @param tbl_source -- Name of data source table
+    @param col_ind_var -- Name of indepdendent variable (an array) column
+    @param col_dep_var -- Name of dependent variable (double) column
+    @param tbl_output -- Name of tabel to store results
+    @param lambda_value -- Value of teh regulation parameter
+    @param normalization -- Whether to normalize the dependent variables
+    @param stepsize -- step size for IGD
+    @param num_iterations -- The maximum iterations that the function can run
+    @param tolenrance -- The largest allowed difference between two consecutive states
+    """
     old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to error")
 
@@ -592,7 +608,7 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                     select 
                         (result).coefficients[1:{dimension}], 
                         (result).coefficients[{dimension}+1], 
-                        (result).loss/{row_num},
+                        - (result).loss/{row_num},
                         False
                     from (
                         select {schema_madlib}.__lasso_igd_result(_state) as result
