@@ -19,8 +19,9 @@ namespace convex {
 using namespace madlib::dbal::eigen_integration;
 
 template <class Model, class Tuple, class Hessian = Matrix>
-class OLS {
-public:
+class OLS
+{
+  public:
     typedef Model model_type;
     typedef Tuple tuple_type;
     typedef Hessian hessian_type;
@@ -90,17 +91,15 @@ template <class Model, class Tuple, class Hessian>
 typename Tuple::dependent_variable_type
 OLS<Model, Tuple, Hessian>::predict(
         const model_type                    &model,
-        const double    &intercept,
-        const independent_variables_type    &x) {
-    // double wx = dot(model, x)
+        const double                        &intercept,
+        const independent_variables_type    &x)
+{
     double wx = dot(model, x) + intercept;
     return wx;
 }
 
 } // namespace convex
-
 } // namespace modules
-
 } // namespace madlib
 
 #endif

@@ -46,25 +46,27 @@ ElasticNet<Model>::gradient(
     const int& row_num, const double& stepsize, model_type& gradient)
 {
     Index i;
-    for (i = 0; i < model.rows(); i ++)
+    // the last model coefficient is intercept, which
+    // will not be regularized
+    for (i = 0; i < model.rows() - 1; i ++)
     {
         if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
         {
             // soft thresholding
             if (std::abs(gradient(i)) > lambda) {
                 gradient(i) -= alpha * lambda * sign(gradient(i));
-                gradient(i) = - gradient(i) / stepsize + model(i) * row_num / stepsize;
+                // gradient(i) = - gradient(i) / stepsize + alpha * model(i) * row_num / stepsize;
             } else {
-                gradient(i) = model(i) * row_num / stepsize;
+                gradient(i) = alpha * model(i) * row_num / stepsize;
             }
         }
         else
         {
             gradient(i) += alpha * lambda * sign(model(i));
         }
+
+        gradient(i) += (1 - alpha) * lambda * model(i);
     }
-    
-    gradient += (1 - alpha) * lambda * model;
 }
 
 template <class Model>
@@ -73,7 +75,9 @@ ElasticNet<Model>::loss(const model_type& model, const double& lambda, const dou
 {
     double norm = 0.;
     Index i;
-    for (i = 0; i < model.rows(); i ++)
+    // the last model coefficient is intercept, which
+    // will not be regularized
+    for (i = 0; i < model.rows() - 1; i ++)
         norm += alpha * std::abs(model(i)) +
             (1 - alpha) * model(i) * model(i) * 0.5;
     return lambda * norm;

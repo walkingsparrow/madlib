@@ -14,7 +14,12 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     
     If an optimizer name is given, print out the necessary parameters.
     """
-    pass
+    if family_or_optimizer == "gaussian" or family_or_optimizer == "linear":
+        return """
+        Supported optimizer: Incremental Gradient Descent method ('igd')
+
+        For alpha = 0, Newton method ('newton') is also supported.
+        """
 
 ## ========================================================================
 
@@ -43,11 +48,11 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     """
     # Special case for ridge linear regression
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
-        optimizer.lower() == "igd" and
+        optimizer.lower() == "newton" and
         alpha == 0):
         plpy.execute("""select {schema_madlib}.ridge_newton_train(
-                            {tbl_source}, {col_ind_var}, {col_dap_var},
-                            {tbl_result}, {lambda}, {normalization}
+                            '{tbl_source}', '{col_ind_var}', '{col_dep_var}',
+                            '{tbl_result}', {lambda_value}, {normalization}
         )""".format(schema_madlib = schema_madlib,
                     tbl_source = tbl_source,
                     col_ind_var = col_ind_var,
@@ -55,6 +60,7 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                     tbl_result = tbl_result,
                     lambda_value = lambda_value,
                     normalization = normalization))
+        return None
     
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "igd"):
@@ -63,12 +69,13 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                                          normalization, optimizer_params, **kwargs)
         return None
 
-    if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
-        optimizer.lower() == "igd"):
-        __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
-                                         col_dep_var, tbl_result, lambda_value, alpha,
-                                         normalization, optimizer_params, **kwargs)
+    # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
+    #     optimizer.lower() == "igd"):
+    #     __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
+    #                                      col_dep_var, tbl_result, lambda_value, alpha,
+    #                                      normalization, optimizer_params, **kwargs)
         return None
 
-
+    plpy.error("Not a supported response family or supported optimizer of the given response family!")
+    return None
     
