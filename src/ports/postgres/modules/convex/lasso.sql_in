@@ -20,7 +20,7 @@ m4_include(`SQLCommon.m4') --'
 
 This module implements LASSO (least absolute shrinkage and selection operator) [1].
 Mathematically, this model seeks to find a weight vector \f$w\f$ (also referred as hyperplane) that, for any given training example set, minimizes:
-\f[\min_{w \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right] + \lambda \|w\|_1,\f]
+\f[\min_{w \in R^N,w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right] + \lambda \|w\|_1,\f]
 where \f$x_m \in R^N\f$ are values of independent variables, and \f$y_m \in R\f$ are values of the dependent variable, \f$m = 1,...,M\f$. Note that \f[w_{0}\f] is not regularized.
 
 To get better convergence, one can rescale the value of each element of x
@@ -28,7 +28,7 @@ To get better convergence, one can rescale the value of each element of x
 and
 \f[y' \leftarrow y - \bar{y} \f]
 and then fit 
-\f[\min_{w' \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w'^{t} x'_m - y'_m)^2 \right] + \frac{\lambda}{2} \|w'\|_1,\f]
+\f[\min_{w' \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w'^{t} x'_m - y'_m)^2 \right] + \lambda \|w'\|_1,\f]
 At the end of the calculation, the orginal scales will be restored and an intercept term will be obtained at the same time as a by-product.
 
 Note that fitting after scaling is not equivalent to directly fitting.
