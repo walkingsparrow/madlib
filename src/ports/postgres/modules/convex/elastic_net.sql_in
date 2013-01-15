@@ -13,6 +13,32 @@
 m4_include(`SQLCommon.m4') --'
 
 /**
+@addtogroup grp_elasticnet
+
+@about
+
+This module implements the elastic net regulation for regressions.
+
+This method seeks to find a weight vector that, for any given training example set, minimizes:
+\f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2 + \alpha \|w\|_1 \right)\f]
+where \f$L\f$ is the metric function that the user wants to minimize.
+
+For Gaussian response family (or linear model), we have
+\f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right] + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2 + \alpha \|w\|_1 \right)\f]
+
+@input
+
+@usage
+
+@examp
+
+@literature
+
+*/
+
+------------------------------------------------------------------------
+
+/**
  * @brief Interface for elastic net
  *
  * @param tbl_source        Name of data source table
