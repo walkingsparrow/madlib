@@ -41,6 +41,9 @@ and included third-party libraries can be found inside the
         @defgroup grp_lasso LASSO
         @ingroup grp_suplearn
 
+        @defgroup grp_elasticnet Elastic Net Regulation
+        @ingroup grp_suplearn
+
 	@defgroup grp_dectree Decision Tree
 	@ingroup grp_suplearn
 
