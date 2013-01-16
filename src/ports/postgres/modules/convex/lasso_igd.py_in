@@ -601,7 +601,8 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                     coefficients    double precision[],
                     intercept       double precision,
                     log_likelihood  double precision,
-                    normalization   boolean)
+                    normalization   boolean,
+                    iteration_run   integer)
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_inter_result}
@@ -609,7 +610,7 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                         (result).coefficients[1:{dimension}], 
                         (result).coefficients[{dimension}+1], 
                         - (result).loss/{row_num},
-                        False
+                        False, {iteration_run}
                     from (
                         select {schema_madlib}.__lasso_igd_result(_state) as result
                         from {tbl_lasso_igd_state}
@@ -621,7 +622,7 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     if normalization:
         __ridge_restore_linear_coef_scales(tbl_coef = tbl_inter_result,
                                            col_coef = 'coefficients',
-                                           col_others = ["log_likelihood", "normalization"],
+                                           col_others = ["log_likelihood", "normalization", "iteration_run"],
                                            dimension = dimension,
                                            tbl_ind_scales = args["tbl_ind_scales"],
                                            tbl_dep_scale = args["tbl_dep_scale"],
