@@ -53,11 +53,12 @@ ElasticNet<Model>::gradient(
         if (std::abs(model(i)) <= std::numeric_limits<double>::denorm_min())
         {
             // soft thresholding
-            if (std::abs(gradient(i)) > lambda) {
+            if (std::abs(gradient(i)) > lambda * alpha) {
                 gradient(i) -= alpha * lambda * sign(gradient(i));
-                // gradient(i) = - gradient(i) / stepsize + alpha * model(i) * row_num / stepsize;
+                gradient(i) = - gradient(i) / stepsize + alpha * model(i) * row_num / stepsize;
             } else {
                 gradient(i) = alpha * model(i) * row_num / stepsize;
+                //gradient(i) = 0;
             }
         }
         else

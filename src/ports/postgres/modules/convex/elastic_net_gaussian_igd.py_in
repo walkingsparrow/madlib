@@ -305,7 +305,8 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                     select
                         (result).coefficients[1:{dimension}],
                         (result).coefficients[{dimension}+1],
-                        0, False, {iteration_run}
+                        -(result).likelihood / {row_num},
+                        False, {iteration_run}
                     from (
                         select {schema_madlib}.__gaussian_igd_result(_state) as result
                         from {tbl_igd_state}
@@ -313,27 +314,27 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                     ) t
                  """.format(iteration_run = iteration_run, **args))
 
-    # compute the likelihood
-    plpy.execute("""
-                 update {tbl_inter_result} set log_likelihood = llhd from (
-                    select
-                        -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
-                    from (
-                        select
-                            avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var}))^2) / 2. as loss
-                        from
-                            {tbl_inter_result},
-                            {tbl_used}
-                        ) t1,
-                        (
-                            select sum(coef^2) as module_2, sum(abs(coef)) as module_1
-                            from (
-                                select unnest(coefficients) as coef
-                                from {tbl_inter_result}
-                            ) s
-                        ) t2
-                 ) u
-                 """.format(tbl_used = tbl_used, **args))
+    # # compute the likelihood
+    # plpy.execute("""
+    #              update {tbl_inter_result} set log_likelihood = llhd from (
+    #                 select
+    #                     -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
+    #                 from (
+    #                     select
+    #                         avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var}))^2) / 2. as loss
+    #                     from
+    #                         {tbl_inter_result},
+    #                         {tbl_used}
+    #                     ) t1,
+    #                     (
+    #                         select sum(coef^2) as module_2, sum(abs(coef)) as module_1
+    #                         from (
+    #                             select unnest(coefficients) as coef
+    #                             from {tbl_inter_result}
+    #                         ) s
+    #                     ) t2
+    #              ) u
+    #              """.format(tbl_used = tbl_used, **args))
     
     if normalization:
         __ridge_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],

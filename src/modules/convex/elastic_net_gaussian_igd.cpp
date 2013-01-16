@@ -9,6 +9,7 @@
 #include "type/tuple.hpp"
 #include "type/model.hpp"
 #include "type/state.hpp"
+#include "algo/loss.hpp"
 
 namespace madlib {
 namespace modules {
@@ -24,6 +25,10 @@ typedef ENRegularizedIGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
 typedef IGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
             ENRegularizedGLMIGDState<ArrayHandle<double> >,
             OLS<GLMModel, GLMTuple > > OLSIGDAlgorithm;
+
+typedef Loss<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
+             ENRegularizedGLMIGDState<ArrayHandle<double> >,
+             OLS<GLMModel, GLMTuple > > OLSLossAlgorithm;
 
 // ------------------------------------------------------------------------
 
@@ -75,6 +80,7 @@ gaussian_igd_transition::run (AnyType& args)
 
     // Now do the transition step
     OLSENRegularizedIGDAlgorithm::transition(state, tuple);
+    OLSLossAlgorithm::transition(state, tuple);
     state.algo.numRows ++;
 
     return state;
@@ -98,6 +104,7 @@ gaussian_igd_merge::run (AnyType& args)
 
     // Merge states together
     OLSIGDAlgorithm::merge(stateLeft, stateRight);
+    OLSLossAlgorithm::merge(stateLeft, stateRight);
     
     // The following numRows update, cannot be put above, because the model
     // averaging depends on their original values
@@ -119,7 +126,7 @@ gaussian_igd_final::run (AnyType& args)
     ENRegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
 
     // Aggregates that haven't seen any data just return Null.
-    if (state.algo.numRows == 0) { return Null(); }
+    if (state.algo.numRows == 0) return Null(); 
 
     // finalizing
     OLSIGDAlgorithm::final(state);
@@ -138,15 +145,17 @@ internal_gaussian_igd_state_diff::run (AnyType& args)
     ENRegularizedGLMIGDState<ArrayHandle<double> > state1 = args[0];
     ENRegularizedGLMIGDState<ArrayHandle<double> > state2 = args[1];
 
-    double diff = 0;    
-    Index i;
-    int n = state1.task.model.rows();
-    for (i = 0; i < n; i++)
-    {
-        diff += std::abs(state1.task.model(i) - state2.task.model(i));
-    }
+    // double diff = 0;    
+    // Index i;
+    // int n = state1.task.model.rows();
+    // for (i = 0; i < n; i++)
+    // {
+    //     diff += std::abs(state1.task.model(i) - state2.task.model(i));
+    // }
 
-    return diff / n;
+    // return diff / n;
+
+    return std::abs((state1.algo.loss - state2.algo.loss) / state2.algo.loss);
 }
 
 // ------------------------------------------------------------------------
@@ -158,9 +167,20 @@ AnyType
 internal_gaussian_igd_result::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
-    
+    double norm = 0;
+
+    for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
+        double m = state.task.model(i);
+        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    }
+    norm *= state.task.lambda;
+        
     AnyType tuple;
-    tuple << state.task.model;
+    tuple << state.task.model
+          << static_cast<double>(state.algo.loss) + norm;// +
+        // (double)(GLMENRegularizer::loss(state.task.model,
+        //                                 state.task.lambda,
+        //                                 state.task.alpha));
 
     return tuple;
 }
