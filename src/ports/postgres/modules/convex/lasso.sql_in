@@ -104,12 +104,12 @@ mydb=# INSERT INTO lasso_data values ({0.67, -0.06}, 0.3);
 ...
 mydb=# INSERT INTO lasso_data values ({0.15, -1.3}, -1.3);
 \endcode   
--# call lasso_igd_run() to learn coefficients, e.g.:  
+-# call lasso_igd_train() to learn coefficients, e.g.:  
 \code
 mydb=# SELECT madlib.lasso_igd_train('lasso_data', 'ind_var', 'dep_var', 'lasso_model', 0.1, True);
 \endcode
 \code
-mydb=# select madlib.lasso_linear_igd_predict(coefficients, intercept, ind_var) + intercept
+mydb=# select madlib.lasso_linear_igd_predict(coefficients, intercept, ind_var)
 mydb-# from lasso_data, lasso_model;
 \endcode
 
