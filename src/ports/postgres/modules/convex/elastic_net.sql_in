@@ -22,7 +22,8 @@ This module implements the elastic net regulation for regressions.
 This method seeks to find a weight vector that, for any given training example set, minimizes:
 \f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 where \f$L\f$ is the metric function that the user wants to minimize. Here \f$ \alpha \in [0,1] \f$
-and \f$ lambda \geq 0 \f$. 
+and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the Ridge regulation. And if \f$\alpha = 1\f$,
+we have the LASSO regulation.
 
 For Gaussian response family (or linear model), we have
 \f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right]
@@ -55,11 +56,75 @@ Null values are not expected.
 
 - Get the fitting coefficients for a linear model:
 
-<pre>SELECT madlib.elastic_net_train()
+<pre>SELECT madlib.elastic_net_train(
+    '<em>tbl_source</em>',  -- Name of data table
+    '<em>col_ind_var</em>', -- Name of independent variable column
+    '<em>col_dep_var</em>', -- Name of dependent variable column
+    '<em>tbl_result</em>', -- Name of the table to store the fitting result
+    '<em>lambda_value</em>', -- Value of the regulation parameter
+    '<em>alpha</em>',    -- Value of the elastic net controlling parameter
+    '<em>normalization</em>', -- Whether to normalize the variables
+    '<em>regress_family</em>', -- Response type, 'gaussian' ('linear') or 'binomial' ('logistic')
+    '<em>optimizer</em>', --  The optimization algorithm, for example 'igd'
+    '<em>optimizer_params</em>' -- Parameters of the above optimizer, the format is '{arg = value, ...}'::varchar[]
+);
+</pre>
+
+If <em>normalization</em> = False, the output has the following format
+
+  Output:
+  <pre>  coefficients | intercept | log_likelihood | normalization
+  -------+--------------+---------+----------------
+        ...
+  </pre>
+
+  Otherwise, the mean values and standard deviations of both independent variables and dependent variable will be output.
+  <pre> coefficients | intercept | ind_ar_mean | ind_var_std | dep_var_mean | dep_var_std | log_likelihood | normalization
+  ------------------+------------+------------+------------+--------------+-------------+--------+--------
+  ...
+  </pre>
+
+where <em>log_likelihood</em> is the negative value of the first equation above (up to a constant depending on the data set).
+
+- Get the \b prediction on a data set using a linear model:
+<pre>
+SELECT madlib.elastic_net_predict(
+    '<em>regress_family</em>',  -- Response type, 'gaussian' ('linear') or 'binomial' ('logistic')
+    <em>coefficients</em>,    -- fitting coefficients
+    <em>intercept</em>,  -- fitting intercept
+    <em>independent Variables</em> 
+);
+</pre>
 
 @examp
 
+-# Prepare an input table/view:
+\code
+CREATE TABLE en_data (
+    ind_var DOUBLE PRECISION[],
+    dep_var DOUBLE PRECISION
+);
+\endcode     
+-# Populate the input table with some data, which should be well-conditioned, e.g.:
+\code
+mydb=# INSERT INTO lasso_data values ({1, 1}, 0.89);
+mydb=# INSERT INTO lasso_data values ({0.67, -0.06}, 0.3);
+...
+mydb=# INSERT INTO lasso_data values ({0.15, -1.3}, -1.3);
+\endcode   
+-# learn coefficients, e.g.:  
+\code
+mydb=# SELECT madlib.elastic_net_train('en_data', 'ind_var', 'dep_var', 'en_model', 0.1, 0.5,
+                                        True, 'linear', igd', '{tolerance=0.000001}'::varchar[]);
+\endcode
+\code
+mydb=# select madlib.elastic_net_predict('gaussian', coefficients, intercept, ind_var)
+mydb-# from en_data, en_model;
+\endcode
+
 @literature
+
+[1] Elastic net regulation. http://en.wikipedia.org/wiki/Elastic_net_regularization
 
 */
 
@@ -138,6 +203,26 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 ) RETURNS VARCHAR AS $$
 PythonFunction(convex, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
+
+------------------------------------------------------------------------
+
+--
+/**
+ * @brief Prediction use learned coefficients for a given example
+ *
+ * @param regress_family    model family
+ * @param coefficients      Weight vector (hyperplane, classifier)
+ * @param intercept         Linear fitting intercept
+ * @param ind_var           Features (independent variables)
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
+    regress_family  VARCHAR,
+    coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
+    ind_var         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS $$
+PythonFunction(convex, elastic_net, elastic_net_predict)
+LANGUAGE plpythonu STRICT;
 
 ------------------------------------------------------------------------
 -- Compute the solution for just one step ------------------------------
@@ -219,18 +304,4 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
 'MODULE_PATHNAME', 'internal_gaussian_igd_result'
 LANGUAGE C IMMUTABLE STRICT;
 
---
-/**
- * @brief Prediction use learned coefficients for a given example
- *
- * @param coefficients  Weight vector (hyperplane, classifier)
- * @param intercept     Linear fitting intercept
- * @param ind_var       Features (independent variables)
- */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.gaussian_igd_predict (
-    coefficients    DOUBLE PRECISION[],
-    intercept       DOUBLE PRECISION,
-    ind_var         DOUBLE PRECISION[]
-) RETURNS DOUBLE PRECISION AS
-'MODULE_PATHNAME', 'gaussian_igd_predict'
-LANGUAGE C IMMUTABLE STRICT;
+
