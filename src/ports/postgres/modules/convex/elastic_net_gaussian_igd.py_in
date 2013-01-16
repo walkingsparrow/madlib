@@ -296,7 +296,8 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                     coefficients      double precision[],
                     intercept         double precision,
                     log_likelihood    double precision,
-                    normalization     boolean)
+                    normalization     boolean,
+                    iteration_run        integer)
                  """.format(use_temp = use_temp, **args))
 
     plpy.execute("""
@@ -304,7 +305,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                     select
                         (result).coefficients[1:{dimension}],
                         (result).coefficients[{dimension}+1],
-                        0, False
+                        0, False, {iteration_run}
                     from (
                         select {schema_madlib}.__gaussian_igd_result(_state) as result
                         from {tbl_igd_state}
@@ -319,7 +320,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                         -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
                     from (
                         select
-                            avg(({col_dep_var} - {schema_madlib}.gaussian_igd_predict(coefficients, intercept, {col_ind_var}))^2) / 2. as loss
+                            avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var}))^2) / 2. as loss
                         from
                             {tbl_inter_result},
                             {tbl_used}
@@ -337,7 +338,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     if normalization:
         __ridge_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
                                            col_coef = "coefficients",
-                                           col_others = ["log_likelihood", "normalization"],
+                                           col_others = ["log_likelihood", "normalization", "iteration_run"],
                                            tbl_origin_coef = tbl_result,
                                            **args)
         plpy.execute("update {tbl_result} set normalization = True".format(**args))

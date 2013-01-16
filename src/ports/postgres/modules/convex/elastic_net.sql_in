@@ -222,7 +222,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS $$
 PythonFunction(convex, elastic_net, elastic_net_predict)
-LANGUAGE plpythonu STRICT;
+$$ LANGUAGE plpythonu STRICT;
 
 ------------------------------------------------------------------------
 -- Compute the solution for just one step ------------------------------
