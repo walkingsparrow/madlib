@@ -167,19 +167,19 @@ internal_gaussian_igd_result::run (AnyType& args)
 
 // ------------------------------------------------------------------------
 
-/**
- * @brief Compute w \dot x, where w is the vector of coefficients
- */
-AnyType
-gaussian_igd_predict::run (AnyType& args)
-{
-    using madlib::dbal::eigen_integration::MappedColumnVector;
-    MappedColumnVector model = args[0].getAs<MappedColumnVector>();
-    double intercept = args[1].getAs<double>();
-    MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
+// /**
+//  * @brief Compute w \dot x, where w is the vector of coefficients
+//  */
+// AnyType
+// gaussian_igd_predict::run (AnyType& args)
+// {
+//     using madlib::dbal::eigen_integration::MappedColumnVector;
+//     MappedColumnVector model = args[0].getAs<MappedColumnVector>();
+//     double intercept = args[1].getAs<double>();
+//     MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
 
-    return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
-}
+//     return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
+// }
  
 } // namespace convex 
 } // namespace modules

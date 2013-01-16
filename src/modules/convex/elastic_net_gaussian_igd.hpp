@@ -30,7 +30,7 @@ DECLARE_UDF(convex, internal_gaussian_igd_state_diff)
  */
 DECLARE_UDF(convex, internal_gaussian_igd_result)
 
-/**
- * @brief (incremental gradient): Prediction
- */
-DECLARE_UDF(convex, gaussian_igd_predict)
+// /**
+//  * @brief (incremental gradient): Prediction
+//  */
+// DECLARE_UDF(convex, gaussian_igd_predict)

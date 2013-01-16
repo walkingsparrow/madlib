@@ -60,7 +60,7 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     @param lambda_value      The regulation parameter
     @param alpha             The elastic net parameter, [0, 1]
     @param normalization     Whether to normalize the variables
-    @param family            Response type, 'gaussian' or 'binomial'
+    @param regress_family    Response type, 'gaussian' or 'binomial'
     @param optimizer         The optimization algorithm, for example 'igd'
     @param optimizer_params  Parameters of the above optimizer, the format
                              is '{arg = value, ...}'::varchar[]
@@ -98,3 +98,24 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     plpy.error("Not a supported response family or supported optimizer of the given response family!")
     return None
     
+## ========================================================================
+
+def elastic_net_predict(schema_madlib, regress_family, coefficients,
+                        intercept, ind_var, **kwargs):
+    """
+    Make predictions using the fitting coefficients
+    """
+    if regress_family.lower() == "gaussian" or regress_family.lower() == "linear":
+        return __elastic_net_gaussian_predict(coefficients, intercept, ind_var)
+
+    plpy.error("Not a supported response family!")
+    return None
+
+def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
+    """
+    Prediction for linear models
+    """
+    dot = intercept
+    for i in range(len(coefficients)):
+        dot += coefficients[i] * ind_var[i]
+    return dot
