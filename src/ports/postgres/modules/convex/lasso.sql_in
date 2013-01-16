@@ -50,7 +50,7 @@ Null values are not expected.
 
 - Get the vector of coefficients \f$ \boldsymbol w \f$:
 
-<pre>SELECT madlib.lasso_igd_run(
+<pre>SELECT madlib.lasso_igd_train(
     '<em>tbl_source</em>', -- data table
     '<em>col_ind_var</em>', -- independent variable column name
     '<em>col_dep_var</em>', -- dependent variable column name

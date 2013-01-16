@@ -48,7 +48,7 @@ Null values are not expected.
 
 - Get the vector of coefficients \f$ \boldsymbol w \f$:
 
-<pre>SELECT madlib.ridge_newton_run(
+<pre>SELECT madlib.ridge_newton_train(
     '<em>tbl_source</em>', -- data source table
     '<em>col_ind_var</em>', -- name of independent variable column
     '<em>col_dep_var</em>', -- name of dependent variable column 
