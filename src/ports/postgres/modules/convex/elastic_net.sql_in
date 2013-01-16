@@ -20,15 +20,42 @@ m4_include(`SQLCommon.m4') --'
 This module implements the elastic net regulation for regressions.
 
 This method seeks to find a weight vector that, for any given training example set, minimizes:
-\f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2 + \alpha \|w\|_1 \right)\f]
-where \f$L\f$ is the metric function that the user wants to minimize.
+\f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
+where \f$L\f$ is the metric function that the user wants to minimize. Here \f$ \alpha \in [0,1] \f$
+and \f$ lambda \geq 0 \f$. 
 
 For Gaussian response family (or linear model), we have
-\f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right] + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2 + \alpha \|w\|_1 \right)\f]
+\f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right]
++ \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
+
+To get better convergence, one can rescale the value of each element of x
+\f[ x' \leftarrow \frac{x - \bar{x}}{\sigma_x} \f]
+and
+\f[y' \leftarrow y - \bar{y} \f]
+and then fit 
+\f[\min_{w' \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w'^{t} x'_m - y'_m)^2 \right]
++ \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
+At the end of the calculation, the orginal scales will be restored and an intercept term will be obtained at the same time as a by-product.
+
+Note that fitting after scaling is not equivalent to directly fitting.
 
 @input
 
+The <b>training examples</b> is expected to be of the following form:
+<pre>{TABLE|VIEW} <em>input_table</em> (
+    ...
+    <em>independentVariables</em>   DOUBLE PRECISION[],
+    <em>dependentVariable</em>      DOUBLE PRECISION,
+    ...
+)</pre>
+
+Null values are not expected.
+
 @usage
+
+- Get the fitting coefficients for a linear model:
+
+<pre>SELECT madlib.elastic_net_train()
 
 @examp
 
