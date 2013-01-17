@@ -18,14 +18,16 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     if (family_or_optimizer.lower() == "gaussian" or
         family_or_optimizer == "linear"):
         return """
-        Supported optimizer: Incremental Gradient Descent method ('igd')
+        Supported optimizer:
+        (1) Incremental gradient descent method ('igd')
+        (2) Batch coordinate descent method ('bcd')
 
         For alpha = 0, Newton method ('newton') is also supported.
         """
 
     if family_or_optimizer.lower() == "igd":
         return """
-        Incremental Gradient Descent method
+        Incremental gradient descent method
 
         Parameters:
         stepsize         - default 0.01
@@ -33,6 +35,20 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         tolenrance       - default 0.000001
         """
 
+    if family_or_optimizer.lower() == "bcd":
+        return """
+        Batch coordinate descent method:
+
+        Parameters:
+        num_iterations   - default 100
+        tolenrance       - default 0.000001
+
+        Reference:
+        [1] A. Van der Kooij. Prediction accuracy and stability of regrsssion
+            with optimal sclaing transformations. Technical report, Dept. of
+            Data Theory, Leiden University, 2007.
+        """
+        
     if family_or_optimizer.lower() == "newton":
         return "Newton method"
         

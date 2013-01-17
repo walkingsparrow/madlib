@@ -184,7 +184,7 @@ RETURNS VARCHAR AS $$
 DECLARE
     str     VARCHAR;
 BEGIN
-    str := 'Right now, gaussian (linear) and binomial (logistic) are the supported regress_family!';
+    str := 'Right now, gaussian (linear) family is supported!';
     return str;
 END;
 $$ LANGUAGE plpgsql STRICT;
