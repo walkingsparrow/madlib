@@ -1,6 +1,7 @@
 
 import plpy
 from convex.elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
+from convex.elastic_net_gaussian_bcd import __elastic_net_gaussian_bcd_train
 
 ## ========================================================================
 
@@ -88,12 +89,19 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                                          normalization, optimizer_params, **kwargs)
         return None
 
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
+        optimizer.lower() == "bcd"):
+        __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
+                                         normalization, optimizer_params, **kwargs)
+        return None
+        
     # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
     #     optimizer.lower() == "igd"):
     #     __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
     #                                      col_dep_var, tbl_result, lambda_value, alpha,
     #                                      normalization, optimizer_params, **kwargs)
-        return None
+    #    return None
 
     plpy.error("Not a supported response family or supported optimizer of the given response family!")
     return None
