@@ -52,11 +52,24 @@ def __is_col_exists(tbl, cols):
     """
     Is the column exist?
     """
-    existing_cols = plpy.execute("""
-                                 select array_agg(column_name::varchar) as cols
-                                 from information_schema.columns
-                                 where table_name = '{0}'
-                                 """.format(tbl))[0]["cols"]
+    names = tbl.split(".")
+    if len(names) == 1:
+        existing_cols = plpy.execute("""
+                                     select array_agg(column_name::varchar) as cols
+                                     from information_schema.columns
+                                     where table_name = '{0}'
+                                     """.format(tbl))[0]["cols"]
+    elif len(names) == 2:
+        schema = names[0]
+        table = names[1]
+        existing_cols = plpy.execute("""
+                                     select array_agg(column_name::varchar) as cols
+                                     from information_schema.columns
+                                     where table_name = '{0}' and table_schema = '{1}'
+                                     """.format(table, schema))[0]["cols"]
+    else:
+        plpy.error("Format error: Table name strange!")
+        
     for col in cols:
         if col not in existing_cols:
             return False
