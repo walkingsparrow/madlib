@@ -538,6 +538,12 @@ def __ridge_newton_cv_validate_args(args):
     """
     Validate the arguments to __ridge_newton_cv
     """
+    if (args["data_tbl"] is None or args["validation_result"] is None
+        or args["col_ind_var"] is None or args["col_dep_var"] is None
+        or args["lambda_values"] is None or args["fold_num"] is None
+        or args["upto_fold"] is None):
+        plpy.error("Ridge CV error: You have unsupported Null value(s) in the arguments!")
+    
     if not __is_tbl_exists(args["data_tbl"]):
         plpy.error("Ridge CV error: Data table does not exist!")
 
@@ -747,6 +753,10 @@ def ridge_newton_train (schema_madlib, tbl_source, col_ind_var,
 def __ridge_validate_args(tbl_source, col_ind_var,
                           col_dep_var, tbl_output,
                           lambda_value, normalization):
+    if (tbl_source is None or col_ind_var is None or col_dep_var is None
+        or tbl_output is None or lambda_value is None or normalization is None):
+        plpy.error("Ridge error: You have unsupported Null value(s) in arguments!")
+    
     if not __is_tbl_exists(tbl_source):
         plpy.error("Ridge error: Data table " + tbl_source + " does not exist!")
 

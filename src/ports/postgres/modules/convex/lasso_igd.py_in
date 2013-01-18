@@ -232,6 +232,13 @@ def __lasso_igd_cv_validate_args(args):
     """
     Validate the arguments for LASSO specific cross-validation
     """
+    if (args["data_tbl"] is None or args["validation_result"] is None
+        or args["col_ind_var"] is None or args["col_dep_var"] is None
+        or args["lambda_values"] is None or args["fold_num"] is None
+        or args["upto_fold"] is None or args["stepsize"] is None
+        or args["num_iterations"] is None or args["tolerance"] is None):
+        plpy.error("LASSO CV error: You have unsupported Null value(s) in the arguments!")
+        
     if not __is_tbl_exists(args["data_tbl"]):
         plpy.error("LASSO CV error: Data table does not exist!")
 
@@ -487,6 +494,11 @@ def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
     """
     Validate LASSO train function's arguments
     """
+    if (tbl_source is None or col_ind_var is None or col_dep_var is None
+        or tbl_output is None or lambda_value is None or normalization is None
+        or stepsize is None or num_iterations is None or tolerance is None):
+        plpy.error("LASSO error: You have unsupported Null value(s) in arguments!")
+    
     if not __is_tbl_exists(tbl_source):
         plpy.error("LASSO error: Data table does not exist!")
 
