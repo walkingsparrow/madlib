@@ -201,23 +201,21 @@ AnyType
 internal_gaussian_igd_result::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
-    // double norm = 0;
-    // // the model values used here is the new values
-    // // where the values of model used to compute loss
-    // // in the aggregate are the old ones.
-    // // But loss difference is tiny, so this does not matter
-    // for (Index i = 0; i < state.task.model.rows() - 1; i++) {
-    //     double m = state.task.model(i);
-    //     norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
-    // }
-    // norm *= (state.task.lambda * state.task.totalRows);
+    double norm = 0;
+    
+    // the model values used here is the new values
+    // where the values of model used to compute loss
+    // in the aggregate are the old ones.
+    // But loss difference is tiny, so this does not matter
+    for (Index i = 0; i < state.task.model.rows() - 1; i++) {
+        double m = state.task.model(i);
+        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    }
+    norm *= (state.task.lambda * state.task.totalRows);
         
     AnyType tuple;
-    tuple << state.task.model << 0.;
-        //   << static_cast<double>(state.algo.loss) + norm;// +
-        // // (double)(GLMENRegularizer::loss(state.task.model,
-        // //                                 state.task.lambda,
-        // //                                 state.task.alpha));
+    tuple << state.task.model
+          << static_cast<double>(state.algo.loss) + norm;
 
     return tuple;
 }

@@ -77,9 +77,10 @@ gaussian_bcd_transition::run (AnyType& args)
             {
                 state.task.means(i) = means(i);
                 state.task.sq(i) = sq(i);
-                state.task.model(i) = 0;
+                state.task.model(i) = 0.;
             }
         }
+
         state.reset();
 
         // use incrModel to accumulate the changes
@@ -99,7 +100,7 @@ gaussian_bcd_transition::run (AnyType& args)
     // OLSENRegularizedBCDAlgorithm::transition(state, tuple);
     // OLSLossAlgorithm::transition(state, tuple);
     // state.algo.numRows ++;
-
+    
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
     double wv = y - dot(state.task.model, x);
@@ -124,12 +125,12 @@ gaussian_bcd_merge::run (AnyType& args)
 {
     EN1RegularizedGLMIGDState<MutableArrayHandle<double> > stateLeft = args[0];
     EN1RegularizedGLMIGDState<MutableArrayHandle<double> > stateRight = args[1];
-
+    
     // We first handle the trivial case where this function is called with one
     // of the states being the initial state
     if (stateLeft.algo.numRows == 0) return stateRight; 
     else if (stateRight.algo.numRows == 0) return stateLeft;
-
+    
     // Merge states together
     //OLSBCDAlgorithm::merge(stateLeft, stateRight);
     //OLSLossAlgorithm::merge(stateLeft, stateRight);
@@ -161,12 +162,15 @@ gaussian_bcd_final::run (AnyType& args)
 
     // finalizing
     //OLSBCDAlgorithm::final(state);
-
+    
     double la = state.task.lambda * state.task.alpha;
     double shrink = state.task.lambda * (1 - state.task.alpha) / state.task.totalRows;
     int dimension = state.task.dimension;
 
+    
+    
     for (Index i = 0; i < dimension - 1; i++)
+    {
         if (state.algo.incrModel(i) > la) {
             state.task.model(i) = (state.algo.incrModel(i) - la) /
                 (state.task.totalRows * (state.task.sq(i) + shrink));
@@ -175,11 +179,12 @@ gaussian_bcd_final::run (AnyType& args)
                 (state.task.totalRows * (state.task.sq(i) + shrink));
         } else
             state.task.model(i) = 0;
-
+    }
+    
     double intercept = state.task.means(dimension - 1);
     for (Index i = 0; i < dimension - 1; i++) intercept -= state.task.model(i) * state.task.means(i);
     state.task.model(dimension - 1) = intercept;
-
+    
     return state;
 }
 
@@ -217,19 +222,16 @@ internal_gaussian_bcd_result::run (AnyType& args)
 {
     EN1RegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
 
-    //double norm = 0;
-    // for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
-    //     double m = state.task.model(i);
-    //     norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
-    // }
-    // norm *= state.task.lambda;
+    double norm = 0;
+    for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
+        double m = state.task.model(i);
+        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    }
+    norm *= state.task.lambda;
         
     AnyType tuple;
-    tuple << state.task.model << 0.;
-        //   << static_cast<double>(state.algo.loss) + norm; // +
-        // // (double)(GLMENRegularizer::loss(state.task.model,
-        // //                                 state.task.lambda,
-        // //                                 state.task.alpha));
+    tuple << state.task.model
+          << static_cast<double>(state.algo.loss) + norm; 
 
     return tuple;
 }
