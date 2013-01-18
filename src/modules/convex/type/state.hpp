@@ -816,7 +816,7 @@ public:
     }
 
     static inline uint32_t arraySize(const uint32_t inDimension) {
-        return 5 + 5 * inDimension;
+        return 6 + 5 * inDimension;
     }
 
 protected:
@@ -844,13 +844,13 @@ protected:
         task.alpha.rebind(&mStorage[2]);
         task.totalRows.rebind(&mStorage[3]);
         task.means.rebind(&mStorage[4], task.dimension); // means of x (without intercept) and y
-        task.sq.rebind(&mStorage[4 + task.dimension], task.dimension - 1); // mean of square of x (without intercept)
-        task.model.rebind(&mStorage[3 + 2 * task.dimension], task.dimension);
+        task.sq.rebind(&mStorage[4 + task.dimension], task.dimension); // mean of square of x (without intercept)
+        task.model.rebind(&mStorage[4 + 2 * task.dimension], task.dimension);
 
-        algo.numRows.rebind(&mStorage[3 + 3 * task.dimension]);
-        algo.loss.rebind(&mStorage[4 + 3 * task.dimension]);
-        algo.incrModel.rebind(&mStorage[5 + 3 * task.dimension], task.dimension);
-        algo.gradient.rebind(&mStorage[5 + 4 * task.dimension], task.dimension);
+        algo.numRows.rebind(&mStorage[4 + 3 * task.dimension]);
+        algo.loss.rebind(&mStorage[5 + 3 * task.dimension]);
+        algo.incrModel.rebind(&mStorage[6 + 3 * task.dimension], task.dimension);
+        algo.gradient.rebind(&mStorage[6 + 4 * task.dimension], task.dimension);
     }
 
     Handle mStorage;
