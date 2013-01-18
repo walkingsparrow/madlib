@@ -62,7 +62,7 @@ def __bcd_create_tbl_args(**args):
     """
     if args["normalization"]:
         mean = [0] * args["dimension"]
-        mean_y = 1
+        mean_y = 0
         sq = [1] * args["dimension"]
     else:
         tmp = plpy.execute("""
@@ -73,7 +73,7 @@ def __bcd_create_tbl_args(**args):
                                 from (
                                     select generate_series(1,{dimension}) as attr,
                                             unnest({col_ind_var}) as val
-                                    from {tbl_source}
+                                    from {tbl_used}
                                 ) t
                                 group by attr
                             ) s
@@ -81,18 +81,16 @@ def __bcd_create_tbl_args(**args):
         mean = tmp["mean"]
         sq = tmp["sq"]
         mean_y = plpy.execute("""
-                              select avg({col_dep_var}) as avg from {tbl_source}
+                              select avg({col_dep_var}) as avg from {tbl_used}
                               """.format(**args))[0]["avg"]
         
     avg = "array["
     sqstr = "array["
     for i in range(args["dimension"]):
         avg += str(mean[i]) + ","
-        sqstr += str(sq[i])
-        if i != args["dimension"]-1:
-            sqstr += ","
+        sqstr += str(sq[i]) + ","
     avg += str(mean_y) + "]" # averages of independent and dependent variables, length is dimension + 1
-    sqstr += "]" # averages of square of independent variables, length is dimension
+    sqstr += "0]" # averages of square of independent variables, length is dimension
     
     plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
 

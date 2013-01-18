@@ -77,6 +77,7 @@ gaussian_bcd_transition::run (AnyType& args)
             {
                 state.task.means(i) = means(i);
                 state.task.sq(i) = sq(i);
+                state.task.model(i) = 0;
             }
         }
         state.reset();
