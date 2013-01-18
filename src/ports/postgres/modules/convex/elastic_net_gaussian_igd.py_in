@@ -196,7 +196,8 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                                        col_dep_var,
                                                        tbl_result,
                                                        lambda_value,
-                                                       alpha)
+                                                       alpha,
+                                                       normalization)
     
     return __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_var,
                                                     col_dep_var, tbl_result, lambda_value, alpha,
@@ -205,7 +206,13 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
 ## ========================================================================
 
 def __elastic_net_gaussian_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
-                                             tbl_result, lambda_value, alpha):
+                                             tbl_result, lambda_value, alpha,
+                                             normalization):
+    if (tbl_source is None or col_ind_var is None or col_dep_var is None
+        or tbl_result is None or lambda_value is None or alpha is None
+        or normalization is None):
+        plpy.error("Elastic Net error: You have unsupported NULL value(s) in the arguments!")
+    
     if not __is_tbl_exists(tbl_source):
         plpy.error("Elastic Net error: Data table " + tbl_source + " does not exist!")
 
