@@ -216,20 +216,20 @@ AnyType
 internal_gaussian_bcd_result::run (AnyType& args)
 {
     EN1RegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
-    double norm = 0;
 
-    for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
-        double m = state.task.model(i);
-        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
-    }
-    norm *= state.task.lambda;
+    //double norm = 0;
+    // for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
+    //     double m = state.task.model(i);
+    //     norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    // }
+    // norm *= state.task.lambda;
         
     AnyType tuple;
-    tuple << state.task.model
-          << static_cast<double>(state.algo.loss) + norm; // +
-        // (double)(GLMENRegularizer::loss(state.task.model,
-        //                                 state.task.lambda,
-        //                                 state.task.alpha));
+    tuple << state.task.model << 0.;
+        //   << static_cast<double>(state.algo.loss) + norm; // +
+        // // (double)(GLMENRegularizer::loss(state.task.model,
+        // //                                 state.task.lambda,
+        // //                                 state.task.alpha));
 
     return tuple;
 }

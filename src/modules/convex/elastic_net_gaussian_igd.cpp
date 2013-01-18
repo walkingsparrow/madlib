@@ -71,17 +71,49 @@ gaussian_igd_transition::run (AnyType& args)
         state.reset();
     }
 
-    // tuple
-    using madlib::dbal::eigen_integration::MappedColumnVector;
-    GLMTuple tuple;
-    MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
-    tuple.indVar.rebind(indVar.memoryHandle(), indVar.size());
-    tuple.depVar = args[2].getAs<double>();
+    // // tuple
+    // using madlib::dbal::eigen_integration::MappedColumnVector;
+    // GLMTuple tuple;
+    // MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
+    // tuple.indVar.rebind(indVar.memoryHandle(), indVar.size());
+    // tuple.depVar = args[2].getAs<double>();
 
-    // Now do the transition step
-    OLSENRegularizedIGDAlgorithm::transition(state, tuple);
-    OLSLossAlgorithm::transition(state, tuple);
-    state.algo.numRows ++;
+    // // Now do the transition step
+    // OLSENRegularizedIGDAlgorithm::transition(state, tuple);
+    // OLSLossAlgorithm::transition(state, tuple);
+    // state.algo.numRows ++;
+
+    using madlib::dbal::eigen_integration::MappedColumnVector;
+    MappedColumnVector x = args[1].getAs<MappedColumnVector>();
+    double y = args[2].getAs<double>();
+
+    // MSE part & ridge part gradients
+    double wv = state.task.stepsize * (dot(state.algo.incrModel, x) - y) / state.task.totalRows;
+    double ridge = state.task.stepsize * (1 - state.task.alpha) * state.task.lambda / state.task.totalRows;
+    int n = state.task.dimension;
+    for (Index i = 0; i < n - 1; i++)
+        state.algo.incrModel(i) -= x(i) * wv + ridge * state.algo.incrModel(i);
+
+    // update intercept, which is not regularized
+    state.algo.incrModel(n - 1) -= state.task.stepsize * wv;
+
+    // LASSO part update, soft threshold
+    double lasso = state.task.stepsize * state.task.alpha * state.task.lambda / state.task.totalRows;
+    for (Index i = 0; i < n - 1; i++)
+    {
+        if (state.algo.incrModel(i) > lasso)
+            state.algo.incrModel(i) -= lasso;
+        else if (state.algo.incrModel(i) < -lasso)
+            state.algo.incrModel(i) += lasso;
+        else
+            state.algo.incrModel(i) = 0;
+    }
+    
+    // compute loss (MSE) value using model (not incrModel)
+    wv = dot(state.task.model, x) - y;
+    state.algo.loss += 0.5 * wv * wv;
+
+    state.algo.numRows++;
 
     return state;
 }
@@ -129,7 +161,9 @@ gaussian_igd_final::run (AnyType& args)
     if (state.algo.numRows == 0) return Null(); 
 
     // finalizing
-    OLSIGDAlgorithm::final(state);
+    //OLSIGDAlgorithm::final(state);
+
+    state.task.model = state.algo.incrModel;
 
     return state;
 }
@@ -167,20 +201,23 @@ AnyType
 internal_gaussian_igd_result::run (AnyType& args)
 {
     ENRegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
-    double norm = 0;
-
-    for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
-        double m = state.task.model(i);
-        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
-    }
-    norm *= state.task.lambda;
+    // double norm = 0;
+    // // the model values used here is the new values
+    // // where the values of model used to compute loss
+    // // in the aggregate are the old ones.
+    // // But loss difference is tiny, so this does not matter
+    // for (Index i = 0; i < state.task.model.rows() - 1; i++) {
+    //     double m = state.task.model(i);
+    //     norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    // }
+    // norm *= (state.task.lambda * state.task.totalRows);
         
     AnyType tuple;
-    tuple << state.task.model
-          << static_cast<double>(state.algo.loss) + norm;// +
-        // (double)(GLMENRegularizer::loss(state.task.model,
-        //                                 state.task.lambda,
-        //                                 state.task.alpha));
+    tuple << state.task.model << 0.;
+        //   << static_cast<double>(state.algo.loss) + norm;// +
+        // // (double)(GLMENRegularizer::loss(state.task.model,
+        // //                                 state.task.lambda,
+        // //                                 state.task.alpha));
 
     return tuple;
 }
