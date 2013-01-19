@@ -55,7 +55,7 @@ Null values are not expected.
     '<em>col_ind_var</em>', -- independent variable column name
     '<em>col_dep_var</em>', -- dependent variable column name
     '<em>tbl_output</em>', -- table to store result
-    '<em>lambda</em>', -- regulation parameter
+    '<em>lambda</em>', -- regularization parameter
     '<em>normalization</em>', -- whether to scale x
     '<em>stepsize</em>', -- IGD step size, default 0.01
     '<em>num_iterations</em>', -- IGD max number of iterations, default 100
