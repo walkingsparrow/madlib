@@ -235,7 +235,7 @@ def __elastic_net_gaussian_igd_validate_args(tbl_source, col_ind_var, col_dep_va
         plpy.error("Elastic Net error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
 
     if lambda_value < 0:
-        plpy.error("Elastic Net error: The regulation parameter lambda cannot be negative!")
+        plpy.error("Elastic Net error: The regularization parameter lambda cannot be negative!")
 
     if alpha < 0 or alpha > 1:
         plpy.error("Elastic Net error: The elastic net control parameter alpha must be in [0,1] !")
@@ -248,7 +248,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                                              col_dep_var, tbl_result, lambda_value, alpha,
                                              normalization, optimizer_params, **kwargs):
     """
-    Fit linear model with elastic net regulation using IGD optimization.
+    Fit linear model with elastic net regularization using IGD optimization.
 
     @param tbl_source        Name of data source table
     @param col_ind_var       Name of independent variable column,
@@ -257,7 +257,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     @param tbl_result        Name of the table to store the results,
                              will return fitting coefficients and
                              likelihood
-    @param lambda_value      The regulation parameter
+    @param lambda_value      The regularization parameter
     @param alpha             The elastic net parameter, [0, 1]
     @param normalization     Whether to normalize the variables
     @param optimizer_params  Parameters of the above optimizer, the format

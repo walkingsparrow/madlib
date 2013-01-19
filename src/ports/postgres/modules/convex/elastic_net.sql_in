@@ -2,7 +2,7 @@
  *
  * @file elastic_net.sql_in
  *
- * @brief SQL functions for elastic net regulation
+ * @brief SQL functions for elastic net regularization
  * @date July 2012
  *
  * @sa For a brief introduction to elastic net, see the module
@@ -17,13 +17,13 @@ m4_include(`SQLCommon.m4') --'
 
 @about
 
-This module implements the elastic net regulation for regressions.
+This module implements the elastic net regularization for regressions.
 
 This method seeks to find a weight vector that, for any given training example set, minimizes:
 \f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 where \f$L\f$ is the metric function that the user wants to minimize. Here \f$ \alpha \in [0,1] \f$
-and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the Ridge regulation. And if \f$\alpha = 1\f$,
-we have the LASSO regulation.
+and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the Ridge regularization. And if \f$\alpha = 1\f$,
+we have the LASSO regularization.
 
 For Gaussian response family (or linear model), we have
 \f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right]
@@ -61,7 +61,7 @@ Null values are not expected.
     '<em>col_ind_var</em>', -- Name of independent variable column
     '<em>col_dep_var</em>', -- Name of dependent variable column
     '<em>tbl_result</em>', -- Name of the table to store the fitting result
-    '<em>lambda_value</em>', -- Value of the regulation parameter
+    '<em>lambda_value</em>', -- Value of the regularization parameter
     '<em>alpha</em>',    -- Value of the elastic net controlling parameter
     '<em>normalization</em>', -- Whether to normalize the variables
     '<em>regress_family</em>', -- Response type, 'gaussian' ('linear') or 'binomial' ('logistic')
@@ -124,7 +124,7 @@ mydb-# from en_data, en_model;
 
 @literature
 
-[1] Elastic net regulation. http://en.wikipedia.org/wiki/Elastic_net_regularization
+[1] Elastic net regularization. http://en.wikipedia.org/wiki/Elastic_net_regularization
 
 */
 
@@ -137,7 +137,7 @@ mydb-# from en_data, en_model;
  * @param col_ind_var       Name of independent variable column, independent variable is an array
  * @param col_dep_var       Name of dependent variable column
  * @param tbl_result        Name of the table to store the results, will return fitting coefficients and likelihood
- * @param lambda            The regulation parameter
+ * @param lambda            The regularization parameter
  * @param alpha             The elastic net parameter, [0, 1]
  * @param normalization     Whether to normalize the variables
  * @param regress_family    Response type, 'gaussian' or 'binomial'

@@ -65,7 +65,7 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                       tbl_result, lambda_value, alpha, normalization, regress_family,
                       optimizer, optimizer_params, **kwargs):
     """
-    A wrapper for all variants of elastic net regulation.
+    A wrapper for all variants of elastic net regularization.
 
     @param tbl_source        Name of data source table
     @param col_ind_var       Name of independent variable column,
@@ -74,7 +74,7 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     @param tbl_result        Name of the table to store the results,
                              will return fitting coefficients and
                              likelihood
-    @param lambda_value      The regulation parameter
+    @param lambda_value      The regularization parameter
     @param alpha             The elastic net parameter, [0, 1]
     @param normalization     Whether to normalize the variables
     @param regress_family    Response type, 'gaussian' or 'binomial'
