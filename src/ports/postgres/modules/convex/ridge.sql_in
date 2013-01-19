@@ -53,7 +53,7 @@ Null values are not expected.
     '<em>col_ind_var</em>', -- name of independent variable column
     '<em>col_dep_var</em>', -- name of dependent variable column 
     '<em>tbl_output</em>',  -- output table's name
-    <em>lambda</em>, -- regulation parameter value
+    <em>lambda</em>, -- regularization parameter value
     [<em>normalization</em>] -- whether do the scaling of x
 ); 
 </pre>
@@ -78,10 +78,6 @@ where <em>intercept</em> presents if it exists:
 SELECT madlib.ridge_linear_newton_predict(<em>coefficients</em>, <em>intercept</em>, <em>col_ind_var</em>)
 FROM sourceTableName, modelTableName;
 </pre>
-
-<b> Measure the error of the prediction </b>
-<pre>
-
 
 Please find descriptions of SQL functions in ridge.sql_in
 

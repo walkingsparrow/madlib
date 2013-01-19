@@ -176,7 +176,7 @@ The simple interface does not have limitations on lock numbers.
 
 @examp
 
-Cross validation is used on ridge regreesion to find the best value of the regulation parameter.
+Cross validation is used on ridge regression to find the best value of the regularization parameter.
 
 (1) Populate the table 'cvtest' with 101 dimensional independent variable 'val', and dependent
 variable 'dep'.

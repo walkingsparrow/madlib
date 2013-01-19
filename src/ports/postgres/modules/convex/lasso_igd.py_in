@@ -140,7 +140,7 @@ def __lasso_cv_args(schema_madlib, func_args, param_to_try,
     # col_ind_var - independent variable column name,
     # col_dep_var - dependent variable column name,
     # tbl_output - output table of ridge (of no use and will be ignored)
-    # lambda - the regulation parameter (of no use and will be ignored)
+    # lambda - the regularization parameter (of no use and will be ignored)
     # normalization - whether normalize the data (better convergence, consistent with R default and slower speed)
     # stepsize - step size for incremental gradient descent (IGD) optimization method
     # num_iterations - max iteration allowed
@@ -262,7 +262,7 @@ def __lasso_igd_cv_validate_args(args):
 
     for lambda_value in args["lambda_values"]:
         if lambda_value < 0:
-            plpy.error("LASSO CV error: The regulation parameter lambda cannot be negative!")
+            plpy.error("LASSO CV error: The regularization parameter lambda cannot be negative!")
 
     fold_num = args["fold_num"]
     upto_fold = args["upto_fold"]
@@ -302,7 +302,7 @@ def __lasso_igd_cv_compute(**kwargs):
     data_tbl -- Name of data source table
     col_ind_var -- Name of indepdendent variable (an array) column
     col_dep_var -- Name of dependent variable (double) column
-    lambda_values -- An array of values for lambda (the regulation parameter)
+    lambda_values -- An array of values for lambda (the regularization parameter)
     data_id -- Whether the data table has a unique ID associated with each row. If data_id exists, then
                it would be be much easier to split the data into training and validation portions. Otherwise,
                CV function will copy the original data (only copy the part used in the calculation) and add
@@ -451,7 +451,7 @@ def __lasso_igd_cv_help():
     * col_ind_var - independent variable column name,
     * col_dep_var - dependent variable column name,
     * tbl_output - output table of ridge (as an intermediate table of CV, it will be ignored if is given here)
-    * lambda - the regulation parameter (in CV lambda is given as the parameter values to try, and any value given here will be ignored)
+    * lambda - the regularization parameter (in CV lambda is given as the parameter values to try, and any value given here will be ignored)
     * normalization - whether normalize the data (better convergence, consistent with R default and slower speed)
     * stepsize - step size for incremental gradient descent (IGD) optimization method
     * num_iterations - max iteration allowed
@@ -521,7 +521,7 @@ def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
         plpy.error("LASSO error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
 
     if lambda_value < 0:
-        plpy.error("LASSO error: The regulation parameter lambda cannot be negative!")
+        plpy.error("LASSO error: The regularization parameter lambda cannot be negative!")
 
     if stepsize <= 0:
         plpy.error("LASSO error: The step size must be positive!")
@@ -546,7 +546,7 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     @param col_ind_var -- Name of indepdendent variable (an array) column
     @param col_dep_var -- Name of dependent variable (double) column
     @param tbl_output -- Name of tabel to store results
-    @param lambda_value -- Value of teh regulation parameter
+    @param lambda_value -- Value of the regularization parameter
     @param normalization -- Whether to normalize the dependent variables
     @param stepsize -- step size for IGD
     @param num_iterations -- The maximum iterations that the function can run
