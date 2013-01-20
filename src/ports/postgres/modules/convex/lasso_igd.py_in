@@ -673,14 +673,19 @@ class IterationControllerNoTableDrop (IterationController):
                  schema_madlib = "MADLIB_SCHEMA_MISSING",
                  verbose = False,
                  **kwargs):
-        # Need to call super class's init method to initialize
-        # member fields
-        IterationController.__init__(self, rel_args, rel_state, stateType,
-                                     temporaryTables, truncAfterIteration,
-                                     schema_madlib, verbose, **kwargs)
-        # self.kwargs["rel_state"] = "pg_temp" + rel_state, but for testing 
-        # the existence of a table, schema name should be used together
-        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{0}' and table_schema = 'pg_temp'".format(rel_state))[0]['count'] == 1
+        self.kwargs = kwargs
+        self.kwargs.update(
+            rel_args = rel_args,
+            rel_state = rel_state,
+            stateType = stateType.format(schema_madlib = schema_madlib),
+            schema_madlib = schema_madlib)
+        self.temporaryTables = temporaryTables
+        self.truncAfterIteration = truncAfterIteration
+        self.verbose = verbose
+        self.inWith = False
+        self.iteration = -1
+        
+        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{rel_state}'".format(**self.kwargs))[0]['count'] == 1
         # The current total row number of rel_state table
         if self.state_exists:
             self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]
@@ -726,6 +731,16 @@ class IterationControllerNoTableDrop (IterationController):
         """
         if self.state_exists is False:
             # create rel_state table when it does not already exist
-            IterationController.__enter__(self)
+            # IterationController.__enter__(self)
+            with MinWarning('warning'):
+                self.runSQL("""
+                            DROP TABLE IF EXISTS {rel_state};
+                            CREATE {temp} TABLE {rel_state} (
+                            _iteration INTEGER PRIMARY KEY,
+                            _state {stateType}
+                        );
+                            """.format(
+                                temp = 'TEMP' if self.temporaryTables else '',
+                                **self.kwargs))
         self.inWith = True
         return self

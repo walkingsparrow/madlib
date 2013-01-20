@@ -1,5 +1,6 @@
 
 import plpy
+import math
 from validation.cv_utils import __cv_unique_string
 from utilities.control import IterationController
 from convex.lasso_igd import IterationControllerNoTableDrop
@@ -16,6 +17,7 @@ from convex.validate_args import __is_array_col_same_dimension
 from convex.validate_args import __is_array_col_no_null
 from convex.elastic_net_gaussian_igd import __tbl_dimension_rownum
 from convex.elastic_net_gaussian_igd import __normalize_data
+from convex.lasso_igd import IterationControllerNoTableDrop
 
 ## ========================================================================
 
@@ -23,9 +25,10 @@ def __bcd_params_parser(optimizer_params):
     """
     Parse BCD parameters.
     """
-    allowed_params = set(["num_iterations", "tolerance"])
+    allowed_params = set(["num_steps", "num_iterations", "tolerance"])
     name_value = dict()
     # default values
+    name_value["num_steps"] = 15
     name_value["num_iterations"] = 100 
     name_value["tolerance"] = 0.000001
     
@@ -39,13 +42,19 @@ def __bcd_params_parser(optimizer_params):
         if param_name not in allowed_params:
             plpy.error("{0} is not a valid parameter name for the BCD optimizer.".format(param_name))
 
+        if param_name == "num_steps":
+            name_value["num_steps"] = int(param_value)
+            
         if param_name == "num_iterations":
             name_value["num_iterations"] = int(param_value)
 
         if param_name == "tolerance":
             name_value["tolerance"] = float(param_value)
-
+            
     # validate the parameters
+    if name_value["num_steps"] <= 0:
+        plpy.error("Elastic Net error: num_steps cannot be negative!")
+            
     if name_value["num_iterations"] <= 0:
         plpy.error("Elastic Net error: num_iterations must be positive!")
 
@@ -73,7 +82,7 @@ def __bcd_create_tbl_args(**args):
                                 from (
                                     select generate_series(1,{dimension}) as attr,
                                             unnest({col_ind_var}) as val
-                                    from {tbl_used}
+                                    from {tbl_source}
                                 ) t
                                 group by attr
                             ) s
@@ -81,24 +90,26 @@ def __bcd_create_tbl_args(**args):
         mean = tmp["mean"]
         sq = tmp["sq"]
         mean_y = plpy.execute("""
-                              select avg({col_dep_var}) as avg from {tbl_used}
+                              select avg({col_dep_var}) as avg from {tbl_source}
                               """.format(**args))[0]["avg"]
         
     avg = "array["
     sqstr = "array["
     for i in range(args["dimension"]):
         avg += str(mean[i]) + ","
-        sqstr += str(sq[i]) + ","
+        sqstr += str(sq[i])
+        if i != args["dimension"] - 1:
+            sqstr += ","
     avg += str(mean_y) + "]" # averages of independent and dependent variables, length is dimension + 1
-    sqstr += "0]" # averages of square of independent variables, length is dimension
+    sqstr += "]" # averages of square of independent variables, length is dimension
     
-    plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
+    # plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
 
     effective_lambda = args["lambda_value"] * args["row_num"]
     plpy.execute("""
-                 drop table if exists pg_temp.{tbl_bcd_args};
+                 drop table if exists {tbl_bcd_args};
                  
-                 create table pg_temp.{tbl_bcd_args} (
+                 create temp table {tbl_bcd_args} (
                     dimension       integer,
                     means           double precision[],
                     sq              double precision[],
@@ -109,9 +120,9 @@ def __bcd_create_tbl_args(**args):
                     tolerance       double precision);
                  """.format(**args))
     plpy.execute("""
-                 insert into pg_temp.{tbl_bcd_args} values
+                 insert into {tbl_bcd_args} values
                     ({dimension}, {avg}, {sqstr}, {effective_lambda}, {alpha},
-                     {row_num}, {num_iterations}, {tolerance})
+                     {row_num}, {num_iterations}, 0.01)
                  """.format(effective_lambda = effective_lambda, avg = avg,
                             sqstr = sqstr,
                             **args))
@@ -171,9 +182,10 @@ def __bcd_cleanup_temp_tbls(**args):
                  drop table if exists {tbl_ind_scales};
                  drop table if exists {tbl_dep_scale};
                  drop table if exists {tbl_data_scaled};
-                 drop table if exists pg_temp.{tbl_bcd_args};
+                 
                  drop table if exists pg_temp.{tbl_bcd_state};
                  """.format(**args))
+    # drop table if exists pg_temp.{tbl_bcd_args};
     return None
 
 ## ========================================================================
@@ -236,7 +248,7 @@ def __elastic_net_gaussian_bcd_validate_args(tbl_source, col_ind_var, col_dep_va
         plpy.error("Elastic Net error: The elastic net control parameter alpha must be in [0,1] !")
 
     return (tbl_source, col_ind_var, col_dep_var, tbl_result, lambda_value, alpha)
-    
+
 ## ========================================================================
     
 def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_var,
@@ -262,7 +274,7 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
                                  select setting from pg_settings
                                  where name='client_min_messages'
                                  """)[0]['setting']
-    plpy.execute("set client_min_messages to error")
+    plpy.execute("set client_min_messages to warning")
 
     (dimension, row_num) = __tbl_dimension_rownum(tbl_source, col_ind_var)
 
@@ -282,11 +294,28 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
     # create the temp table that passes parameter values to BCD optimizer
     __bcd_create_tbl_args(**args)
 
+    # compute lambda sequence
+    lambda_seq = __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var, dimension,
+                                       row_num, lambda_value, alpha, args["num_steps"])
+    
     # perform the actual calculation
-    iteration_run = __compute_gaussian_bcd(schema_madlib, args["tbl_bcd_args"],
-                                           args["tbl_bcd_state"], tbl_used,
-                                           col_ind_var, col_dep_var, True)
-
+    iteration_run = 0
+    for i in range(len(lambda_seq)):
+        lv = lambda_seq[i] * row_num
+        plpy.execute("""
+                     update {tbl_bcd_args} set lambda = {lv}
+                     """.format(lv = lv, **args))
+        if i == len(lambda_seq) - 1:
+            plpy.execute("""
+                         update {tbl_bcd_args} set tolerance = {tolerance}
+                         """.format(**args))
+        iteration_run = __compute_gaussian_bcd(schema_madlib, args["tbl_bcd_args"],
+                                               args["tbl_bcd_state"], tbl_used,
+                                               col_ind_var, col_dep_var, iteration_run)
+        if iteration_run >= args["num_iterations"]:
+            break
+        # plpy.warning("Current: " + str(iteration_run) + " " + str(lv))
+     
     if normalization:
         use_temp = "temp"
     else:
@@ -317,26 +346,26 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
                  """.format(iteration_run = iteration_run, **args))
 
     # # compute the likelihood
-    # plpy.execute("""
-    #              update {tbl_inter_result} set log_likelihood = llhd from (
-    #                 select
-    #                     -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
-    #                 from (
-    #                     select
-    #                         avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var}))^2) / 2. as loss
-    #                     from
-    #                         {tbl_inter_result},
-    #                         {tbl_used}
-    #                     ) t1,
-    #                     (
-    #                         select sum(coef^2) as module_2, sum(abs(coef)) as module_1
-    #                         from (
-    #                             select unnest(coefficients) as coef
-    #                             from {tbl_inter_result}
-    #                         ) s
-    #                     ) t2
-    #              ) u
-    #              """.format(tbl_used = tbl_used, **args))
+    plpy.execute("""
+                 update {tbl_inter_result} set log_likelihood = llhd from (
+                    select
+                        -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
+                    from (
+                        select
+                            avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var}))^2) / 2. as loss
+                        from
+                            {tbl_inter_result},
+                            {tbl_used}
+                        ) t1,
+                        (
+                            select sum(coef^2) as module_2, sum(abs(coef)) as module_1
+                            from (
+                                select unnest(coefficients) as coef
+                                from {tbl_inter_result}
+                            ) s
+                        ) t2
+                 ) u
+                 """.format(tbl_used = tbl_used, **args))
     
     if normalization:
         __ridge_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
@@ -355,8 +384,45 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
 
 ## ========================================================================
 
+def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
+                          dimension, row_num, lambda_value, alpha,
+                          num_steps):
+    """
+    Compute lambda sequence
+    """
+    if num_steps == 1:
+        return [lambda_value]
+    
+    mean_y = plpy.execute("select avg({col_dep_var}) from {tbl_used}".format(
+        col_dep_var = col_dep_var, tbl_used = tbl_used))[0]["avg"]
+    xy = [0] * dimension
+    for i in range(1,dimension+1):
+        xy[i-1] = plpy.execute("""
+                             select abs(sum({col_ind_var}[{i}] * ({col_dep_var} - {mean_y})))
+                             from {tbl_used}
+                             """.format(col_ind_var = col_ind_var,
+                                        col_dep_var = col_dep_var,
+                                        mean_y = mean_y,
+                                        tbl_used = tbl_used, i = i))[0]["abs"]
+    largest = max(xy) / float(row_num * alpha)
+    if lambda_value == 0.:
+        smallest = 0.001 * largest
+    else:
+        smallest = lambda_value
+    step = math.log(largest / smallest) / (float(num_steps) - 1)
+    seq = range(num_steps)
+    seq.reverse()
+    for i in range(num_steps):
+        seq[i] = math.exp(seq[i] * step + math.log(smallest))
+    if lambda_value == 0:
+        seq.append(0)
+
+    return seq
+    
+## ========================================================================
+
 def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
-                           col_ind_var, col_dep_var, drop_table, **kwargs):
+                           col_ind_var, col_dep_var, start_iter):
     """
     Driver function for elastic net with Gaussian response using BCD
 
@@ -378,29 +444,18 @@ def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
     @return The iteration number (i.e., the key) with which to look up the
         result in \c tbl_state
     """
-    if drop_table:
-        iterationCtrl = IterationController(
-            rel_args = tbl_args,
-            rel_state = tbl_state,
-            stateType = "double precision[]",
-            truncAfterIteration = False,
-            schema_madlib = schema_madlib, # Identifiers start here
-            rel_source = tbl_source,
-            col_ind_var = col_ind_var,
-            col_dep_var = col_dep_var)
-    else:
-        iterationCtrl = IterationControllerNoTableDrop(
-            rel_args = tbl_args,
-            rel_state = tbl_state,
-            stateType = "double precision[]",
-            truncAfterIteration = False,
-            schema_madlib = schema_madlib, # Identifiers start here
-            rel_source = tbl_source,
-            col_ind_var = col_ind_var,
-            col_dep_var = col_dep_var)
-
+    iterationCtrl = IterationControllerTableAppend(
+        rel_args = tbl_args,
+        rel_state = tbl_state,
+        stateType = "double precision[]",
+        truncAfterIteration = False,
+        schema_madlib = schema_madlib, # Identifiers start here
+        rel_source = tbl_source,
+        col_ind_var = col_ind_var,
+        col_dep_var = col_dep_var)
+    
     with iterationCtrl as it:
-        it.iteration = 0
+        it.iteration = start_iter
         while True:
             # manually add the intercept term
             it.update("""
@@ -418,9 +473,9 @@ def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
                             (_args.total_rows)::integer)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
-
+         
             if it.test("""
-                       {iteration} > _args.num_iterations or
+                       {iteration} >= _args.num_iterations or
                        {schema_madlib}.__gaussian_bcd_state_diff(
                             (select _state from {rel_state}
                                 where _iteration = {iteration} - 1),
@@ -430,4 +485,49 @@ def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
                 break
 
     return iterationCtrl.iteration
-    
+
+# ========================================================================
+# ------------------------------------------------------------------------
+
+class IterationControllerTableAppend (IterationControllerNoTableDrop):
+    def __init__(self, rel_args, rel_state, stateType,
+                 temporaryTables = True,
+                 truncAfterIteration = False,
+                 schema_madlib = "MADLIB_SCHEMA_MISSING",
+                 verbose = False,
+                 **kwargs):
+        self.kwargs = kwargs
+        self.kwargs.update(
+            rel_args = rel_args,
+            rel_state = rel_state,
+            stateType = stateType.format(schema_madlib = schema_madlib),
+            schema_madlib = schema_madlib)
+        self.temporaryTables = temporaryTables
+        self.truncAfterIteration = truncAfterIteration
+        self.verbose = verbose
+        self.inWith = False
+        self.iteration = -1
+        
+        self.state_exists = plpy.execute("""
+                                         select count(*)
+                                         from information_schema.tables
+                                         where table_name = '{rel_state}'
+                                         """.format(**self.kwargs))[0]['count'] == 1
+
+    ## ------------------------------------------------------------------------
+            
+    def update(self, newState):
+        """
+        Update state of calculation. In ridge case, the state is an
+        array of double precision[].
+        """
+        newState = newState.format(iteration = self.iteration, **self.kwargs)
+        self.iteration += 1
+        self.runSQL("""
+                    INSERT INTO {rel_state}
+                    SELECT
+                        {iteration},
+                        ({newState})
+                    """.format(iteration = self.iteration,
+                               newState = newState,
+                               **self.kwargs))
