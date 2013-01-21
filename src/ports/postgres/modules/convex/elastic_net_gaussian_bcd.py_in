@@ -97,11 +97,9 @@ def __bcd_create_tbl_args(**args):
     sqstr = "array["
     for i in range(args["dimension"]):
         avg += str(mean[i]) + ","
-        sqstr += str(sq[i])
-        if i != args["dimension"] - 1:
-            sqstr += ","
+        sqstr += str(sq[i]) + ","
     avg += str(mean_y) + "]" # averages of independent and dependent variables, length is dimension + 1
-    sqstr += "]" # averages of square of independent variables, length is dimension
+    sqstr += "1]" # averages of square of independent variables, length is dimension
     
     # plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
 
@@ -122,7 +120,7 @@ def __bcd_create_tbl_args(**args):
     plpy.execute("""
                  insert into {tbl_bcd_args} values
                     ({dimension}, {avg}, {sqstr}, {effective_lambda}, {alpha},
-                     {row_num}, {num_iterations}, 0.01)
+                     {row_num}, {num_iterations}, {tolerance})
                  """.format(effective_lambda = effective_lambda, avg = avg,
                             sqstr = sqstr,
                             **args))
@@ -404,7 +402,11 @@ def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
                                         col_dep_var = col_dep_var,
                                         mean_y = mean_y,
                                         tbl_used = tbl_used, i = i))[0]["abs"]
-    largest = max(xy) / float(row_num * alpha)
+    if alpha > 0.01:
+        effective_alpha = alpha
+    else:
+        effective_alpha = 0.01
+    largest = max(xy) / float(row_num * effective_alpha)
     if lambda_value == 0.:
         smallest = 0.001 * largest
     else:

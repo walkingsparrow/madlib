@@ -11,6 +11,9 @@
 #include "type/state.hpp"
 #include "algo/loss.hpp"
 
+#include <ctime>
+#include <cstdlib>
+
 namespace madlib {
 namespace modules {
 namespace convex {
@@ -65,15 +68,18 @@ gaussian_bcd_transition::run (AnyType& args)
             state.task.lambda = lambda;
             state.task.alpha = alpha;
             state.task.totalRows = total_rows;
-
+            
             MappedColumnVector means = args[7].getAs<MappedColumnVector>();
             MappedColumnVector sq = args[8].getAs<MappedColumnVector>();
+            
+            // srand ( time(NULL) );
             for (Index i = 0; i < dimension; i++)
             {
                 state.task.means(i) = means(i);
                 state.task.sq(i) = sq(i);
-                state.task.model(i) = 0;
+                state.task.model(i) = 0.; //(rand() * 2 / RAND_MAX - 1) / sq(i);
             }
+            state.task.model(dimension - 1) = means(dimension - 1);
         }
         // state.algo.loss = 0;
 
