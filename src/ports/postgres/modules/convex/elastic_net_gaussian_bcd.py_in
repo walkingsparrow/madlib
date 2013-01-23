@@ -65,7 +65,7 @@ def __bcd_params_parser(optimizer_params):
 
 ## ========================================================================
 
-def __bcd_create_tbl_args(**args):
+def __bcd_create_tbl_args(args):
     """
     create the temporary schema and argument table used in BCD iterations
     """
@@ -92,6 +92,8 @@ def __bcd_create_tbl_args(**args):
         mean_y = plpy.execute("""
                               select avg({col_dep_var}) as avg from {tbl_source}
                               """.format(**args))[0]["avg"]
+
+    args["sq"] = sq
         
     avg = "array["
     sqstr = "array["
@@ -290,11 +292,12 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
         tbl_used = tbl_source
 
     # create the temp table that passes parameter values to BCD optimizer
-    __bcd_create_tbl_args(**args)
+    __bcd_create_tbl_args(args)
 
     # compute lambda sequence
     lambda_seq = __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var, dimension,
-                                       row_num, lambda_value, alpha, args["num_steps"])
+                                       row_num, lambda_value, alpha, args["num_steps"],
+                                       args["sq"])
     
     # perform the actual calculation
     iteration_run = 0
@@ -384,7 +387,7 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
 
 def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
                           dimension, row_num, lambda_value, alpha,
-                          num_steps):
+                          num_steps, sq):
     """
     Compute lambda sequence
     """
@@ -402,11 +405,10 @@ def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
                                         col_dep_var = col_dep_var,
                                         mean_y = mean_y,
                                         tbl_used = tbl_used, i = i))[0]["abs"]
-    if alpha > 0.01:
-        effective_alpha = alpha
-    else:
-        effective_alpha = 0.01
-    largest = max(xy) / float(row_num * effective_alpha)
+    max_sq = max(sq)
+    epsilon = 0.001
+    effective_alpha = alpha + (1 - alpha) * epsilon
+    largest = (max(xy)/ float(row_num) + epsilon * max_sq) / effective_alpha
     if lambda_value == 0.:
         smallest = 0.001 * largest
     else:
