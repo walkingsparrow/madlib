@@ -154,6 +154,8 @@ Special keywords in parameter arrays of modelling, prediction and metric functio
 
 <em>\%error%</em> : The argument position for the output of metric function
 
+<b>Note</b>: If the parameter <em>explore_values</em> is NULL or has zero length, then the cross validation function will only run a data folding.
+
 Output:
 <pre>  param_explored | average error | standard deviation of error
 -------------------------|------------------|--------------------------------

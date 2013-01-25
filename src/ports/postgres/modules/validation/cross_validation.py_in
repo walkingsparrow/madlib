@@ -177,7 +177,6 @@ def __validate_cv_args(modelling_func, modelling_params, modelling_params_type,
                        fold_num, upto_fold,
                        data_cols):
     if (modelling_func is None or modelling_params is None or modelling_params_type is None
-        or param_explored is None or explore_values is None
         or predict_func is None or predict_params is None or predict_params_type is None
         or metric_func is None or metric_params is None or metric_params_type is None
         or data_tbl is None or validation_result is None or fold_num is None
@@ -282,7 +281,15 @@ def cross_validation_general(
 
         # try to be as general as possible
         # validation using each explore_value
-        for explore_value in explore_values:
+        if explore_values is None or len(explore_values) == 0:
+            # if no parameter needs to be explored
+            # just do the data folding
+            temp_param_explored = None
+            temp_explore_values = [None]
+        else:
+            temp_param_explored = param_explored
+            temp_explore_values = explore_values
+        for explore_value in temp_explore_values:
             # train
             plpy.execute(""" 
                         drop table if exists {tbl_output_model};
@@ -291,17 +298,17 @@ def cross_validation_general(
                          """.format(**kwargs))
             __cv_funcall_general(
                 modelling_func, modelling_params, modelling_params_type,
-                tbl_train, col_random_id, param_explored, explore_value,
+                tbl_train, col_random_id, temp_param_explored, explore_value,
                 None, tbl_output_model)
             # validation
             __cv_funcall_general(
                 predict_func, predict_params, predict_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value,
+                tbl_valid, col_random_id, temp_param_explored, explore_value,
                 tbl_output_model, tbl_output_pred)
             # measure the performance metric
             __cv_funcall_general(
                 metric_func, metric_params, metric_params_type,
-                tbl_valid, col_random_id, param_explored, explore_value,
+                tbl_valid, col_random_id, temp_param_explored, explore_value,
                 tbl_output_pred, tbl_output_error)
         
             # accumulate the measured metric result
