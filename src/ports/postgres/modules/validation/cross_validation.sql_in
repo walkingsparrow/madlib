@@ -463,3 +463,17 @@ or lasso as the first argument.';
     return msg;
 END;
 $$ LANGUAGE plpgsql STRICT;
+
+------------------------------------------------------------------------
+
+/**
+ * @brief A wrapper for linear regression
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr(
+    tbl_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    col_dep_var     VARCHAR,
+    tbl_result      VARCHAR
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cv_linregr)
+$$ LANGUAGE plpythonu;

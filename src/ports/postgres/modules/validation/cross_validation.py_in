@@ -349,3 +349,18 @@ def cross_validation_general(
     plpy.execute("set client_min_messages to " + old_msg_level)
 
     return None
+
+## ========================================================================
+def cv_linregr (schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result):
+    """
+    A wrapper for linear regression to be used in general CV
+    """
+    plpy.execute("""
+                 create table {tbl_result} as
+                    select ({schema_madlib}.linregr(col_dep_var, col_ind_var)).*
+                    from {tbl_source}
+                 """.format(schema_madlib = schema_madlib,
+                            tbl_source = tbl_source,
+                            col_ind_var = col_ind_var,
+                            col_dep_var = col_dep_var))
+    return None
