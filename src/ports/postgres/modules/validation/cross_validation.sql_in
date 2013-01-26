@@ -469,11 +469,69 @@ $$ LANGUAGE plpgsql STRICT;
 /**
  * @brief A wrapper for linear regression
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr(
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr_train(
     tbl_source      VARCHAR,
     col_ind_var     VARCHAR,
     col_dep_var     VARCHAR,
     tbl_result      VARCHAR
 ) RETURNS VOID AS $$
-PythonFunction(validation, cross_validation, cv_linregr)
+PythonFunction(validation, cross_validation, cv_linregr_train)
+$$ LANGUAGE plpythonu;
+
+------------------------------------------------------------------------
+
+/**
+ * @brief A wrapper for logistic regression
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_logregr_train(
+    tbl_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    col_dep_var     VARCHAR,
+    tbl_result      VARCHAR,
+    num_iterations  INTEGER,
+    optimizer       VARCHAR,
+    precision       DOUBLE PRECISION
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cv_logregr_train)
+$$ LANGUAGE plpythonu;
+
+/**
+ * @brief A prediction function for logistic regression
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.logregr_predict(
+    coef            DOUBLE PRECISION[],
+    col_ind         DOUBLE PRECISION[]
+) RETURNS BOOLEAN AS $$
+PythonFunction(validation, cross_validation, logregr_predict)
+$$ LANGUAGE plpythonu;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_logregr_predict(
+    tbl_model       VARCHAR,
+    tbl_source      VARCHAR,
+    col_ind_var     VARCHAR,
+    col_id          VARCHAR,
+    tbl_predict     VARCHAR
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cv_logregr_predict)
+$$ LANGUAGE plpythonu;
+
+/**
+ * @brief Metric function for logistic regression
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.logregr_accuracy(
+    coef            DOUBLE PRECISION,
+    col_ind         DOUBLE PRECISION[],
+    col_dep         BOOLEAN
+) RETURNS INTEGER AS $$
+PythonFunction(validation, cross_validation, logregr_accuracy)
+$$ LANGUAGE plpythonu;
+ 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_logregr_accuracy(
+    tbl_predict     VARCHAR,
+    tbl_source      VARCHAR,
+    col_id          VARCHAR,
+    col_dep_var     VARCHAR,
+    tbl_accuracy    VARCHAR
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cv_logregr_accuracy)
 $$ LANGUAGE plpythonu;

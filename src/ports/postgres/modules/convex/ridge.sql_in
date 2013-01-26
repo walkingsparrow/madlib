@@ -335,3 +335,4 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__ridge_restore_linear_coef_scales(
 ) RETURNS VOID AS $$
 PythonFunction(convex, ridge, __ridge_restore_linear_coef_scales)
 $$ LANGUAGE plpythonu;
+

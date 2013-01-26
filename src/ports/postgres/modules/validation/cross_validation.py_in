@@ -351,7 +351,8 @@ def cross_validation_general(
     return None
 
 ## ========================================================================
-def cv_linregr (schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result):
+def cv_linregr_train (schema_madlib, tbl_source, col_ind_var,
+                      col_dep_var, tbl_result):
     """
     A wrapper for linear regression to be used in general CV
     """
@@ -364,3 +365,95 @@ def cv_linregr (schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result)
                             col_ind_var = col_ind_var,
                             col_dep_var = col_dep_var))
     return None
+    
+## ========================================================================
+def cv_logregr_train (schema_madlib, tbl_source, col_ind_var,
+                      col_dep_var, tbl_result, num_iterations,
+                      optimizer, precision):
+    """
+    A wrapper for logistic regression to be used in general CV
+    """
+    plpy.execute("""
+                 create table {tbl_result} as
+                     select coef from {schema_madlib}.logregr(
+                         '{tbl_source}',
+                         '{col_ind_var}',
+                         '{col_dep_var}',
+                         {num_iterations},
+                         '{optimizer}',
+                         {precision}
+                     )
+                 """.format(schema_madlib = schema_madlib,
+                            tbl_source = tbl_source,
+                            col_ind_var = col_ind_var,
+                            col_dep_var = col_dep_var,
+                            num_iterations = num_iterations,
+                            optimizer = optimizer,
+                            precision = precision))
+    return None
+
+## ========================================================================
+def logregr_predict (schema_madlib, coef, col_ind):
+    """
+    Compute the prediction of logistic regression
+
+    @param coef Coefficients of logistic regression
+    @param col_ind Independent variables
+    """
+    dot = sum(p * q for p, q in zip(coef, col_ind))
+    return bool(round(1./(1. + math.exp(-dot))))
+
+## ========================================================================
+def cv_logregr_predict (schema_madlib, tbl_model, tbl_source, col_ind_var,
+                        col_id, tbl_predict):
+    """
+    A wrapper function for logistic prediction for CV
+    """
+    plpy.execute("""
+                 create table {tbl_predict} as
+                     select
+                         {col_id} as id,
+                         {schema_madlib}.logregr_predict(
+                             coef,
+                             {col_ind_var}) as prediction
+                     from
+                         {tbl_model}, {tbl_source}
+                 """.format(schema_madlib = schema_madlib,
+                            tbl_model = tbl_model,
+                            tbl_source = tbl_source,
+                            col_ind_var = col_ind_var,
+                            col_id = col_id,
+                            tbl_predict = tbl_predict))
+    return None
+
+## ========================================================================
+def logregr_accuracy (schema_madlib, coef, col_ind, col_dep):
+    """
+    Compare the logistic prediction with actual values
+    """
+    pred = logregr_predict(schema_madlib, coef, col_ind)
+    return int(pred == col_dep)
+
+## ========================================================================
+def cv_logregr_accuracy (schema_madlib, tbl_predict, tbl_source, col_id,
+                         col_dep_var, tbl_accuracy):
+    """
+    A wrapper function for logistic accuracy for CV
+    """
+    plpy.execute("""
+                 create table {tbl_accuracy} as
+                     select
+                         avg(case when
+                             {tbl_predict}.prediction = {tbl_source}.{col_dep_var}
+                             then 1
+                             else 0
+                             end)
+                     from
+                         {tbl_predict}, {tbl_source}
+                     where {tbl_predict}.id = {tbl_source}.{col_id}
+                 """.format(schema_madlib = schema_madlib,
+                            tbl_predict = tbl_predict,
+                            tbl_source = tbl_source,
+                            col_dep_var = col_dep_var,
+                            col_id = col_id,
+                            tbl_accuracy = tbl_accuracy))
