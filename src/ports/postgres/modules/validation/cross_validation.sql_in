@@ -207,11 +207,11 @@ select madlib.cross_validation_general(
     'lambda',
     '{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41}'::varchar[],
     --
-    'madlib.ridge_newton_predict',
+    'madlib.ridge_linear_newton_predict',
     '{\%model%, \%data%, val, \%id%, \%prediction%}'::varchar[],
     '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
     --
-    'madlib.ridge_newton_error',
+    'madlib.mse_error',
     '{\%prediction%, \%data%, \%id%, dep, \%error%}'::varchar[],
     '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
     --
@@ -478,6 +478,26 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr_train(
 PythonFunction(validation, cross_validation, cv_linregr_train)
 $$ LANGUAGE plpythonu;
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_predict(
+    coef            DOUBLE PRECISION[],
+    col_ind         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS $$
+PythonFunction(validation, cross_validation, linregr_predict)
+$$ LANGUAGE plpythonu;
+
+/**
+ * @brief A wrapper for linear regression prediction
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr_predict(
+    tbl_model       VARCHAR,
+    tbl_newdata     VARCHAR,
+    col_ind_var     VARCHAR,
+    col_id          VARCHAR,    -- ID column
+    tbl_predict     VARCHAR
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cv_linregr_predict)
+$$ LANGUAGE plpythonu;
+
 ------------------------------------------------------------------------
 
 /**
@@ -490,7 +510,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_logregr_train(
     tbl_result      VARCHAR,
     num_iterations  INTEGER,
     optimizer       VARCHAR,
-    precision       DOUBLE PRECISION
+    precsn          DOUBLE PRECISION
 ) RETURNS VOID AS $$
 PythonFunction(validation, cross_validation, cv_logregr_train)
 $$ LANGUAGE plpythonu;
@@ -507,7 +527,7 @@ $$ LANGUAGE plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_logregr_predict(
     tbl_model       VARCHAR,
-    tbl_source      VARCHAR,
+    tbl_newdata     VARCHAR,
     col_ind_var     VARCHAR,
     col_id          VARCHAR,
     tbl_predict     VARCHAR

@@ -164,7 +164,7 @@ def __cv_param_type_explored(params, params_type, param_explored):
     for i in range(len(params)):
         if params[i] == param_explored:
             return params_type[i]
-    return None
+    return "integer"
 
 ## ========================================================================
 
@@ -284,8 +284,8 @@ def cross_validation_general(
         if explore_values is None or len(explore_values) == 0:
             # if no parameter needs to be explored
             # just do the data folding
-            temp_param_explored = None
-            temp_explore_values = [None]
+            temp_param_explored = "Dummy"
+            temp_explore_values = [-1]
         else:
             temp_param_explored = param_explored
             temp_explore_values = explore_values
@@ -318,21 +318,25 @@ def cross_validation_general(
                     drop table if exists {tbl_accum_error};
                     create temp table {tbl_accum_error} as
                         select
-                            {explore_value}::{explore_type} as {param_explored},
+                            {explore_value}::{explore_type} as {temp_param_explored},
                             {tbl_output_error}.*
                         from {tbl_output_error}
-                """.format(explore_value = explore_value, **kwargs))
+                """.format(explore_value = explore_value,
+                           temp_param_explored = temp_param_explored,
+                           **kwargs))
             else:
                 plpy.execute("""
                     insert into {tbl_accum_error}
                         select
-                            {explore_value}::{explore_type} as {param_explored},
+                            {explore_value}::{explore_type} as {temp_param_explored},
                             {tbl_output_error}.*
                         from {tbl_output_error}                             
-                """.format(explore_value = explore_value, **kwargs))
+                """.format(explore_value = explore_value,
+                           temp_param_explored = temp_param_explored,
+                           **kwargs))
 
     # compute the averages and standard deviations for all measured metrics (not necessary one)
-    __cv_summarize_result(tbl_accum_error, validation_result, param_explored)
+    __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored)
 
     # clean up the temporary tables
     plpy.execute("""
@@ -352,24 +356,61 @@ def cross_validation_general(
 
 ## ========================================================================
 def cv_linregr_train (schema_madlib, tbl_source, col_ind_var,
-                      col_dep_var, tbl_result):
+                      col_dep_var, tbl_result, **kwargs):
     """
     A wrapper for linear regression to be used in general CV
     """
     plpy.execute("""
                  create table {tbl_result} as
-                    select ({schema_madlib}.linregr(col_dep_var, col_ind_var)).*
+                    select ({schema_madlib}.linregr({col_dep_var}, {col_ind_var})).*
                     from {tbl_source}
                  """.format(schema_madlib = schema_madlib,
                             tbl_source = tbl_source,
+                            tbl_result = tbl_result,
                             col_ind_var = col_ind_var,
                             col_dep_var = col_dep_var))
     return None
-    
+
+## ========================================================================
+
+def linregr_predict (schema_madlib, coef, col_ind, **kwargs):
+    """
+    Compute the prediction of linear regression
+
+    @param coef Coefficients of linear regression
+    @param col_ind Independent variables
+    """
+    dot = sum(p * q for p, q in zip(coef, col_ind))
+    return dot
+
+## ========================================================================
+
+def cv_linregr_predict (schema_madlib, tbl_model, tbl_newdata, col_ind_var,
+                        col_id, tbl_predict, **kwargs):
+    """
+    A wrapper function for linear prediction for CV
+    """
+    plpy.execute("""
+                 create table {tbl_predict} as
+                     select
+                         {col_id} as id,
+                         {schema_madlib}.linregr_predict(
+                             coef,
+                             {col_ind_var}) as prediction
+                     from
+                         {tbl_model}, {tbl_newdata}
+                 """.format(schema_madlib = schema_madlib,
+                            tbl_model = tbl_model,
+                            tbl_newdata = tbl_newdata,
+                            col_ind_var = col_ind_var,
+                            col_id = col_id,
+                            tbl_predict = tbl_predict))
+    return None
+
 ## ========================================================================
 def cv_logregr_train (schema_madlib, tbl_source, col_ind_var,
                       col_dep_var, tbl_result, num_iterations,
-                      optimizer, precision):
+                      optimizer, precsn, **kwargs):
     """
     A wrapper for logistic regression to be used in general CV
     """
@@ -377,23 +418,24 @@ def cv_logregr_train (schema_madlib, tbl_source, col_ind_var,
                  create table {tbl_result} as
                      select coef from {schema_madlib}.logregr(
                          '{tbl_source}',
-                         '{col_ind_var}',
                          '{col_dep_var}',
+                         '{col_ind_var}',
                          {num_iterations},
                          '{optimizer}',
                          {precision}
                      )
                  """.format(schema_madlib = schema_madlib,
                             tbl_source = tbl_source,
+                            tbl_result = tbl_result,
                             col_ind_var = col_ind_var,
                             col_dep_var = col_dep_var,
                             num_iterations = num_iterations,
                             optimizer = optimizer,
-                            precision = precision))
+                            precision = precsn))
     return None
 
 ## ========================================================================
-def logregr_predict (schema_madlib, coef, col_ind):
+def logregr_predict (schema_madlib, coef, col_ind, **kwargs):
     """
     Compute the prediction of logistic regression
 
@@ -404,8 +446,8 @@ def logregr_predict (schema_madlib, coef, col_ind):
     return bool(round(1./(1. + math.exp(-dot))))
 
 ## ========================================================================
-def cv_logregr_predict (schema_madlib, tbl_model, tbl_source, col_ind_var,
-                        col_id, tbl_predict):
+def cv_logregr_predict (schema_madlib, tbl_model, tbl_newdata, col_ind_var,
+                        col_id, tbl_predict, **kwargs):
     """
     A wrapper function for logistic prediction for CV
     """
@@ -417,17 +459,17 @@ def cv_logregr_predict (schema_madlib, tbl_model, tbl_source, col_ind_var,
                              coef,
                              {col_ind_var}) as prediction
                      from
-                         {tbl_model}, {tbl_source}
+                         {tbl_model}, {tbl_newdata}
                  """.format(schema_madlib = schema_madlib,
                             tbl_model = tbl_model,
-                            tbl_source = tbl_source,
+                            tbl_newdata = tbl_newdata,
                             col_ind_var = col_ind_var,
                             col_id = col_id,
                             tbl_predict = tbl_predict))
     return None
 
 ## ========================================================================
-def logregr_accuracy (schema_madlib, coef, col_ind, col_dep):
+def logregr_accuracy (schema_madlib, coef, col_ind, col_dep, **kwargs):
     """
     Compare the logistic prediction with actual values
     """
@@ -436,7 +478,7 @@ def logregr_accuracy (schema_madlib, coef, col_ind, col_dep):
 
 ## ========================================================================
 def cv_logregr_accuracy (schema_madlib, tbl_predict, tbl_source, col_id,
-                         col_dep_var, tbl_accuracy):
+                         col_dep_var, tbl_accuracy, **kwargs):
     """
     A wrapper function for logistic accuracy for CV
     """
