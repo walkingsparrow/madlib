@@ -61,7 +61,8 @@ def __cv_copy_data_with_id(rel_origin, col_data, rel_copied, random_id):
 
 ## ========================================================================
 
-def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored):
+def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored,
+                          data_folding_only):
     """
     Summarize the result. For each column in the metric measured in cross validation,
     compute the average and standard deviation for the metrics. For ridge and lasso,
@@ -108,6 +109,9 @@ def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored):
                 ) t
                 where t.{param_explored} = {tbl_result}.{param_explored}
             """.format(col = col, **kwargs))
+
+    if data_folding_only:
+        plpy.execute("alter table " + tbl_result + " drop column " + param_explored)
     return None
 
 ## ========================================================================
