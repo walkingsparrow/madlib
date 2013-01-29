@@ -270,7 +270,20 @@ def cross_validation_general(
         # mapping the given ID to a random ID
         __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id)
         tbl_used = data_tbl
- 
+
+    # try to be as general as possible
+    # validation using each explore_value
+    if explore_values is None or len(explore_values) == 0:
+        # if no parameter needs to be explored
+        # just do the data folding
+        temp_param_explored = __cv_unique_string()
+        temp_explore_values = [-1]
+        data_folding_only = True
+    else:
+        temp_param_explored = param_explored
+        temp_explore_values = explore_values
+        data_folding_only = False
+        
     accum_count = 0
     for k in range(upto_fold):
         # split data into train and validation parts
@@ -279,16 +292,6 @@ def cross_validation_general(
         else:
             __cv_split_data_using_id_tbl(tbl_used, data_cols, tbl_random_id, col_random_id, data_id, row_num, tbl_train, tbl_valid, fold_num, k+1)
 
-        # try to be as general as possible
-        # validation using each explore_value
-        if explore_values is None or len(explore_values) == 0:
-            # if no parameter needs to be explored
-            # just do the data folding
-            temp_param_explored = "Dummy"
-            temp_explore_values = [-1]
-        else:
-            temp_param_explored = param_explored
-            temp_explore_values = explore_values
         for explore_value in temp_explore_values:
             # train
             plpy.execute(""" 
@@ -336,7 +339,7 @@ def cross_validation_general(
                            **kwargs))
 
     # compute the averages and standard deviations for all measured metrics (not necessary one)
-    __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored)
+    __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored, data_folding_only)
 
     # clean up the temporary tables
     plpy.execute("""
