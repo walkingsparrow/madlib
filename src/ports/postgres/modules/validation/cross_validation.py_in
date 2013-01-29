@@ -492,7 +492,7 @@ def cv_logregr_accuracy (schema_madlib, tbl_predict, tbl_source, col_id,
                              {tbl_predict}.prediction = {tbl_source}.{col_dep_var}
                              then 1
                              else 0
-                             end)
+                             end) as accuracy
                      from
                          {tbl_predict}, {tbl_source}
                      where {tbl_predict}.id = {tbl_source}.{col_id}
