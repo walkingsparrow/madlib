@@ -446,7 +446,10 @@ def logregr_predict (schema_madlib, coef, col_ind, **kwargs):
     @param col_ind Independent variables
     """
     dot = sum(p * q for p, q in zip(coef, col_ind))
-    return bool(round(1./(1. + math.exp(-dot))))
+    if dot > 0:
+        return True
+    else:
+        return False
 
 ## ========================================================================
 def cv_logregr_predict (schema_madlib, tbl_model, tbl_newdata, col_ind_var,
