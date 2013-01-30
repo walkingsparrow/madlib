@@ -420,7 +420,7 @@ def __lasso_igd_cv_compute(**kwargs):
             __ridge_accumulate_error(accum_count, tbl_accum_error, value, error)
 
     # for each lambda value, compute the average and standard deviation of errors
-    __cv_summarize_result(tbl_accum_error, validation_result, "lambda")
+    __cv_summarize_result(tbl_accum_error, validation_result, "lambda", False)
 
     # clean up the temporary tables
     plpy.execute("""
