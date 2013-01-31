@@ -131,15 +131,10 @@ variables) that are going to be used in the calculation, and only these columns 
     <em>validation_result</em>,     -- Table name to store the output of CV function, see the Output for
                                     ---- format. It will be automatically created by CV function
     --
-    <em>fold_num</em>,              -- Value of k. How many folds validation? Each validation uses 1/fold_num
-                                    ---- fraction of the data for validation. This value can be a non-integer,
-                                    ---- in which case usually one validation is proper (see the comment to
-                                    ---- <em>upto_fold</em>). Deafult value: 10.
-    <em>upto_fold</em>,             -- How many fold validation actually will be calculated? Default
-                                    ---- value: fold_num::INTEGER. If it is 1, then CV function just runs
-                                    ---- one validation for each value of <em>param_explored</em>
-    <em>data_cols</em>              -- Names of data columns that are going to be used. It is only useful when
+    <em>data_cols</em>,              -- Names of data columns that are going to be used. It is only useful when
                                     ---- <em>data_id</em> is NULL, otherwise it is ignored.
+    <em>fold_num</em>              -- Value of k. How many folds validation? Each validation uses 1/fold_num
+                                    ---- fraction of the data for validation. Deafult value: 10.
 );</pre>
 
 Special keywords in parameter arrays of modelling, prediction and metric functions:
@@ -220,9 +215,8 @@ select madlib.cross_validation_general(
     False,
     --
     'valid_rst_tbl',
-    10,
-    10,
-    '{val, dep}'::varchar[]
+    '{val, dep}'::varchar[],
+    10
 );
 </pre>
 
@@ -261,8 +255,7 @@ $$ LANGUAGE plpythonu;
  * @param data_id Name of the unique ID associated with each row. Provide <em>NULL</em> if there is no such column in the data table
  * @param id_is_random Whether the provided ID is randomly assigned to each row
  * @param validation_result Table name to store the output of CV function, see the Output for format. It will be automatically created by CV function
- * @param fold_num Value of k. How many folds validation? Each validation uses 1/fold_num fraction of the data for validation. This value can be a non-integer, in which case usually one validation is proper (see the comment to  <em>upto_fold</em>). Deafult value: 10.
- * @param upto_fold How many fold validation actually will be calculated? Default value: fold_num::INTEGER. If it is 1, then CV function just runs one validation for each value of <em>param_explored</em>
+ * @param fold_num Value of k. How many folds validation? Each validation uses 1/fold_num fraction of the data for validation. Deafult value: 10.
  * @param data_cols Names of data columns that are going to be used. It is only useful when <em>data_id</em> is NULL, otherwise it is ignored.
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
@@ -287,9 +280,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
     --
     validation_result       VARCHAR,    -- store the result: param values, error, +/-
     --
-    fold_num                DOUBLE PRECISION,    -- how many fold validation, default: 10
-    upto_fold               INTEGER,    -- how many fold actually will be used, default: 10. If 1, it is just one validation.
-    data_cols               VARCHAR[]  -- names of data columns that are going to be used
+    data_cols               VARCHAR[],  -- names of data columns that are going to be used
+    fold_num                INTEGER    -- how many fold validation, default: 10
 ) RETURNS VOID AS $$
 PythonFunction(validation, cross_validation, cross_validation_general)
 $$ LANGUAGE plpythonu;
@@ -318,75 +310,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
     --
     validation_result       VARCHAR,    -- store the result: param values, error, +/-
     --
-    fold_num                DOUBLE PRECISION,    -- how many fold validation, default: 10
-    upto_fold               INTEGER    -- how many fold actually will be used, default: 10. If 1, it is just one validation.
+    data_cols               VARCHAR[]  -- names of data columns that are going to be used  
 ) RETURNS VOID AS $$
 BEGIN
-    IF data_id is NULL THEN
-        RAISE EXCEPTION 'The user needs to provide the data columns that are used if no unique ID is associated with each row!';
-    ELSE
-        PERFORM MADLIB_SCHEMA.cross_validation_general($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NULL);
-    END IF;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
-
-------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
-    modelling_func          VARCHAR,    -- function for setting up the model
-    modelling_params        VARCHAR[],  -- parameters for modelling
-    modelling_params_type   VARCHAR[],  -- parameter types for modelling
-    --
-    param_explored          VARCHAR,    -- which parameter will be studied using validation
-    explore_values          VARCHAR[],  -- values that will be explored for this parameter
-    --
-    predict_func            VARCHAR,    -- function for predicting using the model
-    predict_params          VARCHAR[],  -- parameters for prediction
-    predict_params_type     VARCHAR[],  -- parameter types for prediction
-    --
-    metric_func             VARCHAR,    -- function that computes the error metric
-    metric_params           VARCHAR[],  -- parameters for prediction   
-    metric_params_type      VARCHAR[],  -- parameter types for prediction
-    --
-    data_tbl                VARCHAR,    -- table containing the data, which will be split into training and validation parts
-    data_id                 VARCHAR,    -- user provide a unique ID for each row
-    id_is_random            BOOLEAN,    -- the ID provided by user is random
-    --
-    validation_result       VARCHAR,    -- store the result: param values, error, +/-
-    --
-    fold_num                DOUBLE PRECISION    -- how many fold validation, default: 10
-) RETURNS VOID AS $$
-BEGIN
-    PERFORM MADLIB_SCHEMA.cross_validation_general($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,($16)::INTEGER);
-END;
-$$ LANGUAGE plpgsql VOLATILE;
-
-------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation_general(
-    modelling_func          VARCHAR,    -- function for setting up the model
-    modelling_params        VARCHAR[],  -- parameters for modelling
-    modelling_params_type   VARCHAR[],  -- parameter types for modelling
-    --
-    param_explored          VARCHAR,    -- which parameter will be studied using validation
-    explore_values          VARCHAR[],  -- values that will be explored for this parameter
-    --
-    predict_func            VARCHAR,    -- function for predicting using the model
-    predict_params          VARCHAR[],  -- parameters for prediction
-    predict_params_type     VARCHAR[],  -- parameter types for prediction
-    --
-    metric_func             VARCHAR,    -- function that computes the error metric
-    metric_params           VARCHAR[],  -- parameters for prediction   
-    metric_params_type      VARCHAR[],  -- parameter types for prediction
-    --
-    data_tbl                VARCHAR,    -- table containing the data, which will be split into training and validation parts
-    data_id                 VARCHAR,    -- user provide a unique ID for each row
-    id_is_random            BOOLEAN,    -- the ID provided by user is random
-    --
-    validation_result       VARCHAR     -- store the result: param values, error, +/-
-) RETURNS VOID AS $$
-BEGIN
-    PERFORM MADLIB_SCHEMA.cross_validation_general($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,10);
+    PERFORM MADLIB_SCHEMA.cross_validation_general($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,10);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
