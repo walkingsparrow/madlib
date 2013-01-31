@@ -84,9 +84,8 @@ begin
         False,
         --
         'valid_rst_tbl_new',
-        10,
-        10,
-        '{val, dep}'::varchar[]
+        '{val, dep}'::varchar[],
+        10
     );
 
     --execute 'select min(mean_squared_error_avg) from valid_rst_tbl_new' into minv;

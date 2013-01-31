@@ -174,13 +174,12 @@ def __validate_cv_args(modelling_func, modelling_params, modelling_params_type,
                        metric_func, metric_params, metric_params_type,
                        data_tbl, data_id, id_is_random,
                        validation_result,
-                       fold_num, upto_fold,
-                       data_cols):
+                       fold_num, data_cols):
     if (modelling_func is None or modelling_params is None or modelling_params_type is None
         or predict_func is None or predict_params is None or predict_params_type is None
         or metric_func is None or metric_params is None or metric_params_type is None
         or data_tbl is None or validation_result is None or fold_num is None
-        or upto_fold is None or data_cols is None):
+        or data_cols is None):
         plpy.error("CV error: You have unsupported Null value(s) in arguments!")
     
     if not __is_tbl_exists(data_tbl):
@@ -195,9 +194,7 @@ def __validate_cv_args(modelling_func, modelling_params, modelling_params_type,
     if fold_num <= 1:
         plpy.error("Cross validation total fold number should be larger than 1!")
 
-    if upto_fold < 1 or upto_fold > fold_num:
-        plpy.error("Cannot run with cross validation fold smalled than 1 or larger than total fold number!")
-    
+    return None
     
 ## ========================================================================
 
@@ -210,8 +207,7 @@ def cross_validation_general(
         metric_func, metric_params, metric_params_type,
         data_tbl, data_id, id_is_random,
         validation_result,
-        fold_num, upto_fold,
-        data_cols,
+        data_cols, fold_num, 
         **kwargs):
     """
     A general framework that runs cross-validation for modules that are
@@ -225,8 +221,7 @@ def cross_validation_general(
                        metric_func, metric_params, metric_params_type,
                        data_tbl, data_id, id_is_random,
                        validation_result,
-                       fold_num, upto_fold,
-                       data_cols)
+                       fold_num, data_cols)
     
     row_num = plpy.execute("select count(*) as row_num from " + data_tbl)[0]["row_num"]
     if row_num <= fold_num:
@@ -285,7 +280,7 @@ def cross_validation_general(
         data_folding_only = False
         
     accum_count = 0
-    for k in range(upto_fold):
+    for k in range(fold_num):
         # split data into train and validation parts
         if (data_id is None) or (data_id is not None and id_is_random):
             __cv_split_data_using_id_col(tbl_used, data_cols, col_random_id, row_num, tbl_train, tbl_valid, fold_num, k+1)
