@@ -89,7 +89,12 @@ Output:
 </pre>
 
 The user can use
-<pre> SELECT cross_validation(module_name);</pre> to print the help message for each individual module that it supports.
+<pre> SELECT cross_validation();</pre> to print a short help message about which modules is supported. Right now, only Ridge
+and LASSO regularization are supported.
+
+The user can also use
+<pre> SELECT cross_validation('module_name');</pre> to print the help message for each individual module that it supports, where
+module_name can be 'ridge' or 'lasso' for now.
 
 (2) <b>The flexible interface.</b>
 
