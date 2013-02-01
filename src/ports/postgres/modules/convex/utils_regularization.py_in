@@ -1,0 +1,241 @@
+
+import plpy
+import math
+from validation.cv_utils import __cv_unique_string
+
+## ========================================================================
+    
+def __utils_ind_var_scales(**kwargs):
+    """
+    The mean and standard deviation for each element of the independent variable,
+    which is an array in ridge and lasso.
+
+    The output will be stored in a temp table: a mean array and a std array.
+
+    This function is also used in lasso.
+    """
+    scale_factor = math.sqrt(1. - 1./float(kwargs["row_num"]))
+    plpy.execute("""
+        drop table if exists {tbl_scales};
+        create temp table {tbl_scales} as
+            select
+                attr,
+                avg(val) as mean,
+                stddev(val) * {scale_factor} as std
+            from (
+                select
+                    generate_series(1, {dimension}) as attr,
+                    unnest({col_ind_var}) as val
+                from {tbl_data}
+            ) t
+            group by attr
+    """.format(scale_factor = scale_factor, **kwargs))
+    return None
+
+## ========================================================================
+    
+def __utils_dep_var_scale(**kwargs):
+    """
+    The mean and standard deviation for each element of the dependent variable,
+    which is a scalar in ridge and lasso.
+
+    The output will be stored in a temp table: a mean array and a std array
+
+    This function is also used in lasso.
+    """
+    plpy.execute("""
+        drop table if exists {tbl_scale};
+        create temp table {tbl_scale} as
+            select
+                avg({col_dep_var}) as dep_avg,
+                1 as dep_std
+            from {tbl_data}
+    """.format(**kwargs))
+    return None
+
+## ========================================================================
+    
+def __utils_normalize_data(**kwargs):
+    """
+    Normalize the independent and dependent variables using the calculated mean's and std's
+    in __ridge_ind_var_scales and __ridge_dep_var_scale.
+
+    Compute the scaled variables by: scaled_value = (origin_value - mean) / std, and special
+    care is needed if std is zero.
+    
+    The output is a table with scaled independent and dependent variables.
+
+    This function is also used in lasso.
+
+    Parameters:
+    tbl_data -- original data
+    col_ind_var -- independent variables column 
+    dimension -- length of independent variable array
+    col_dep_var -- dependent variable column
+    tbl_ind_scales -- independent variables scales array
+    tbl_dep_scale -- dependent variable scale 
+    tbl_data_scaled -- scaled data result
+    """
+    # intermediate table name to avoid name conflicts 
+    foos = __cv_unique_string()
+    plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
+    plpy.execute("""
+        create temp table {tbl_data_scaled} as
+            select
+                array_agg(val order by attr ) as {col_ind_var},
+                max(dep_var) as {col_dep_var}
+            from (
+                select
+                    ids,
+                    {foos}.attr as attr,
+                    (dep_var - dep_avg) / dep_std as dep_var,
+                    (
+                        case when std = 0 then
+                            val - mean
+                        else
+                            (val - mean) / (case when std = 0 then 1 else std end)
+                        end
+                    ) as val
+                from
+                    {tbl_ind_scales},
+                    {tbl_dep_scale},
+                    (
+                        select
+                            ids,
+                            {col_dep_var} as dep_var,
+                            generate_series(1, {dimension}) as attr,
+                            unnest({col_ind_var}) as val
+                        from (
+                            select
+                                row_number() over () as ids,
+                                {col_dep_var},
+                                {col_ind_var}
+                            from {tbl_data}) t
+                    ) as {foos}
+                where {tbl_ind_scales}.attr = {foos}.attr
+            ) as t
+            group by ids
+    """.format(foos = foos, **kwargs))
+    return None
+
+## ========================================================================
+    
+def __utils_gather_results(**kwargs):
+    """
+    Put normalized fitting result together with scales to be used for nonlinear fitting.
+
+    Non-linear fitting just uses normalized fitting coefficients to get prediction. Restore the coefficients
+    to the original scale involves non-linear calculation and is usually not necessary.
+
+    Parameters:
+    tbl_coef - table contains the rsult of fitting
+    col_coef - column name for the fitting coefficients
+    col_others - column names other than the one for the fitting coefficients
+    tbl_ind_scales - independent variable scales
+    tbl_dep_scale - dependent variable scale
+    """
+    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
+    plpy.execute("drop table if exists {tbl_all_results}".format(**kwargs))
+    plpy.execute("""
+        create table {tbl_all_results} as
+            select
+                coefficients as {col_coef},
+                intercept as intercept,
+                array_agg({tbl_ind_scales}.mean order by {tbl_ind_scales}.attr) as ind_var_mean,
+                {tbl_ind_scales}.std as ind_var_std,
+                {col_others_string}
+            from
+                {tbl_coef},
+                {tbl_ind_scales}
+    """.format(col_others_string = col_others_string, **kwargs))
+    return None
+
+## ========================================================================
+    
+def __utils_restore_linear_coef_scales_sql(**kwargs):
+    """
+    The query string for restoring the fitting coefficients using the calculated mean's and std's
+    in __ridge_ind_var_scales and __ridge_dep_var_scale.
+
+    Only for linear fitting.
+    """
+    subq2 = __cv_unique_string()
+    query = """
+        select
+            subq1.coefficients as {col_coef},
+            subq1.intercept + subq1.dep_avg as intercept
+        from (
+            select
+                array_agg(val order by attr) as coefficients,
+                sum(intercept_tmp) as intercept,
+                max(dep_avg) as dep_avg
+            from (
+                select
+                    {subq2}.attr,
+                    (
+                        case when std = 0 then
+                            0.
+                        else
+                            coef * dep_std / (case when std = 0 then 1 else std end)
+                        end
+                    ) as val,
+                    (
+                        case when std = 0 then
+                            0.
+                        else
+                            - coef * dep_std * mean / std
+                        end
+                    ) as intercept_tmp,
+                    dep_avg
+                from
+                    {tbl_ind_scales},
+                    {tbl_dep_scale},
+                    (
+                        select
+                            generate_series(1, {dimension}) as attr,
+                            unnest({col_coef}) as coef
+                        from {tbl_coef}
+                    ) as {subq2}
+                where {tbl_ind_scales}.attr = {subq2}.attr
+            ) as subq3
+        ) as subq1
+    """.format(subq2 = subq2, **kwargs)
+    return query
+
+## ========================================================================
+    
+def __utils_restore_linear_coef_scales(**kwargs):
+    """
+    Restore the linear coefficients to the original scale.
+
+    This function is also used in lasso.
+    """
+    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
+    foos = __cv_unique_string()
+    goos = __cv_unique_string()
+    sql_query = __utils_restore_linear_coef_scales_sql(**kwargs)
+    plpy.execute("drop table if exists {tbl_origin_coef}".format(**kwargs))
+    plpy.execute("""
+        create table {tbl_origin_coef} as
+            select
+                {foos}.{col_coef},
+                {foos}.intercept,
+                {goos}.ind_var_mean,
+                {goos}.ind_var_std,
+                {tbl_dep_scale}.dep_avg AS dep_var_mean,
+                {tbl_dep_scale}.dep_std AS dep_var_std,
+                {col_others_string}
+            from
+                ({sql_query}) as {foos},
+                {tbl_coef},
+                (
+                    SELECT
+                        array_agg({tbl_ind_scales}.mean ORDER BY {tbl_ind_scales}.attr) AS ind_var_mean,
+                        array_agg({tbl_ind_scales}.std ORDER BY {tbl_ind_scales}.attr) AS ind_var_std
+                    FROM {tbl_ind_scales}
+                ) {goos},
+                {tbl_dep_scale}
+    """.format(col_others_string = col_others_string,
+               foos = foos, goos = goos,
+               sql_query = sql_query, **kwargs))
+    return None
