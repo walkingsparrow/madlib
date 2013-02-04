@@ -3,9 +3,6 @@ import plpy
 from validation.cv_utils import __cv_unique_string
 from utilities.control import IterationController
 from convex.lasso_igd import IterationControllerNoTableDrop
-from convex.ridge import __ridge_ind_var_scales
-from convex.ridge import __ridge_dep_var_scale
-from convex.ridge import __ridge_normalize_data
 from convex.ridge import __ridge_restore_linear_coef_scales
 from convex.validate_args import __is_tbl_exists
 from convex.validate_args import __is_tbl_has_rows
@@ -14,6 +11,7 @@ from convex.validate_args import __is_tbl_exists_in_schema
 from convex.validate_args import __is_scalar_col_no_null
 from convex.validate_args import __is_array_col_same_dimension
 from convex.validate_args import __is_array_col_no_null
+from elastic_net.elastic_net_utils import __normalize_data
 
 ## ========================================================================
 
@@ -21,11 +19,11 @@ def __igd_params_parser(optimizer_params):
     """
     Parse IGD parameters.
     """
-    allowed_params = set(["stepsize", "num_iterations", "tolerance"])
+    allowed_params = set(["stepsize", "max_iter", "tolerance"])
     name_value = dict()
     # default values
     name_value["stepsize"] = 0.01 
-    name_value["num_iterations"] = 100 
+    name_value["max_iter"] = 100 
     name_value["tolerance"] = 0.000001
     
     for s in optimizer_params:
@@ -41,8 +39,8 @@ def __igd_params_parser(optimizer_params):
         if param_name == "stepsize":
             name_value["stepsize"] = float(param_value)
 
-        if param_name == "num_iterations":
-            name_value["num_iterations"] = int(param_value)
+        if param_name == "max_iter":
+            name_value["max_iter"] = int(param_value)
 
         if param_name == "tolerance":
             name_value["tolerance"] = float(param_value)
@@ -51,8 +49,8 @@ def __igd_params_parser(optimizer_params):
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")
 
-    if name_value["num_iterations"] <= 0:
-        plpy.error("Elastic Net error: num_iterations must be positive!")
+    if name_value["max_iter"] <= 0:
+        plpy.error("Elastic Net error: max_iter must be positive!")
 
     if name_value["tolerance"] <= 0:
         plpy.error("Elastic Net error: tolerance must be positive!")
@@ -96,13 +94,13 @@ def __igd_create_tbl_args(**args):
                     lambda          double precision,
                     alpha           double precision,
                     total_rows      integer,
-                    num_iterations  integer,
+                    max_iter  integer,
                     tolerance       double precision);
                  """.format(**args))
     plpy.execute("""
                  insert into pg_temp.{tbl_igd_args} values
                     ({dimension}, {stepsize}, {effective_lambda}, {alpha},
-                     {row_num}, {num_iterations}, {tolerance})
+                     {row_num}, {max_iter}, {tolerance})
                  """.format(effective_lambda = effective_lambda,
                             **args))
 
@@ -166,21 +164,6 @@ def __igd_cleanup_temp_tbls(**args):
                  """.format(**args))
     return None
 
-## ========================================================================
-
-def __normalize_data(**args):
-    """
-    Compute the scaling factors for independent and dependent
-    variables, and then scale the original data.
-
-    The output is stored in tbl_data_scaled
-    """
-    __ridge_ind_var_scales(**args)
-    __ridge_dep_var_scale(**args)
-    __ridge_normalize_data(**args)
-
-    return None
-    
 ## ========================================================================
 
 def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
@@ -424,7 +407,7 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
                       """)
 
             if it.test("""
-                       {iteration} > _args.num_iterations or
+                       {iteration} > _args.max_iter or
                        {schema_madlib}.__gaussian_igd_state_diff(
                             (select _state from {rel_state}
                                 where _iteration = {iteration} - 1),

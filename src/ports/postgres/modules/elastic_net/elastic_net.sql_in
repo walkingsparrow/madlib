@@ -377,4 +377,81 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_result (
 'MODULE_PATHNAME', 'internal_gaussian_bcd_result'
 LANGUAGE C IMMUTABLE STRICT;
 
+------------------------------------------------------------------------
+
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
+    state               DOUBLE PRECISION[],
+    ind_var             DOUBLE PRECISION[],
+    dep_var             DOUBLE PRECISION,
+    pre_state           DOUBLE PRECISION[],
+    lambda              DOUBLE PRECISION,
+    alpha               DOUBLE PRECISION,
+    lipschitz           DOUBLE PRECISION,
+    dimension           INTEGER,
+    mean                DOUBLE PRECISION[],
+    mean_y              DOUBLE PRECISION,
+    tk                  DOUBLE PRECISION,
+    total_rows          INTEGER
+) RETURNS DOUBLE PRECISION[]
+AS 'MODULE_PATHNAME', 'gaussian_fista_transition'
+LANGUAGE C IMMUTABLE;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_merge (
+    state1              DOUBLE PRECISION[],
+    state2              DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'gaussian_fista_merge'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_final (
+    state               DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'gaussian_fista_final'
+LANGUAGE C IMMUTABLE STRICT;
+
+/**
+ * @internal
+ * @brief Perform one iteration step of FISTA for linear models
+ */
+CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
+    /* ind_var */           DOUBLE PRECISION[],
+    /* dep_var */           DOUBLE PRECISION,
+    /* pre_state */         DOUBLE PRECISION[],
+    /* lambda  */           DOUBLE PRECISION,
+    /* alpha */             DOUBLE PRECISION,
+    /* Lipschitz */         DOUBLE PRECISION,
+    /* dimension */         INTEGER,
+    /* mean x */            DOUBLE PRECISION[],
+    /* mean y */            DOUBLE PRECISION,
+    /* tk */                DOUBLE PRECISION,
+    /* total_rows */        INTEGER
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
+    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_fista_merge,')
+    FinalFunc = MADLIB_SCHEMA.__gaussian_fista_final,
+    InitCond = '{0,0,0,0,0,0,0,0}'
+);
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_fista_state_diff (
+    state1          DOUBLE PRECISION[],
+    state2          DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', 'internal_gaussian_fista_state_diff'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_fista_result (
+    in_state        DOUBLE PRECISION[]
+) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
+'MODULE_PATHNAME', 'internal_gaussian_fista_result'
+LANGUAGE C IMMUTABLE STRICT;
+
 

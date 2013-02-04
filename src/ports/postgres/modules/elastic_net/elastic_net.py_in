@@ -31,22 +31,36 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 
         Parameters:
         stepsize         - default 0.01
-        num_iterations   - default 100
+        max_iter         - default 100
         tolenrance       - default 0.000001
         """
 
-    if family_or_optimizer.lower() == "bcd":
+    if family_or_optimizer.lower() == "cd":
         return """
-        Batch coordinate descent method:
+        Coordinate descent method:
 
         Parameters:
-        num_iterations   - default 100
+        max_iter         - default 100
         tolenrance       - default 0.000001
 
         Reference:
         [1] A. Van der Kooij. Prediction accuracy and stability of regrsssion
             with optimal sclaing transformations. Technical report, Dept. of
             Data Theory, Leiden University, 2007.
+        """
+
+    if family_or_optimizer.lower() == "fista":
+        return """
+        Fast iterative shrinkage thesholding algorithm
+
+        Parameters:
+        max_iter         - default 100
+        tolenrance       - default 0.000001
+                
+        Reference:
+        [1] Beck, A. and M. Teboulle (2009). A fast iterative
+            shrinkage-thresholding algorothm for linear inverse
+            problems. SIAM J. on Imaging Sciences 2(1), 183-202.
         """
         
     if family_or_optimizer.lower() == "newton":
