@@ -352,8 +352,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
    , out_table            VARCHAR       -- name of output table
    , dependent_varname    VARCHAR       -- name of dependent variable
    , independent_varname  VARCHAR       -- name of independent variable
+   )
 RETURNS VOID AS $$
-
+DECLARE
+linear_results  MADLIB_SCHEMA.linregr_result;
 BEGIN
     IF (source_table IS NULL) THEN
         RAISE EXCEPTION 'No valid input table name given.';
@@ -368,11 +370,21 @@ BEGIN
         RAISE EXCEPTION 'No valid independent variable name given.';
     END IF;
 
-    EXECUTE 'DROP TABLE IF EXISTS' || out_table;
-    EXECUTE 'CREATE TABLE ' || out_table || AS '
-      SELECT ' || MADLIB_SCHEMA ||'.linregr('
-        || dependent_varname || ','
-        || independent_varname || ') FROM' ||
-        source_table || ';'
+    EXECUTE 'DROP TABLE IF EXISTS ' || out_table;
+    EXECUTE '
+            CREATE TABLE ' || out_table || ' (
+                id          SERIAL,
+                matrix_u    DOUBLE PRECISION[],
+                matrix_v    DOUBLE PRECISION[],
+                rmse        DOUBLE PRECISION)';
+
+    EXECUTE 'SELECT MADLIB_SCHEMA.linregr('
+        || dependent_varname || ' , '
+        || independent_varname || ') FROM ' ||
+        source_table INTO linear_results;
+
+    EXECUTE 'CREATE TABLE ' || out_table || ' AS '
+          linear_results.
+
 END;
 $$ LANGUAGE plpgsql VOLATILE
