@@ -99,18 +99,15 @@ is therefore
 \f]
 where \f$ T \f$ is a student-t distributed random variable with mean 0.
 
-The condition number \f$ \kappa(X^T X) \f$ is computed as the ratio of the largest
-eigenvalue divided by the smallest eigenvalue. Note that \f$ X^T X \f$ is
-symmetric positive non-negative definite, so all eigenvalues are non-negative,
-and they are also singular values. It holds that
-\f$ \kappa(X^T X) = \kappa(X)^2 \f$
-where the condition number of the rectangular matrix
-\f$ X \in \mathbf R^{n \times k} \f$
-is defined as
+The condition number [2] \f$ \kappa(X) = \|X\|_2\cdot\|X^{-1}\|_2\f$ is computed as the product of
+two spectral norms [3]. The spectral norm of a matrix \f$X\f$ is the largest singular value of \f$X\f$
+i.e. the square root of the largest eigenvalue of the positive-semidefinite matrix \f$X^{*}X\f$:
 \f[
-    \frac{\max_{\| z \|_2 = 1} \| X z \|_2}{\min_{\| z \|_2 = 1} \| X z \|_2} .
+    \|X\|_2 = \sqrt{\lambda_{\max}\left(X^{*}X\right)}\ ,
 \f]
-The condition number of a problem is a worst-case measure of how sensitive the
+where \f$X^{*}\f$ is the conjugate transpose of \f$X\f$.
+The condition number of a linear regression problem
+is a worst-case measure of how sensitive the
 result is to small perturbations of the input. A large condition number (say,
 more than 1000) indicates the presence of significant multicollinearity.
 
@@ -126,8 +123,10 @@ The training data is expected to be of the following form:
 
 @usage
 
+<b>(1) The Simple Interface</b>
+
 - Get vector of coefficients \f$ \boldsymbol c \f$ and all diagnostic statistics:
-<pre>SELECT (\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).*
+<pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).*
 FROM <em>sourceName</em>;</pre>
   Output:
   <pre>
@@ -136,16 +135,61 @@ coef | r2 | std_err | t_stats | p_values | condition_no
                           ...
 </pre>
 - Get vector of coefficients \f$ \boldsymbol c \f$:\n
-  <pre>SELECT (\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).coef
+  <pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).coef
 FROM <em>sourceName</em>;</pre>
 - Get a subset of the output columns, e.g., only the array of coefficients
   \f$ \boldsymbol c \f$, the coefficient of determination \f$ R^2 \f$, and
   the array of p-values \f$ \boldsymbol p \f$:
   <pre>SELECT (lr).coef, (lr).r2, (lr).p_values
 FROM (
-    SELECT \ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>) AS lr
+    SELECT madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>) AS lr
     FROM <em>sourceName</em>
 ) AS subq;</pre>
+
+<b>(2) The Full Interface</b>
+
+The full interface support the analysis of heteroskedasticity of the linear fit.
+
+<pre>
+SELECT madlib.\ref linregr_train (
+    <em>'source_table'</em>,        -- name of input table, VARCHAR
+    <em>'out_table'</em>,           -- name of output table, VARCHAR
+    <em>'dependent_varname'</em>,   -- dependent variable, VARCHAR
+    <em>'independent_varname'</em>, -- independent variable, VARCHAR
+    [<em>group_cols</em>,           -- names of columns to group by, VARCHAR[].
+                                    -- Default value: Null
+    [<em>heteroskedasticity_option</em>]] -- whether to analyze heteroskedasticity,
+                                        -- BOOLEAN. Default value: False
+);
+</pre>
+
+Here the <em>'independent_varname'</em> can be the name of a column, which contains
+array of numeric values. It can also have a format of string 'array[1, x1, x2, x3]',
+where <em>x1</em>, <em>x2</em> and <em>x3</em> are all column names.
+
+Output is stored in the <em>out_table</em>:
+<pre>
+[ group_col_1 | group_col_2 | ... |] coef | r2 | std_err | t_stats | p_values | condition_no [| 
+-----------+-------------+-----+------+----+---------+---------+----------+--------------+---
+
+bp_stats | bp_p_value | corrected_std_err | corrected_t_stats | corrected_p_values]
+-------------+------------+-------------------+-------------------+---------------------
+</pre>
+
+Where the first part <pre>[ group_col_1 | group_col_2 | ... |]</pre> presents only when <em>group_cols</em>
+is not Null. The last part <pre>[ bp_stats | ... | corrected_p_values ]</pre> presents only when
+<em>heteroskedasticity_option</em> is <em>True</em>.
+
+When <em>group_cols</em> is given, the data is grouped by the given columns and a linear
+model is fit to each group of data. The output will have additional columns for all combinations
+of the values of all the <em>group_cols</em>. For each combination of <em>group_cols</em> values, linear regression
+result is shown.
+
+When <em>heteroskedasticity_option</em> is <em>True</em>, the output will have additional columns. The function
+computes the Breusch–Pagan test [4] statistics and the corresponding \f$p\f$-value. The White's heteroscedasticity-consistent
+estimator [5] for standard errors, t-statistics and corresponding \f$p\f$-values of the fitting coefficients are also
+calculated and appended to the output table as the columns
+<em>corrected_std_err</em>, <em>corrected_t_stats</em>, <em>corrected_p_values</em>.
 
 @examp
 
@@ -215,7 +259,58 @@ r2           | 0.745374010140315
 std_err      | {56306.4821787474,25036.6537279169,22208.6687270562,36.208642285651}
 t_stats      | {0.495918628487924,-1.41891067892239,0.10218279921428,3.6122293450358}
 p_values     | {0.629711069315512,0.183633155781461,0.920450514073051,0.00408159079312354}
-condition_no | 95707449.2236497
+condition_no | 9783.018
+
+\endverbatim
+
+-# You can call linregr_train() function for more functionality
+\verbatim
+sql> SELECT madlib.linregr_train('houses', 'result', 'price',
+                                 'array[1, tax, bath, size]',
+                                 '{bedroom}'::varchar[], True);
+
+sql> SELECT * from result;
+-[ RECORD 1]---------+------------------------------------------------------------------------
+bedroom             | 2
+coef                | {-84242.0345, 55.4430, -78966.9754, 225.6119}
+r2                  | 0.9688
+std_err             | {35019.00, 19.57, 23036.81, 49.04}
+t_stats             | {-2.406, 2.833, -3.428, 4.600}
+p_values            | {0.251, 0.216, 0.181, 0.136}
+condition_no        | 10086.1
+bp_stats            | 2.5451
+bp_p_value          | 0.4672
+corrected_std_err   | {14955.0532, 9.8744, 9482.9847, 18.0982}
+corrected_t_stats   | {-5.6330, 5.6148, -8.3272, 12.4660}
+corrected_p_values  | {0.11185, 0.11221, 0.07609, 0.05096}
+
+-[ RECORD 2]---------+------------------------------------------------------------------------
+bedroom             | 3
+coef                | {-88155.8292502747,27.1966436293179,41404.0293389239,62.6375210724027}
+r2                  | 0.841699901312963
+std_err             | {57867.9999699512,17.82723091538,43643.1321521931,70.8506824870639}
+t_stats             | {-1.52339512850022,1.52556747362568,0.948695185179172,0.884077878626493}
+p_values            | {0.18816143289241,0.187636685729725,0.38634003235866,0.417132778730133}
+condition_no        | 11722.62
+bp_stats            | 6.7538
+bp_p_value          | 0.08017
+corrected_std_err   | {44631.867, 15.736, 26308.729, 43.369}
+corrected_t_stats   | {-1.9752, 1.7283, 1.5738, 1.4443}
+corrected_p_values  | {0.1052, 0.1445, 0.1764, 0.2083}
+
+-[ RECORD 3]---------+------------------------------------------------------------------------
+bedroom             | 4
+coef                | {0.0112536020318378,41.4132554771633,0.0225072040636757,31.3975496688276}
+r2                  | 1
+std_err             | {0,0,0,0}
+t_stats             | {Infinity,Infinity,Infinity,Infinity}
+p_values            | Null
+condition_no        | Null
+bp_stats            | Null
+bp_p_value          | Null
+corrected_std_err   | Null
+corrected_t_stats   | Null
+corrected_p_values  | Null
 
 \endverbatim
 
@@ -224,6 +319,15 @@ condition_no | 95707449.2236497
 [1] Cosma Shalizi: Statistics 36-350: Data Mining, Lecture Notes, 21 October
     2009, http://www.stat.cmu.edu/~cshalizi/350/lectures/17/lecture-17.pdf
 
+[2] Wikipedia: Condition Number, http://en.wikipedia.org/wiki/Condition_number.
+
+[3] Wikipedia: Spectral Norm, http://en.wikipedia.org/wiki/Spectral_norm#Spectral_norm
+
+[4] Wikipedia: Breusch–Pagan test, http://en.wikipedia.org/wiki/Breusch%E2%80%93Pagan_test
+
+[5] Wikipedia: Heteroscedasticity-consistent standard errors,
+http://en.wikipedia.org/wiki/Heteroscedasticity-consistent_standard_errors
+    
 @sa File linear.sql_in documenting the SQL functions.
 
 @internal
