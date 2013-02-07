@@ -389,5 +389,13 @@ BEGIN
             || independent_varname || ' ) AS result
         FROM ' || source_table ||
       ' ) subq';
+     -- return description
+
+    RAISE NOTICE '
+Finished linear regression
+ * table : % (%, %)
+Output:
+ * view : SELECT * FROM %',
+ source_table, dependent_varname, independent_varname, out_table;
 END;
 $$ LANGUAGE plpgsql VOLATILE
