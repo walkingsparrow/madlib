@@ -38,10 +38,12 @@ OLS linear regression finds the vector of coefficients \f$ \boldsymbol c \f$
 that maximizes the likelihood of the observations.
 
 Let
-- \f$ \boldsymbol y \in \mathbf R^n \f$ denote the vector of observed dependent variables, with
-  \f$ n \f$ rows, containing the observed values of the dependent variable,
-- \f$ X \in \mathbf R^{n \times k} \f$ denote the design matrix with \f$ k \f$ columns and \f$ n \f$ rows,
-  containing all observed vectors of independent variables
+- \f$ \boldsymbol y \in \mathbf R^n \f$ denote the vector of observed dependent 
+    variables, with \f$ n \f$ rows, containing the observed values of the 
+    dependent variable,
+- \f$ X \in \mathbf R^{n \times k} \f$ denote the design matrix with \f$ k \f$ 
+  columns and \f$ n \f$ rows, containing all observed vectors of independent 
+  variables.
   \f$ \boldsymbol x_i \f$ as rows,
 - \f$ X^T \f$ denote the transpose of \f$ X \f$,
 - \f$ X^+ \f$ denote the pseudo-inverse of \f$ X \f$.
@@ -99,9 +101,11 @@ is therefore
 \f]
 where \f$ T \f$ is a student-t distributed random variable with mean 0.
 
-The condition number [2] \f$ \kappa(X) = \|X\|_2\cdot\|X^{-1}\|_2\f$ is computed as the product of
-two spectral norms [3]. The spectral norm of a matrix \f$X\f$ is the largest singular value of \f$X\f$
-i.e. the square root of the largest eigenvalue of the positive-semidefinite matrix \f$X^{*}X\f$:
+The condition number [2] \f$ \kappa(X) = \|X\|_2\cdot\|X^{-1}\|_2\f$ is computed
+as the product of two spectral norms [3]. The spectral norm of a matrix \f$X\f$
+is the largest singular value of \f$X\f$ i.e. the square root of the largest
+eigenvalue of the positive-semidefinite matrix \f$X^{*}X\f$:
+
 \f[
     \|X\|_2 = \sqrt{\lambda_{\max}\left(X^{*}X\right)}\ ,
 \f]
@@ -126,7 +130,8 @@ The training data is expected to be of the following form:
 <b>(1) The Simple Interface</b>
 
 - Get vector of coefficients \f$ \boldsymbol c \f$ and all diagnostic statistics:
-<pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).*
+<pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, 
+    <em>independentVariables</em>)).*
 FROM <em>sourceName</em>;</pre>
   Output:
   <pre>
@@ -134,15 +139,19 @@ coef | r2 | std_err | t_stats | p_values | condition_no
 -----+----+---------+---------+----------+-------------
                           ...
 </pre>
+
 - Get vector of coefficients \f$ \boldsymbol c \f$:\n
-  <pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).coef
+  <pre>SELECT (madlib.\ref linregr(<em>dependentVariable</em>, 
+  <em>independentVariables</em>)).coef
 FROM <em>sourceName</em>;</pre>
+
 - Get a subset of the output columns, e.g., only the array of coefficients
   \f$ \boldsymbol c \f$, the coefficient of determination \f$ R^2 \f$, and
   the array of p-values \f$ \boldsymbol p \f$:
   <pre>SELECT (lr).coef, (lr).r2, (lr).p_values
 FROM (
-    SELECT madlib.\ref linregr(<em>dependentVariable</em>, <em>independentVariables</em>) AS lr
+    SELECT madlib.\ref linregr(<em>dependentVariable</em>, 
+      <em>independentVariables</em>) AS lr
     FROM <em>sourceName</em>
 ) AS subq;</pre>
 
@@ -158,8 +167,9 @@ SELECT madlib.\ref linregr_train (
     <em>'independent_varname'</em>, -- independent variable, VARCHAR
     [<em>group_cols</em>,           -- names of columns to group by, VARCHAR[].
                                     -- Default value: Null
-    [<em>heteroskedasticity_option</em>]] -- whether to analyze heteroskedasticity,
-                                        -- BOOLEAN. Default value: False
+    [<em>heteroskedasticity_option</em>]] -- whether to analyze 
+                                          --    heteroskedasticity,
+                                          -- BOOLEAN. Default value: False
 );
 </pre>
 
@@ -176,28 +186,34 @@ bp_stats | bp_p_value | corrected_std_err | corrected_t_stats | corrected_p_valu
 -------------+------------+-------------------+-------------------+---------------------
 </pre>
 
-Where the first part <pre>[ group_col_1 | group_col_2 | ... |]</pre> presents only when <em>group_cols</em>
-is not Null. The last part <pre>[ bp_stats | ... | corrected_p_values ]</pre> presents only when
-<em>heteroskedasticity_option</em> is <em>True</em>.
+Where the first part <pre>[ group_col_1 | group_col_2 | ... |]</pre> presents
+only when <em>group_cols</em> is not Null. The last part <pre>[ bp_stats | ... |
+corrected_p_values ]</pre> presents only when <em>heteroskedasticity_option</em>
+is <em>True</em>.
 
-When <em>group_cols</em> is given, the data is grouped by the given columns and a linear
-model is fit to each group of data. The output will have additional columns for all combinations
-of the values of all the <em>group_cols</em>. For each combination of <em>group_cols</em> values, linear regression
-result is shown.
+When <em>group_cols</em> is given, the data is grouped by the given columns and
+a linear model is fit to each group of data. The output will have additional
+columns for all combinations of the values of all the <em>group_cols</em>. For
+each combination of <em>group_cols</em> values, linear regression result is
+shown.
 
-When <em>heteroskedasticity_option</em> is <em>True</em>, the output will have additional columns. The function
-computes the Breusch–Pagan test [4] statistics and the corresponding \f$p\f$-value. The White's heteroscedasticity-consistent
-estimator [5] for standard errors, t-statistics and corresponding \f$p\f$-values of the fitting coefficients are also
-calculated and appended to the output table as the columns
-<em>corrected_std_err</em>, <em>corrected_t_stats</em>, <em>corrected_p_values</em>.
+When <em>heteroskedasticity_option</em> is <em>True</em>, the output will have
+additional columns. The function computes the Breusch–Pagan test [4] statistics
+and the corresponding \f$p\f$-value. The White's heteroscedasticity-consistent
+estimator [5] for standard errors, t-statistics and corresponding \f$p\f$-values
+of the fitting coefficients are also calculated and appended to the output table
+as the columns <em>corrected_std_err</em>, <em>corrected_t_stats</em>,
+<em>corrected_p_values</em>.
 
 @examp
 
-The following example is taken from http://www.stat.columbia.edu/~martin/W2110/SAS_7.pdf.
+The following example is taken from
+http://www.stat.columbia.edu/~martin/W2110/SAS_7.pdf.
 
 -#  Create the sample data set:
 \verbatim
-sql> CREATE TABLE houses (id INT, tax INT, bedroom INT, bath FLOAT, price INT, size INT, lot INT);
+sql> CREATE TABLE houses (id INT, tax INT, bedroom INT, bath FLOAT, price INT, 
+            size INT, lot INT);
 sql> COPY houses FROM STDIN WITH DELIMITER '|';
   1 |  590 |       2 |    1 |  50000 |  770 | 22100
   2 | 1050 |       3 |    2 |  85000 | 1410 | 12000
@@ -252,8 +268,9 @@ sql> SELECT (linregr(price, array[1, bedroom, bath, size])).p_values FROM houses
 \verbatim
 sql> \x on
 Expanded display is on.
-sql> SELECT (r).* FROM (SELECT linregr(price, array[1, bedroom, bath, size]) AS r FROM houses) q;
--[ RECORD 1 ]+----------------------------------------------------------------------------
+sql> SELECT (r).* FROM (SELECT linregr(price, array[1, bedroom, bath, size]) 
+            AS r FROM houses) q;
+-[ RECORD 1 ]+-----------------------------------------------------------------
 coef         | {27923.4334170641,-35524.7753390234,2269.34393735323,130.793920208133}
 r2           | 0.745374010140315
 std_err      | {56306.4821787474,25036.6537279169,22208.6687270562,36.208642285651}
@@ -270,7 +287,7 @@ sql> SELECT madlib.linregr_train('houses', 'result', 'price',
                                  '{bedroom}'::varchar[], True);
 
 sql> SELECT * from result;
--[ RECORD 1]---------+------------------------------------------------------------------------
+-[ RECORD 1]---------+-------------------------------------------------------
 bedroom             | 2
 coef                | {-84242.0345, 55.4430, -78966.9754, 225.6119}
 r2                  | 0.9688
@@ -284,7 +301,7 @@ corrected_std_err   | {14955.0532, 9.8744, 9482.9847, 18.0982}
 corrected_t_stats   | {-5.6330, 5.6148, -8.3272, 12.4660}
 corrected_p_values  | {0.11185, 0.11221, 0.07609, 0.05096}
 
--[ RECORD 2]---------+------------------------------------------------------------------------
+-[ RECORD 2]---------+------------------------------------------------------
 bedroom             | 3
 coef                | {-88155.8292502747,27.1966436293179,41404.0293389239,62.6375210724027}
 r2                  | 0.841699901312963
@@ -298,7 +315,7 @@ corrected_std_err   | {44631.867, 15.736, 26308.729, 43.369}
 corrected_t_stats   | {-1.9752, 1.7283, 1.5738, 1.4443}
 corrected_p_values  | {0.1052, 0.1445, 0.1764, 0.2083}
 
--[ RECORD 3]---------+------------------------------------------------------------------------
+-[ RECORD 3]---------+-------------------------------------------------------
 bedroom             | 4
 coef                | {0.0112536020318378,41.4132554771633,0.0225072040636757,31.3975496688276}
 r2                  | 1
@@ -321,9 +338,11 @@ corrected_p_values  | Null
 
 [2] Wikipedia: Condition Number, http://en.wikipedia.org/wiki/Condition_number.
 
-[3] Wikipedia: Spectral Norm, http://en.wikipedia.org/wiki/Spectral_norm#Spectral_norm
+[3] Wikipedia: Spectral Norm, 
+    http://en.wikipedia.org/wiki/Spectral_norm#Spectral_norm
 
-[4] Wikipedia: Breusch–Pagan test, http://en.wikipedia.org/wiki/Breusch%E2%80%93Pagan_test
+[4] Wikipedia: Breusch–Pagan test, 
+    http://en.wikipedia.org/wiki/Breusch%E2%80%93Pagan_test
 
 [5] Wikipedia: Heteroscedasticity-consistent standard errors,
 http://en.wikipedia.org/wiki/Heteroscedasticity-consistent_standard_errors
@@ -392,20 +411,24 @@ LANGUAGE C IMMUTABLE STRICT;
  * @usage
  *  - Get vector of coefficients \f$ \boldsymbol c \f$ and all diagnostic
  *    statistics:\n
- *    <pre>SELECT (linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).*
+ *    <pre>SELECT (linregr(<em>dependentVariable</em>, 
+ *        <em>independentVariables</em>)).*
  *FROM <em>sourceName</em>;</pre>
  *  - Get vector of coefficients \f$ \boldsymbol c \f$:\n
- *    <pre>SELECT (linregr(<em>dependentVariable</em>, <em>independentVariables</em>)).coef
+ *    <pre>SELECT (linregr(<em>dependentVariable</em>, 
+ *        <em>independentVariables</em>)).coef
  *FROM <em>sourceName</em>;</pre>
  *  - Get a subset of the output columns, e.g., only the array of coefficients
  *    \f$ \boldsymbol c \f$, the coefficient of determination \f$ R^2 \f$, and
  *    the array of p-values \f$ \boldsymbol p \f$:
  *    <pre>SELECT (lr).coef, (lr).r2, (lr).p_values
  *FROM (
- *    SELECT linregr(<em>dependentVariable</em>, <em>independentVariables</em>) AS lr
+ *    SELECT linregr( <em>dependentVariable</em>, 
+ *                    <em>independentVariables</em>) AS lr
  *    FROM <em>sourceName</em>
  *) AS subq;</pre>
  */
+
 CREATE AGGREGATE MADLIB_SCHEMA.linregr(
     /*+ "dependentVariable" */ DOUBLE PRECISION,
     /*+ "independentVariables" */ DOUBLE PRECISION[]) (
@@ -424,34 +447,15 @@ CREATE AGGREGATE MADLIB_SCHEMA.linregr(
 --    , independent_varname  VARCHAR       -- name of independent variable
 --    , group_cols           VARCHAR[]     -- names of columns to group-by
 --    , heteroskedasticity_option  BOOLEAN -- heteroskedasticity
+-- )
 -- RETURNS VOID AS $$
 -- DECLARE
 
 -- BEGIN
-
-
-
 -- END;
 -- $$ LANGUAGE plpgsql VOLATILE
 
-
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
---      source_table         VARCHAR       -- name of input  table
---    , out_table            VARCHAR       -- name of output table
---    , dependent_varname    VARCHAR       -- name of dependent variable
---    , independent_varname  VARCHAR       -- name of independent variable
---    , group_cols           VARCHAR[]     -- names of columns to group-by
--- RETURNS VOID AS $$
--- DECLARE
-
--- BEGIN
-
-
-
--- END;
--- $$ LANGUAGE plpgsql VOLATILE
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
+CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table         VARCHAR       -- name of input  table
    , out_table            VARCHAR       -- name of output table
    , dependent_varname    VARCHAR       -- name of dependent variable
@@ -486,20 +490,103 @@ BEGIN
 
     EXECUTE '
     INSERT INTO ' || out_table || '
-      SELECT result.*
+      SELECT (result).coef, (result).r2, (result).std_err, (result).t_stats,
+              (result).p_values, (result).condition_no
       FROM (
         SELECT MADLIB_SCHEMA.linregr( '
             || dependent_varname || ' , '
             || independent_varname || ' ) AS result
-        FROM ' || source_table ||
-      ' ) subq';
-     -- return description
+        FROM ' || source_table || ' ) subq';
 
     RAISE NOTICE '
-Finished linear regression
- * table : % (%, %)
-Output:
- * view : SELECT * FROM %',
+  Finished linear regression
+    * table : % (%, %)
+  Output:
+    * view : SELECT * FROM % ;',
  source_table, dependent_varname, independent_varname, out_table;
 END;
-$$ LANGUAGE plpgsql VOLATILE
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
+     source_table         VARCHAR       -- name of input  table
+   , out_table            VARCHAR       -- name of output table
+   , dependent_varname    VARCHAR       -- name of dependent variable
+   , independent_varname  VARCHAR       -- name of independent variable
+   , group_cols           VARCHAR[]     -- names of columns to group-by
+  )     
+RETURNS VOID AS $$
+DECLARE
+  input_table_name    VARCHAR[];
+  schema_name         VARCHAR; 
+  execute_string      VARCHAR;
+  group_string        VARCHAR;
+  group_array_length  INTEGER;
+  col_data_type       VARCHAR;
+BEGIN
+  -- initial validation
+  IF (group_cols IS NULL
+      OR array_upper(group_cols, 1) IS NULL
+      OR array_upper(group_cols, 1) = 0)
+  THEN
+      PERFORM MADLIB_SCHEMA.linregr_train(source_table, out_table,
+            dependent_varname, independent_varname);
+  ELSE 
+      -- create output table
+      EXECUTE 'DROP TABLE IF EXISTS ' || out_table;
+      execute_string := 'CREATE TABLE ' || out_table || '(';  
+      group_array_length = array_upper(group_cols, 1); 
+
+      input_table_name = regexp_split_to_array(source_table, E'\\.');
+      IF array_upper(input_table_name, 1) = 1
+      THEN 
+        source_table = input_table_name[1];
+        schema_name  = 'public';
+      ELSE IF array_upper(input_table_name, 1) = 2
+        source_table = input_table_name[2]; 
+        schema_name  = input_table_name[1];
+      ELSE 
+        RAISE EXCEPTION 'Incorrect input source table name provided'; 
+      END IF
+
+      FOR i in 1 .. group_array_length
+      LOOP
+      -- TODO: Check if the column is actually a part of the dataset
+          EXECUTE 'SELECT data_type FROM information_schema.columns 
+                  WHERE 
+                        table_schema = ' || schema_name ||
+                  ' AND table_name = ' || source_table ||
+                  ' AND column_name= ' || group_cols[i] INTO col_data_type; 
+    
+            execute_string := execute_string || group_cols[i] 
+                                  || ' ' || col_data_type || ',';
+      END LOOP;
+      -- finish creating the output table
+      EXECUTE execute_string || '
+              coef DOUBLE PRECISION[],
+              r2 DOUBLE PRECISION,
+              std_err DOUBLE PRECISION[],
+              t_stats DOUBLE PRECISION[],
+              p_values DOUBLE PRECISION[],
+              condition_no DOUBLE PRECISION)';
+  
+      group_string := '';
+      FOR i in 1 .. (group_array_length-1)  
+      LOOP
+          group_string := group_string || group_cols[i] || ',';
+      END LOOP;
+      group_string := group_string || group_cols[group_array_length];
+    
+      EXECUTE '
+        INSERT INTO ' || out_table || '
+        SELECT ' || group_string || ', (result).coef, (result).r2, 
+        (result).std_err, (result).t_stats,
+        (result).p_values, (result).condition_no
+        FROM (
+          SELECT ' || group_string || ', MADLIB_SCHEMA.linregr( '
+            || dependent_varname || ' , '
+            || independent_varname || ' ) AS result
+          FROM ' || source_table || ' 
+          GROUP BY ' || group_string || ') subq';
+  END IF;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
