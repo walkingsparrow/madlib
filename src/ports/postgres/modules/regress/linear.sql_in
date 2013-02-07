@@ -312,3 +312,67 @@ CREATE AGGREGATE MADLIB_SCHEMA.linregr(
     m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.linregr_merge_states,')
     INITCOND=''
 );
+
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
+--      source_table         VARCHAR       -- name of input  table
+--    , out_table            VARCHAR       -- name of output table
+--    , dependent_varname    VARCHAR       -- name of dependent variable
+--    , independent_varname  VARCHAR       -- name of independent variable
+--    , group_cols           VARCHAR[]     -- names of columns to group-by
+--    , heteroskedasticity_option  BOOLEAN -- heteroskedasticity
+-- RETURNS VOID AS $$
+-- DECLARE
+
+-- BEGIN
+
+
+
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE
+
+
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
+--      source_table         VARCHAR       -- name of input  table
+--    , out_table            VARCHAR       -- name of output table
+--    , dependent_varname    VARCHAR       -- name of dependent variable
+--    , independent_varname  VARCHAR       -- name of independent variable
+--    , group_cols           VARCHAR[]     -- names of columns to group-by
+-- RETURNS VOID AS $$
+-- DECLARE
+
+-- BEGIN
+
+
+
+-- END;
+-- $$ LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
+     source_table         VARCHAR       -- name of input  table
+   , out_table            VARCHAR       -- name of output table
+   , dependent_varname    VARCHAR       -- name of dependent variable
+   , independent_varname  VARCHAR       -- name of independent variable
+RETURNS VOID AS $$
+
+BEGIN
+    IF (source_table IS NULL) THEN
+        RAISE EXCEPTION 'No valid input table name given.';
+    END IF;
+    IF (out_table IS NULL) THEN
+        RAISE EXCEPTION 'No valid output table name given.';
+    END IF;
+    IF (dependent_varname IS NULL) THEN
+        RAISE EXCEPTION 'No valid dependent variable name given.';
+    END IF;
+    IF (independent_varname IS NULL) THEN
+        RAISE EXCEPTION 'No valid independent variable name given.';
+    END IF;
+
+    EXECUTE 'DROP TABLE IF EXISTS' || out_table;
+    EXECUTE 'CREATE TABLE ' || out_table || AS '
+      SELECT ' || MADLIB_SCHEMA ||'.linregr('
+        || dependent_varname || ','
+        || independent_varname || ') FROM' ||
+        source_table || ';'
+END;
+$$ LANGUAGE plpgsql VOLATILE
