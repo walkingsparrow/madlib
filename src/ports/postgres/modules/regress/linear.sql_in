@@ -373,18 +373,21 @@ BEGIN
     EXECUTE 'DROP TABLE IF EXISTS ' || out_table;
     EXECUTE '
             CREATE TABLE ' || out_table || ' (
-                id          SERIAL,
-                matrix_u    DOUBLE PRECISION[],
-                matrix_v    DOUBLE PRECISION[],
-                rmse        DOUBLE PRECISION)';
+                coef DOUBLE PRECISION[],
+                r2 DOUBLE PRECISION,
+                std_err DOUBLE PRECISION[],
+                t_stats DOUBLE PRECISION[],
+                p_values DOUBLE PRECISION[],
+                condition_no DOUBLE PRECISION)';
 
-    EXECUTE 'SELECT MADLIB_SCHEMA.linregr('
-        || dependent_varname || ' , '
-        || independent_varname || ') FROM ' ||
-        source_table INTO linear_results;
-
-    EXECUTE 'CREATE TABLE ' || out_table || ' AS '
-          linear_results.
-
+    EXECUTE '
+    INSERT INTO ' || out_table || '
+      SELECT result.*
+      FROM (
+        SELECT MADLIB_SCHEMA.linregr( '
+            || dependent_varname || ' , '
+            || independent_varname || ' ) AS result
+        FROM ' || source_table ||
+      ' ) subq';
 END;
 $$ LANGUAGE plpgsql VOLATILE
