@@ -1305,34 +1305,34 @@ begin
 
 
     execute 'drop table if exists cv_logregr_result';
-    perform madlib.cross_validation_general(
+    execute 'select madlib.cross_validation_general(
         -- Training function
-        'madlib.cv_logregr_train',
-        '{%data%, x, y, %model%, 100, cg, 1e-8}'::varchar[],
-        '{varchar, varchar, varchar, varchar, integer, varchar, double precision}'::varchar[],
+        ''madlib.cv_logregr_train'',
+        ''{%data%, x, y, %model%, 100, cg, 1e-8}''::varchar[],
+        ''{varchar, varchar, varchar, varchar, integer, varchar, double precision}''::varchar[],
         --
         -- No free parameter to scan
         NULL::varchar, -- Name
         NULL, -- Values
         --
         -- Prediction function
-        'madlib.cv_logregr_predict',
-        '{%model%, %data%, x, %id%, %prediction%}'::varchar[],
-        '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
+        ''madlib.cv_logregr_predict'',
+        ''{%model%, %data%, x, %id%, %prediction%}''::varchar[],
+        ''{varchar, varchar, varchar, varchar, varchar}''::varchar[],
         --
         -- Error measuring function
-        'madlib.cv_logregr_accuracy',
-        '{%prediction%, %data%, %id%, y, %error%}'::varchar[],
-        '{varchar, varchar, varchar, varchar, varchar}'::varchar[],
+        ''madlib.cv_logregr_accuracy'',
+        ''{%prediction%, %data%, %id%, y, %error%}''::varchar[],
+        ''{varchar, varchar, varchar, varchar, varchar}''::varchar[],
         -- 
-        'log_breast_cancer_wisconsin', -- Data set
+        ''log_breast_cancer_wisconsin'', -- Data set
         NULL, -- No unique ID associated with rows
         False, -- If there is a unique ID, is it random?
         --
-        'cv_logregr_result', -- Result
-        '{x, y}'::varchar[],  -- Data columns 
+        ''cv_logregr_result'', -- Result
+        ''{x, y}''::varchar[],  -- Data columns 
         10  -- CV fold
-    );
+    )';
 
     perform assert(relative_error(accuracy_avg, 0.96) < 0.1,
                 'CV result: error mismatch!'
