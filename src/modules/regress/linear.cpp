@@ -53,10 +53,10 @@ linregr_final::run(AnyType& args) {
     AnyType tuple;
     LinearRegression result(state);
     tuple << result.coef << result.r2 << result.stdErr << result.tStats
-        << (state.numRows > state.widthOfX
-            ? result.pValues
-            : Null())
-        << result.conditionNo;
+          << (state.numRows > state.widthOfX
+              ? result.pValues
+              : Null())
+          << sqrt(result.conditionNo);
     return tuple;
 }
 
