@@ -389,9 +389,7 @@ RETURNS VARCHAR AS $$
 DECLARE
     msg     VARCHAR;
 BEGIN
-    msg := 'cross_validation function now supports
-linear Ridge and linear LASSO. Use ridge
-or lasso as the first argument.';
+    msg := 'cross_validation function now supports nothing';
     return msg;
 END;
 $$ LANGUAGE plpgsql STRICT;
@@ -429,6 +427,35 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cv_linregr_predict(
 ) RETURNS VOID AS $$
 PythonFunction(validation, cross_validation, cv_linregr_predict)
 $$ LANGUAGE plpythonu;
+
+-- compare the prediction and actual values
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.mse_error(
+    tbl_prediction  VARCHAR,    -- predicted values
+    tbl_actual      VARCHAR,
+    id_actual       VARCHAR,
+    values_actual   VARCHAR,
+    tbl_error       VARCHAR
+) RETURNS VOID AS $$
+DECLARE
+    error           DOUBLE PRECISION;
+    old_messages    VARCHAR; 
+BEGIN
+    old_messages := (SELECT setting FROM pg_settings WHERE name = 'client_min_messages');
+    EXECUTE 'SET client_min_messages TO warning';
+
+    EXECUTE '
+        CREATE TABLE '|| tbl_error ||' AS
+        SELECT
+            avg(('|| tbl_prediction ||'.prediction - '|| tbl_actual ||'.'|| values_actual ||')^2) as mean_squared_error
+        FROM
+            '|| tbl_prediction ||',
+            '|| tbl_actual ||'
+        WHERE
+            '|| tbl_prediction ||'.id = '|| tbl_actual ||'.'|| id_actual;
+
+    EXECUTE 'SET client_min_messages TO ' || old_messages;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 
 ------------------------------------------------------------------------
 
