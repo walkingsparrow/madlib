@@ -81,7 +81,7 @@ def __cv_combine_params_type_general(params, params_type, tbl_data,
     Output is a string, where all parameters are force-casted into their type.
     """
     if len(params) != len(params_type):
-        plpy.error('Parameter number should be equal to the type number!')
+        plpy.error('CV error: The number of parameters should be equal to the number of types!')
         
     rst = ""
     # The special keywords
@@ -172,7 +172,7 @@ def __validate_cv_args(modelling_func, modelling_params, modelling_params_type,
         plpy.error("CV error: Is the data row ID random?")
         
     if fold_num <= 1:
-        plpy.error("Cross validation total fold number should be larger than 1!")
+        plpy.error("CV error: Cross validation total fold number should be larger than 1!")
 
     return None
     
