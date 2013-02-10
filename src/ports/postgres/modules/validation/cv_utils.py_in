@@ -150,39 +150,23 @@ def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored,
     kwargs = dict(tbl_accum_error = tbl_accum_error,
                   tbl_result = tbl_result,
                   param_explored = param_explored)
-    
+
+    col_string = "{param_explored}, ".format(**kwargs)
+    for i in range(len(cols)):
+        if cols[i] != param_explored:
+            col_string += "avg({col}) as {col}_avg, stddev({col}) as {col}_stddev".format(col = cols[i])
+            if i != len(cols) - 1:
+                col_string += ", "
+   
     plpy.execute("""
         drop table if exists {tbl_result};
         create table {tbl_result} as
-            select {param_explored}
+            select {col_string}
             from {tbl_accum_error}
             group by {param_explored}
             order by {param_explored}
-    """.format(**kwargs))
-    
-    for col in cols:
-      if col != param_explored:
-            plpy.execute("alter table " + tbl_result + " add column " + col + "_avg double precision default 0")
-            plpy.execute("""
-                update {tbl_result} set {col}_avg = avgs from
-                (
-                    select {param_explored}, avg({col}) as avgs
-                    from {tbl_accum_error}
-                    group by {param_explored}
-                ) t
-                where t.{param_explored} = {tbl_result}.{param_explored}
-            """.format(col = col, **kwargs))
-            plpy.execute("alter table " + tbl_result + " add column " + col + "_stddev double precision default 0")
-            plpy.execute("""
-                update {tbl_result} set {col}_stddev = stds from
-                (
-                    select {param_explored}, stddev({col}) as stds
-                    from {tbl_accum_error}
-                    group by {param_explored}
-                ) t
-                where t.{param_explored} = {tbl_result}.{param_explored}
-            """.format(col = col, **kwargs))
-
+    """.format(col_string = col_string, **kwargs))
+        
     if data_folding_only:
         plpy.execute("alter table " + tbl_result + " drop column " + param_explored)
     return None
