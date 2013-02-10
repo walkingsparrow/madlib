@@ -8,7 +8,7 @@ from validation.cv_utils import __cv_split_data_using_id_tbl
 from validation.cv_utils import __cv_summarize_result
 from validation.cv_utils import __cv_produce_col_name_string
 from validation.cv_utils import __cv_generate_random_id
-from validation.cv_utils import __mad_vector
+from validation.cv_utils import __mad_version
 from convex.validate_args import __is_tbl_exists
 from convex.validate_args import __is_tbl_has_rows
 from convex.validate_args import __is_col_exists
@@ -18,8 +18,8 @@ from convex.validate_args import __is_array_col_same_dimension
 from convex.validate_args import __is_array_col_no_null
 import plpy
 
-array_wrapper = __mad_vector()
-mad_vec = array_wrapper.select_vecfunc()
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
 
@@ -330,7 +330,8 @@ def cross_validation_general(
                            **kwargs))
 
     # compute the averages and standard deviations for all measured metrics (not necessary one)
-    __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored, data_folding_only)
+    __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored,
+                          data_folding_only, schema_madlib)
     
     # clean up the temporary tables
     plpy.execute("""
