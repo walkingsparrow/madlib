@@ -55,7 +55,7 @@ class __mad_version:
 
         return "array_agg"
 
-    def special_update (self):
+    def is_gp40 (self):
         """
         GP40 is so ...
         It needs special treatment of update from different segments
