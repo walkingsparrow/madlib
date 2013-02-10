@@ -18,6 +18,9 @@ from convex.validate_args import __is_array_col_same_dimension
 from convex.validate_args import __is_array_col_no_null
 import plpy
 
+array_wrapper = __mad_vector()
+mad_vec = array_wrapper.select_vecfunc()
+
 ## ========================================================================
 
 def cross_validation(schema_madlib, module_name, func_args, param_to_try,
@@ -207,14 +210,14 @@ def cross_validation_general(
 
     # Older versions of PG84, GP40, GP41 all need
     # sepcial treatment of arrays
-    modelling_params = __mad_vector(modelling_params)
-    modelling_params_type = __mad_vector(modelling_params_type)
-    explore_values = __mad_vector(explore_values)
-    predict_params = __mad_vector(predict_params)
-    predict_params_type = __mad_vector(predict_params_type)
-    metric_params = __mad_vector(metric_params)
-    metric_params_type = __mad_vector(metric_params_type)
-    data_cols = __mad_vector(data_cols)
+    modelling_params = mad_vec(modelling_params)
+    modelling_params_type = mad_vec(modelling_params_type)
+    explore_values = mad_vec(explore_values)
+    predict_params = mad_vec(predict_params)
+    predict_params_type = mad_vec(predict_params_type)
+    metric_params = mad_vec(metric_params)
+    metric_params_type = mad_vec(metric_params_type)
+    data_cols = mad_vec(data_cols)
     
     row_num = plpy.execute("select count(*) as row_num from " + data_tbl)[0]["row_num"]
     if row_num <= fold_num:
@@ -328,7 +331,7 @@ def cross_validation_general(
 
     # compute the averages and standard deviations for all measured metrics (not necessary one)
     __cv_summarize_result(tbl_accum_error, validation_result, temp_param_explored, data_folding_only)
-
+    
     # clean up the temporary tables
     plpy.execute("""
         drop table if exists {tbl_all_data};
@@ -371,8 +374,8 @@ def linregr_predict (schema_madlib, coef, col_ind, **kwargs):
     @param coef Coefficients of linear regression
     @param col_ind Independent variables
     """
-    coef = __mad_vector(coef, text = False)
-    col_ind = __mad_vector(col_ind, text = False)
+    coef = mad_vec(coef, text = False)
+    col_ind = mad_vec(col_ind, text = False)
     dot = sum(p * q for p, q in zip(coef, col_ind))
     return dot
 
@@ -435,8 +438,8 @@ def logregr_predict (schema_madlib, coef, col_ind, **kwargs):
     @param coef Coefficients of logistic regression
     @param col_ind Independent variables
     """
-    coef = __mad_vector(coef, text = False)
-    col_ind = __mad_vector(col_ind, text = False)
+    coef = mad_vec(coef, text = False)
+    col_ind = mad_vec(col_ind, text = False)
     dot = sum(p * q for p, q in zip(coef, col_ind))
     if dot > 0:
         return True
@@ -471,8 +474,8 @@ def logregr_accuracy (schema_madlib, coef, col_ind, col_dep, **kwargs):
     """
     Compare the logistic prediction with actual values
     """
-    coef = __mad_vector(coef, text = False)
-    col_ind = __mad_vector(col_ind, text = False)
+    coef = mad_vec(coef, text = False)
+    col_ind = mad_vec(col_ind, text = False)
     pred = logregr_predict(schema_madlib, coef, col_ind)
     return int(pred == col_dep)
 
