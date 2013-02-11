@@ -522,6 +522,7 @@ DECLARE
   group_string        VARCHAR;
   group_array_length  INTEGER;
   col_data_type       VARCHAR;
+  i                   INTEGER;
 BEGIN
   -- initial validation
   IF (group_cols IS NULL
@@ -541,12 +542,12 @@ BEGIN
       THEN 
         source_table = input_table_name[1];
         schema_name  = 'public';
-      ELSE IF array_upper(input_table_name, 1) = 2
+      ELSIF array_upper(input_table_name, 1) = 2 THEN
         source_table = input_table_name[2]; 
         schema_name  = input_table_name[1];
       ELSE 
         RAISE EXCEPTION 'Incorrect input source table name provided'; 
-      END IF
+      END IF;
 
       FOR i in 1 .. group_array_length
       LOOP
@@ -590,3 +591,74 @@ BEGIN
   END IF;
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
+/* BP Test */
+
+CREATE TYPE MADLIB_SCHEMA.heteroskedasticity_test_result AS (
+    test_statistic DOUBLE PRECISION,
+    p_value DOUBLE PRECISION
+);
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hetero_linregr_transition(
+    state MADLIB_SCHEMA.bytea8,
+    y DOUBLE PRECISION,
+    x DOUBLE PRECISION[],
+    coef DOUBLE PRECISION[])
+RETURNS MADLIB_SCHEMA.bytea8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hetero_linregr_merge_states(
+    state1 MADLIB_SCHEMA.bytea8,
+    state2 MADLIB_SCHEMA.bytea8)
+RETURNS MADLIB_SCHEMA.bytea8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE STRICT;
+
+-- Final functions
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hetero_linregr_final(
+    state MADLIB_SCHEMA.bytea8)
+RETURNS MADLIB_SCHEMA.heteroskedasticity_test_result
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
+
+/**
+ * @brief Compute studentized Breuch-Pagan heteroskedasticity test for
+ * linear regression.
+ *
+ * @param dependentVariable Column containing the dependent variable
+ * @param independentVariables Column containing the array of independent variables
+ * @param olsCoefficients Column containing the array of the OLS coefficients (as obtained by linregr)
+ *
+ * @par
+ * To include an intercept in the model, set one coordinate in the
+ * <tt>independentVariables</tt> array to 1.
+ *
+ * @return A composite value:
+ *  - <tt>test_statistic FLOAT8[]</tt> - Prob > test_statistc
+ *  - <tt>p_value FLOAT8[]</tt> - Prob > test_statistc
+ *
+ * @usage
+ *  <pre> SELECT (heteoskedasticity_test_linregr(<em>dependentVariable</em>,
+ * 	<em>independentVariables</em>, coef)).*
+ *	FROM (
+ *    SELECT linregr(<em>dependentVariable</em>, <em>independentVariables</em>).coef 
+ * 	) AS ols_coef, <em>sourceName</em> as src; 
+ * </pre>
+ */
+CREATE AGGREGATE MADLIB_SCHEMA.heteroskedasticity_test_linregr(
+    /*+ "dependentVariable" */ DOUBLE PRECISION,
+    /*+ "independentVariables" */ DOUBLE PRECISION[],
+    /*+ "olsCoefficients" */ DOUBLE PRECISION[]) (
+
+    SFUNC=MADLIB_SCHEMA.hetero_linregr_transition,
+    STYPE=MADLIB_SCHEMA.bytea8,
+    FINALFUNC=MADLIB_SCHEMA.hetero_linregr_final,
+    m4_ifdef(`GREENPLUM',`prefunc=MADLIB_SCHEMA.hetero_linregr_merge_states,')
+    INITCOND=''
+);
