@@ -182,8 +182,8 @@ Output is stored in the <em>out_table</em>:
 [ group_col_1 | group_col_2 | ... |] coef | r2 | std_err | t_stats | p_values | condition_no [| 
 -----------+-------------+-----+------+----+---------+---------+----------+--------------+---
 
-bp_stats | bp_p_value | corrected_std_err | corrected_t_stats | corrected_p_values]
--------------+------------+-------------------+-------------------+---------------------
+bp_stats | bp_p_value ]
+-------------+---------
 </pre>
 
 Where the first part <pre>[ group_col_1 | group_col_2 | ... |]</pre> presents
@@ -199,11 +199,7 @@ shown.
 
 When <em>heteroskedasticity_option</em> is <em>True</em>, the output will have
 additional columns. The function computes the Breusch–Pagan test [4] statistics
-and the corresponding \f$p\f$-value. The White's heteroscedasticity-consistent
-estimator [5] for standard errors, t-statistics and corresponding \f$p\f$-values
-of the fitting coefficients are also calculated and appended to the output table
-as the columns <em>corrected_std_err</em>, <em>corrected_t_stats</em>,
-<em>corrected_p_values</em>.
+and the corresponding \f$p\f$-value.
 
 @examp
 
@@ -297,9 +293,6 @@ p_values            | {0.251, 0.216, 0.181, 0.136}
 condition_no        | 10086.1
 bp_stats            | 2.5451
 bp_p_value          | 0.4672
-corrected_std_err   | {14955.0532, 9.8744, 9482.9847, 18.0982}
-corrected_t_stats   | {-5.6330, 5.6148, -8.3272, 12.4660}
-corrected_p_values  | {0.11185, 0.11221, 0.07609, 0.05096}
 
 -[ RECORD 2]---------+------------------------------------------------------
 bedroom             | 3
@@ -311,9 +304,6 @@ p_values            | {0.18816143289241,0.187636685729725,0.38634003235866,0.417
 condition_no        | 11722.62
 bp_stats            | 6.7538
 bp_p_value          | 0.08017
-corrected_std_err   | {44631.867, 15.736, 26308.729, 43.369}
-corrected_t_stats   | {-1.9752, 1.7283, 1.5738, 1.4443}
-corrected_p_values  | {0.1052, 0.1445, 0.1764, 0.2083}
 
 -[ RECORD 3]---------+-------------------------------------------------------
 bedroom             | 4
@@ -325,9 +315,6 @@ p_values            | Null
 condition_no        | Null
 bp_stats            | Null
 bp_p_value          | Null
-corrected_std_err   | Null
-corrected_t_stats   | Null
-corrected_p_values  | Null
 
 \endverbatim
 

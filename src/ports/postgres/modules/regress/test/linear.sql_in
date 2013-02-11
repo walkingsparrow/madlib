@@ -165,10 +165,7 @@ select linregr_train('houses', 'result_lin_houses', 'price',
 --     relative_error(p_values, array[0.251, 0.216, 0.181, 0.136]) < 1e-4 and
 --     relative_error(condition_no, 10086.1) < 1e-4 and
 --     relative_error(bp_stats, 2.5451) < 1e-4 and
---     relative_error(bp_p_value, 0.4672) < 1e-4 and
---     relative_error(corrected_std_err, array[14955.0532, 9.8744, 9482.9847, 18.0982]) < 1e-4 and
---     relative_error(corrected_t_stats, array[-5.6330, 5.6148, -8.3272, 12.4660]) < 1e-4 and
---     relative_error(corrected_p_values, array[0.11185, 0.11221, 0.07609, 0.05096]) < 1e-4,
+--     relative_error(bp_p_value, 0.4672) < 1e-4,
 --     'Linear regression with heteroskedasticity & grouping (houses): Wrong results'
 -- )
 -- from result_lin_houses
@@ -182,10 +179,7 @@ select linregr_train('houses', 'result_lin_houses', 'price',
 --     relative_error(p_values, array[0.18816143289241,0.187636685729725,0.38634003235866,0.417132778730133]) < 1e-4 and
 --     relative_error(condition_no, 11722.62) < 1e-4 and
 --     relative_error(bp_stats, 6.7538) < 1e-4 and
---     relative_error(bp_p_value, 0.08017) < 1e-4 and
---     relative_error(corrected_std_err, array[44631.867, 15.736, 26308.729, 43.369]) < 1e-4 and
---     relative_error(corrected_t_stats, array[-1.9752, 1.7283, 1.5738, 1.4443]) < 1e-4 and
---     relative_error(corrected_p_values, array[0.1052, 0.1445, 0.1764, 0.2083]) < 1e-4,
+--     relative_error(bp_p_value, 0.08017) < 1e-4,
 --     'Linear regression with heteroskedasticity & grouping (houses): Wrong results'
 -- )
 -- from result_lin_houses
@@ -201,10 +195,7 @@ select assert(
     relative_error(p_values, array[0.251, 0.216, 0.181, 0.136]) < 1e-4 and
     relative_error(condition_no, 10086.1) < 1e-4 and
     relative_error(bp_stats, 0) < 1e-4 and
-    relative_error(bp_p_value, 0.9) < 1e-4 and
-    relative_error(corrected_std_err, array[0,0,0,0]) < 1e-4 and
-    relative_error(corrected_t_stats, array[0,0,0,0]) < 1e-4 and
-    relative_error(corrected_p_values, array[0,0,0,0]) < 1e-4,
+    relative_error(bp_p_value, 0.9) < 1e-4,
     'Linear regression with heteroskedasticity & grouping (houses): Wrong results'
 )
 from result_lin_houses
@@ -218,10 +209,7 @@ select assert(
     relative_error(p_values, array[0.18816143289241,0.187636685729725,0.38634003235866,0.417132778730133]) < 1e-4 and
     relative_error(condition_no, 11722.62) < 1e-4 and
     relative_error(bp_stats, 0) < 1e-4 and
-    relative_error(bp_p_value, 0.9) < 1e-4 and
-    relative_error(corrected_std_err, array[0,0,0,0]) < 1e-4 and
-    relative_error(corrected_t_stats, array[0,0,0,0]) < 1e-4 and
-    relative_error(corrected_p_values, array[0,0,0,0]) < 1e-4,
+    relative_error(bp_p_value, 0.9) < 1e-4,
     'Linear regression with heteroskedasticity & grouping (houses): Wrong results'
 )
 from result_lin_houses
