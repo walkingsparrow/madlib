@@ -435,10 +435,12 @@ CREATE FUNCTION MADLIB_SCHEMA.__internal_linregr_train_hetero_only(
    , heteroskedasticity_option  BOOLEAN -- do you want heteroskedasticity output
 )
 DECLARE
-insert_string VARCHAR;
-RETURNS MADLIB_SCHEMA.linregr_result AS $$
+insert_string           VARCHAR;
+linreg_intermediate     MADLIB_SCHEMA.linreg_result;
+hsk_value               MADLIB_SCHEMA.heteroskedasticity_test_result;
+RETURNS VOID AS $$
 BEGIN
-  IF (source_table IS NULL) THEN
+    IF (source_table IS NULL) THEN
         RAISE EXCEPTION 'No valid input table name given.';
     END IF;
     IF (out_table IS NULL) THEN
@@ -461,7 +463,7 @@ BEGIN
                 p_values DOUBLE PRECISION[],
                 condition_no DOUBLE PRECISION)';
     IF heteroskedasticity_option THEN
-      -- Alter output table to reflect heteroskedasticity values
+      -- Alter output table to add heteroskedasticity values
       EXECUTE '
             ALTER TABLE ' || out_table || '
                 ADD COLUMN bp_stats DOUBLE PRECISION,
@@ -470,23 +472,34 @@ BEGIN
 
     IF heteroskedasticity_option THEN
       -- Use heteroskedasticity function instead of the regular aggregate
-      --  if the values are required
       EXECUTE '
-      INSERT INTO ' || out_table || '
-        SELECT (result).coef, (result).r2, (result).std_err, (result).t_stats,
-              (result).p_values, (result).condition_no, 0, 0.9
-        FROM (
-          SELECT MADLIB_SCHEMA.linregr( '
-            || dependent_varname || ' , '
-            || independent_varname || ' ) AS result
-          FROM ' || source_table || ' ) subq';
+        SELECT MADLIB_SCHEMA.linregr( '
+          || dependent_varname || ' , '
+          || independent_varname || ' ) AS result
+        FROM ' || source_table
+      INTO linreg_intermediate;
+      EXECUTE '
+        SELECT MADLIB_SCHEMA.heteroskedasticity_test_linregr('
+          || dependent_varname || ' , '
+          || independent_varname || ' , '
+          || linreg_intermediate.coef || ')'
+      INTO hsk_value;
+      EXECUTE '
+        INSERT INTO ' || out_table || '
+          VALUES ('
+            || (linreg_intermediate).coef           || ','
+            || (linreg_intermediate).r2             || ','
+            || (linreg_intermediate).std_err        || ','
+            || (linreg_intermediate).t_stats        || ','
+            || (linreg_intermediate).p_values       || ','
+            || (linreg_intermediate).condition_no   || ','
+            || (hsk_value).bp_stats                 || ','
+            || (hsk_value).bp_p_value               || ')';
     ELSE
       EXECUTE '
         INSERT INTO ' || out_table || '
           SELECT (result).coef, (result).r2, (result).std_err, (result).t_stats,
-              (result).p_values, (result).condition_no,
-              0, 0.9, {0.0}::DOUBLE PRECISION[], {0.0}::DOUBLE PRECISION[],
-              {0.0}::DOUBLE PRECISION[]
+              (result).p_values, (result).condition_no
           FROM (
             SELECT MADLIB_SCHEMA.linregr( '
             || dependent_varname || ' , '
@@ -539,6 +552,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE
 
+
+CREATE FUNCTION MADLIB_SCHEMA.__internal_get_hsk_value(
+     source_table         VARCHAR       -- name of input  table
+   , dependent_varname    VARCHAR       -- name of dependent variable
+   , independent_varname  VARCHAR       -- name of independent variable
+   , linregr_coeffs       DOUBLE PRECISION[]  -- coeffs from linear regression
+
+)
+DECLARE
+hsk_value MADLIB_SCHEMA.heteroskedasticity_test_result;
+RETURNS MADLIB_SCHEMA.heteroskedasticity_test_result AS $$
+BEGIN
+  EXECUTE
+    'SELECT * FROM MADLIB_SCHEMA.heteroskedasticity_test_linregr( '
+            || dependent_varname || ' , '
+            || independent_varname || ' , '
+            || linregr_coeffs ||
+    ') FROM ' || source_table
+  INTO hsk_value;
+
+  RETURN hsk_value;
+END
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+-- Linear regression training function with grouping support
 CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table               VARCHAR       -- name of input  table
    , out_table                  VARCHAR       -- name of output table
@@ -699,8 +738,8 @@ LANGUAGE C IMMUTABLE STRICT;
  *  <pre> SELECT (heteoskedasticity_test_linregr(<em>dependentVariable</em>,
  * 	<em>independentVariables</em>, coef)).*
  *	FROM (
- *    SELECT linregr(<em>dependentVariable</em>, <em>independentVariables</em>).coef 
- * 	) AS ols_coef, <em>sourceName</em> as src; 
+ *    SELECT linregr(<em>dependentVariable</em>, <em>independentVariables</em>).coef
+ * 	) AS ols_coef, <em>sourceName</em> as src;
  * </pre>
  */
 CREATE AGGREGATE MADLIB_SCHEMA.heteroskedasticity_test_linregr(
