@@ -498,7 +498,11 @@ CREATE AGGREGATE MADLIB_SCHEMA.linregr(
     INITCOND=''
 );
 
-CREATE FUNCTION MADLIB_SCHEMA.__internal_linregr_train_hetero_only(
+/**
+ * @brief Compute linear regression coefficients and heterskedasticity values
+ *
+ **/
+ CREATE FUNCTION MADLIB_SCHEMA.__internal_linregr_train_hetero_only(
      source_table         VARCHAR       -- name of input  table
    , out_table            VARCHAR       -- name of output table
    , dependent_varname    VARCHAR       -- name of dependent variable
@@ -544,15 +548,12 @@ BEGIN
 
     IF heteroskedasticity_option THEN
       -- Use heteroskedasticity function instead of the regular aggregate
-      RAISE WARNING 'debugging 2';
       EXECUTE '
         SELECT (MADLIB_SCHEMA.linregr( '
           || dependent_varname || ' , '
           || independent_varname || ' )).*
         FROM ' || source_table
       INTO linreg_intermediate;
-
-      RAISE WARNING 'debugging 1';
       EXECUTE '
         SELECT (MADLIB_SCHEMA.heteroskedasticity_test_linregr('
           || dependent_varname || ' , '
@@ -592,7 +593,12 @@ BEGIN
 END
 $$ LANGUAGE plpgsql VOLATILE;
 
-
+/** 
+  * @brief Compute linear regression coefficients and insert into an output 
+  * table. The function drops the table if it already exists before creating 
+  * the table. 
+  * 
+**/
 CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table         VARCHAR       -- name of input  table
    , out_table            VARCHAR       -- name of output table
@@ -612,6 +618,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+/** 
+  * @brief Compute linear regression coefficients and insert into an output 
+  * table. The function drops the table if it already exists before creating 
+  * the table. Heteroskedasticity values are also added if the option is True.
+**/
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table         VARCHAR       -- name of input  table
    , out_table            VARCHAR       -- name of output table
@@ -634,6 +645,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+/** 
+  * @brief Return heteroskedasticity values for specific linear regression 
+  * coefficients
+**/
 CREATE FUNCTION MADLIB_SCHEMA.__internal_get_hsk_value(
      source_table         VARCHAR       -- name of input  table
    , dependent_varname    VARCHAR       -- name of dependent variable
@@ -651,13 +666,15 @@ BEGIN
             || linregr_coeffs ||
     ') FROM ' || source_table
   INTO hsk_value;
-
   RETURN hsk_value;
 END
 $$ LANGUAGE plpgsql VOLATILE;
 
 
--- Linear regression training function with grouping support
+/**
+  * @brief Linear regression training function with grouping support and 
+  * option for heteroskedasticity values.
+ **/
 CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table               VARCHAR       -- name of input  table
    , out_table                  VARCHAR       -- name of output table
@@ -772,6 +789,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+/**
+  * @brief Linear regression training function with grouping support.
+ **/
 CREATE FUNCTION MADLIB_SCHEMA.linregr_train(
      source_table               VARCHAR       -- name of input  table
    , out_table                  VARCHAR       -- name of output table
