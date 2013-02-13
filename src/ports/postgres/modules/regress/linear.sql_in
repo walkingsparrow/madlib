@@ -546,6 +546,50 @@ BEGIN
 END
 $$ LANGUAGE plpgsql VOLATILE;
 
+CREATE FUNCTION MADLIB_SCHEMA.__internal_get_linregr_insert_string(
+    lin_rst MADLIB_SCHEMA.linregr_result,
+    out_table TEXT
+)
+RETURNS VARCHAR AS $$
+DECLARE 
+  insert_string VARCHAR;
+BEGIN
+  insert_string := 'INSERT INTO ' || out_table || ' VALUES ('; 
+  insert_string := insert_string  || 
+            CASE 
+              WHEN (lin_rst).coef is NULL
+              THEN '''{}'','
+              ELSE 'ARRAY[' || array_to_string((lin_rst).coef, ',')     || '], '
+            END             || 
+            CASE 
+              WHEN (lin_rst).r2 is NULL
+              THEN '0.0,'
+              ELSE (lin_rst).r2 || ',' 
+            END             ||
+            CASE 
+              WHEN (lin_rst).std_err is NULL
+              THEN '''{}'','
+              ELSE 'ARRAY[' || array_to_string((lin_rst).std_err, ',')  || '], '
+            END             ||
+            CASE 
+              WHEN (lin_rst).t_stats is NULL
+              THEN '''{}'','
+              ELSE 'ARRAY[' || array_to_string((lin_rst).t_stats, ',')  || '], '
+            END             ||
+            CASE 
+              WHEN (lin_rst).p_values is NULL
+              THEN '''{}'','
+              ELSE 'ARRAY[' || array_to_string((lin_rst).p_values, ',') || '], '
+            END             ||
+            CASE 
+              WHEN (lin_rst).condition_no is NULL
+              THEN '0.0'
+              ELSE (lin_rst).condition_no
+            END;
+  RETURN insert_string; 
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 /**
  * @brief Compute linear regression coefficients and heterskedasticity values
  *
@@ -592,30 +636,27 @@ BEGIN
                 ADD COLUMN bp_stats DOUBLE PRECISION,
                 ADD COLUMN bp_p_value DOUBLE PRECISION';
     END IF;
-
     -- compute linear regression and heteroskedasticity values (if required)
     lin_rst := MADLIB_SCHEMA.__internal_get_linreg_result(
                     source_table, dependent_varname, independent_varname);
-    insert_string := 'INSERT INTO ' || out_table || '
-          VALUES ('
-          || 'ARRAY[' || array_to_string((lin_rst).coef, ',')     || '],'
-          ||  (lin_rst).r2                                        || ','
-          || 'ARRAY[' || array_to_string((lin_rst).std_err, ',')  || '],'
-          || 'ARRAY[' || array_to_string((lin_rst).t_stats, ',')  || '],'
-          || 'ARRAY[' || array_to_string((lin_rst).p_values, ',') || '],'
-          || (lin_rst).condition_no;                               
-    -- Ensure Infinity is cast properly
-    regexp_replace(insert_string, 'Infinity', '''Infinity''::double precision')    
-    
-    IF heteroskedasticity_option THEN    
+    insert_string := MADLIB_SCHEMA.__internal_get_linregr_insert_string(
+                    lin_rst, out_table);
+    -- Ensure Infinity and NaN are cast properly
+    insert_string := REGEXP_REPLACE(insert_string, 'Infinity', 
+                                    '''Infinity''::double precision', 'gi');
+    insert_string := REGEXP_REPLACE(insert_string, 'NaN', 
+                                    '''NaN''::double precision', 'gi');
+    IF heteroskedasticity_option THEN
+      -- add hsk values in the sql string and execute
       hsk_value := MADLIB_SCHEMA.__internal_get_hsk_result(
                     source_table, dependent_varname,
                     independent_varname, (lin_rst).coef);
-      EXECUTE 
+      EXECUTE
           insert_string             || ','
           || (hsk_value).bp_stats   || ','
           || (hsk_value).bp_p_value || ')';
-    ELSE  
+    ELSE
+      -- complete the sql string and execute
       EXECUTE insert_string || ')';
     END IF;
 END
@@ -762,13 +803,13 @@ BEGIN
         EXECUTE '
           INSERT INTO ' || out_table || '
             SELECT ' || group_string || ',
-                  t.coef, t.r2, t.std_err, t.t_stats, t.p_values, t.condition_no,
-                  (MADLIB_SCHEMA.heteroskedasticity_test_linregr('
+                t.coef, t.r2, t.std_err, t.t_stats, t.p_values, t.condition_no,
+                (MADLIB_SCHEMA.heteroskedasticity_test_linregr('
                     || dependent_varname    || ','
                     || independent_varname  || ', coef)).*
             FROM (
               SELECT '|| group_string || ',
-                      (MADLIB_SCHEMA.linregr('
+                (MADLIB_SCHEMA.linregr('
                         || dependent_varname    || ','
                         || independent_varname  || ')).*
               FROM '  || source_table ||
