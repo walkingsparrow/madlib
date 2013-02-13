@@ -608,16 +608,16 @@ lin_rst                 MADLIB_SCHEMA.linregr_result;
 hsk_value               MADLIB_SCHEMA.heteroskedasticity_test_result;
 BEGIN
     IF (source_table IS NULL OR source_table = '') THEN
-        RAISE EXCEPTION 'No valid input table name given.';
+        RAISE EXCEPTION 'Invalid input table name given.';
     END IF;
     IF (out_table IS NULL OR out_table = '') THEN
-        RAISE EXCEPTION 'No valid output table name given.';
+        RAISE EXCEPTION 'Invalid output table name given.';
     END IF;
     IF (dependent_varname IS NULL OR dependent_varname = '') THEN
-        RAISE EXCEPTION 'No valid dependent variable name given.';
+        RAISE EXCEPTION 'Invalid dependent variable name given.';
     END IF;
     IF (independent_varname IS NULL OR independent_varname = '') THEN
-        RAISE EXCEPTION 'No valid independent variable name given.';
+        RAISE EXCEPTION 'Invalid independent variable name given.';
     END IF;
     -- create output table with appropriate column names
     EXECUTE 'DROP TABLE IF EXISTS ' || out_table;
