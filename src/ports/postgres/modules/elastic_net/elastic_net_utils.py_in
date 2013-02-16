@@ -1,0 +1,68 @@
+
+import plpy
+from convex.ridge import __ridge_ind_var_scales
+from convex.ridge import __ridge_dep_var_scale
+from convex.ridge import __ridge_normalize_data
+from utilities.control import IterationController
+from convex.lasso_igd import IterationControllerNoTableDrop
+
+## ========================================================================
+
+def __normalize_data(**args):
+    """
+    Compute the scaling factors for independent and dependent
+    variables, and then scale the original data.
+
+    The output is stored in tbl_data_scaled
+    """
+    __ridge_ind_var_scales(**args)
+    __ridge_dep_var_scale(**args)
+    __ridge_normalize_data(**args)
+
+    return None
+
+# ========================================================================
+# ------------------------------------------------------------------------
+
+class IterationControllerTableAppend (IterationControllerNoTableDrop):
+    def __init__(self, rel_args, rel_state, stateType,
+                 temporaryTables = True,
+                 truncAfterIteration = False,
+                 schema_madlib = "MADLIB_SCHEMA_MISSING",
+                 verbose = False,
+                 **kwargs):
+        self.kwargs = kwargs
+        self.kwargs.update(
+            rel_args = rel_args,
+            rel_state = rel_state,
+            stateType = stateType.format(schema_madlib = schema_madlib),
+            schema_madlib = schema_madlib)
+        self.temporaryTables = temporaryTables
+        self.truncAfterIteration = truncAfterIteration
+        self.verbose = verbose
+        self.inWith = False
+        self.iteration = -1
+        
+        self.state_exists = plpy.execute("""
+                                         select count(*)
+                                         from information_schema.tables
+                                         where table_name = '{rel_state}'
+                                         """.format(**self.kwargs))[0]['count'] == 1
+
+    ## ------------------------------------------------------------------------
+            
+    def update(self, newState):
+        """
+        Update state of calculation. In ridge case, the state is an
+        array of double precision[].
+        """
+        newState = newState.format(iteration = self.iteration, **self.kwargs)
+        self.iteration += 1
+        self.runSQL("""
+                    INSERT INTO {rel_state}
+                    SELECT
+                        {iteration},
+                        ({newState})
+                    """.format(iteration = self.iteration,
+                               newState = newState,
+                               **self.kwargs))

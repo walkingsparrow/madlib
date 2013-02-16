@@ -1,0 +1,159 @@
+
+import plpy
+from convex.elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
+from convex.elastic_net_gaussian_bcd import __elastic_net_gaussian_bcd_train
+
+## ========================================================================
+
+def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
+    """
+    Given a response family name or optimizer name, print out the related
+    information.
+
+    If a family name is given, print out the supported optimizer together
+    with its default optimizer.
+    
+    If an optimizer name is given, print out the necessary parameters.
+    """
+    if (family_or_optimizer.lower() == "gaussian" or
+        family_or_optimizer == "linear"):
+        return """
+        Supported optimizer:
+        (1) Incremental gradient descent method ('igd')
+        (2) Batch coordinate descent method ('bcd')
+
+        For alpha = 0, Newton method ('newton') is also supported.
+        """
+
+    if family_or_optimizer.lower() == "igd":
+        return """
+        Incremental gradient descent method
+
+        Parameters:
+        stepsize         - default 0.01
+        max_iter         - default 100
+        tolenrance       - default 0.000001
+        """
+
+    if family_or_optimizer.lower() == "cd":
+        return """
+        Coordinate descent method:
+
+        Parameters:
+        max_iter         - default 100
+        tolenrance       - default 0.000001
+
+        Reference:
+        [1] A. Van der Kooij. Prediction accuracy and stability of regrsssion
+            with optimal sclaing transformations. Technical report, Dept. of
+            Data Theory, Leiden University, 2007.
+        """
+
+    if family_or_optimizer.lower() == "fista":
+        return """
+        Fast iterative shrinkage thesholding algorithm
+
+        Parameters:
+        max_iter         - default 100
+        tolenrance       - default 0.000001
+                
+        Reference:
+        [1] Beck, A. and M. Teboulle (2009). A fast iterative
+            shrinkage-thresholding algorothm for linear inverse
+            problems. SIAM J. on Imaging Sciences 2(1), 183-202.
+        """
+        
+    if family_or_optimizer.lower() == "newton":
+        return "Newton method"
+        
+    return """
+    Not a supported response family or optimizer
+    """
+        
+
+## ========================================================================
+
+## lambda is a keyword of Python, try to avoid using
+## it, so use lambda_value instead
+def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+                      tbl_result, lambda_value, alpha, normalization, regress_family,
+                      optimizer, optimizer_params, **kwargs):
+    """
+    A wrapper for all variants of elastic net regularization.
+
+    @param tbl_source        Name of data source table
+    @param col_ind_var       Name of independent variable column,
+                             independent variable is an array
+    @param col_dep_var       Name of dependent variable column
+    @param tbl_result        Name of the table to store the results,
+                             will return fitting coefficients and
+                             likelihood
+    @param lambda_value      The regularization parameter
+    @param alpha             The elastic net parameter, [0, 1]
+    @param normalization     Whether to normalize the variables
+    @param regress_family    Response type, 'gaussian' or 'binomial'
+    @param optimizer         The optimization algorithm, for example 'igd'
+    @param optimizer_params  Parameters of the above optimizer, the format
+                             is '{arg = value, ...}'::varchar[]
+    """
+    # Special case for ridge linear regression
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
+        optimizer.lower() == "newton" and
+        alpha == 0):
+        plpy.execute("""select {schema_madlib}.ridge_newton_train(
+                            '{tbl_source}', '{col_ind_var}', '{col_dep_var}',
+                            '{tbl_result}', {lambda_value}, {normalization}
+        )""".format(schema_madlib = schema_madlib,
+                    tbl_source = tbl_source,
+                    col_ind_var = col_ind_var,
+                    col_dep_var = col_dep_var,
+                    tbl_result = tbl_result,
+                    lambda_value = lambda_value,
+                    normalization = normalization))
+        return None
+    
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
+        optimizer.lower() == "igd"):
+        __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
+                                         normalization, optimizer_params, **kwargs)
+        return None
+
+    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
+        optimizer.lower() == "bcd"):
+        __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
+                                         normalization, optimizer_params, **kwargs)
+        return None
+        
+    # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
+    #     optimizer.lower() == "igd"):
+    #     __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
+    #                                      col_dep_var, tbl_result, lambda_value, alpha,
+    #                                      normalization, optimizer_params, **kwargs)
+    #    return None
+
+    plpy.error("Not a supported response family or supported optimizer of the given response family!")
+    return None
+    
+## ========================================================================
+
+def elastic_net_predict(schema_madlib, regress_family, coefficients,
+                        intercept, ind_var, **kwargs):
+    """
+    Make predictions using the fitting coefficients
+    """
+    if regress_family.lower() == "gaussian" or regress_family.lower() == "linear":
+        return __elastic_net_gaussian_predict(coefficients, intercept, ind_var)
+
+    plpy.error("Not a supported response family!")
+    return None
+
+def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
+    """
+    Prediction for linear models
+    """
+    dot = intercept
+    for i in range(len(coefficients)):
+        dot += coefficients[i] * ind_var[i]
+    return dot
