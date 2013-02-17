@@ -3,9 +3,9 @@ import plpy
 import math
 from utilities.utilities import __unique_string
 from validation.cv_utils import __cv_produce_col_name_string
-from validation.cv_utils import __cv_copy_data_with_id
-from validation.cv_utils import __cv_split_data_using_id_col
-from validation.cv_utils import __cv_split_data_using_id_tbl
+from validation.cv_utils import __cv_copy_data_with_id_compute
+from validation.cv_utils import __cv_split_data_using_id_col_compute
+from validation.cv_utils import __cv_split_data_using_id_tbl_compute
 from validation.cv_utils import __cv_generate_random_id
 
 ## ========================================================================
@@ -80,6 +80,8 @@ def __utils_normalize_data(**kwargs):
     tbl_ind_scales -- independent variables scales array
     tbl_dep_scale -- dependent variable scale 
     tbl_data_scaled -- scaled data result
+    col_ind_var_norm_new -- create a new name for the scaled array
+                       to be compatible with array[...] expressions
     """
     # intermediate table name to avoid name conflicts 
     foos = __unique_string()
@@ -87,7 +89,7 @@ def __utils_normalize_data(**kwargs):
     plpy.execute("""
         create temp table {tbl_data_scaled} as
             select
-                array_agg(val order by attr ) as {col_ind_var},
+                array_agg(val order by attr ) as {col_ind_var_norm_new},
                 max(dep_var) as {col_dep_var}
             from (
                 select
@@ -109,50 +111,18 @@ def __utils_normalize_data(**kwargs):
                             ids,
                             {col_dep_var} as dep_var,
                             generate_series(1, {dimension}) as attr,
-                            unnest({col_ind_var}) as val
+                            unnest(vals) as val
                         from (
                             select
                                 row_number() over () as ids,
                                 {col_dep_var},
-                                {col_ind_var}
+                                {col_ind_var} as vals
                             from {tbl_data}) t
                     ) as {foos}
                 where {tbl_ind_scales}.attr = {foos}.attr
             ) as t
             group by ids
     """.format(foos = foos, **kwargs))
-    return None
-
-## ========================================================================
-    
-def __utils_gather_results(**kwargs):
-    """
-    Put normalized fitting result together with scales to be used for nonlinear fitting.
-
-    Non-linear fitting just uses normalized fitting coefficients to get prediction. Restore the coefficients
-    to the original scale involves non-linear calculation and is usually not necessary.
-
-    Parameters:
-    tbl_coef - table contains the rsult of fitting
-    col_coef - column name for the fitting coefficients
-    col_others - column names other than the one for the fitting coefficients
-    tbl_ind_scales - independent variable scales
-    tbl_dep_scale - dependent variable scale
-    """
-    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
-    plpy.execute("drop table if exists {tbl_all_results}".format(**kwargs))
-    plpy.execute("""
-        create table {tbl_all_results} as
-            select
-                coefficients as {col_coef},
-                intercept as intercept,
-                array_agg({tbl_ind_scales}.mean order by {tbl_ind_scales}.attr) as ind_var_mean,
-                {tbl_ind_scales}.std as ind_var_std,
-                {col_others_string}
-            from
-                {tbl_coef},
-                {tbl_ind_scales}
-    """.format(col_others_string = col_others_string, **kwargs))
     return None
 
 ## ========================================================================
@@ -324,7 +294,11 @@ def __utils_cv_preprocess(kwargs):
     tbl_dep_scale = __unique_string()
     # table to store fitting coefficients from
     # all validations for all parameter values
-    tbl_coef = __unique_string() 
+    tbl_coef = __unique_string()
+    # new name for independent column due to data copy & split
+    col_ind_var_cv_new = __unique_string()
+    # new name for independent column due to normalization
+    col_ind_var_norm_new = __unique_string()
     kwargs.update(dict(tbl_accum_error = tbl_accum_error,
                        tbl_all_data = tbl_all_data,
                        tbl_inter = tbl_inter,
@@ -334,23 +308,30 @@ def __utils_cv_preprocess(kwargs):
                        col_random_id = col_random_id,
                        tbl_ind_scales = tbl_ind_scales,
                        tbl_dep_scale = tbl_dep_scale,
+                       col_ind_var_cv_new = col_ind_var_cv_new,
+                       col_ind_var_norm_new = col_ind_var_norm_new,
                        tbl_coef = tbl_coef))
     
-    data_cols = [col_ind_var, col_dep_var]
+    # data_cols = [col_ind_var, col_dep_var]
     if data_id is None:
         # unique ID column is not given, has to copy the data and create the ID
-        __cv_copy_data_with_id(data_tbl, data_cols, tbl_all_data, col_random_id)
+        # CV function cannot be used here, because of possible array expressions
+        __utils_cv_copy_data_with_id(data_tbl, col_dep_var, col_ind_var,
+                                     col_ind_var_cv_new, tbl_all_data, col_random_id)
         tbl_used = tbl_all_data
+        kwargs["col_ind_var_cp_new"] = col_ind_var_cv_new
     elif id_is_random:
         # unique ID column is given and is random
         tbl_used = data_tbl
         col_random_id = data_id
         kwags["col_random_id"] = data_id
+        kwargs["col_ind_var_cp_new"] = col_ind_var
     else:
         # the provided unique ID is not random, create
         # a table mapping the given ID to a random ID
         __cv_generate_random_id(data_tbl, data_id, tbl_random_id, col_random_id)
         tbl_used = data_tbl
+        kwargs["col_ind_var_cp_new"] = col_ind_var
 
     # original data row number
     row_num = plpy.execute("select count(*) as row_num from {data_tbl}".format(**kwargs))[0]["row_num"]
@@ -392,24 +373,39 @@ def __utils_cv_split_and_normalization(k, kwargs):
     tbl_dep_scale = kwargs["tbl_dep_scale"]
     col_ind_var = kwargs["col_ind_var"]
     col_dep_var = kwargs["col_dep_var"]
+    col_ind_var_cp_new = kwargs["col_ind_var_cp_new"]
+    col_ind_var_cv_new = kwargs["col_ind_var_cv_new"]
+    col_ind_var_norm_new = kwargs["col_ind_var_norm_new"]
 
-    col_data = [col_ind_var, col_dep_var]
+    # col_data = [col_ind_var, col_dep_var]
     if (data_id is None) or (data_id is not None and id_is_random):
-        __cv_split_data_using_id_col(tbl_used, col_data, col_random_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+        __utils_cv_split_data_using_id_col(tbl_used, col_dep_var, col_ind_var_cp_new,
+                                           col_ind_var_cv_new, col_random_id,
+                                           row_num, tbl_inter, tbl_valid, fold_num, k+1)
     else:
-        __cv_split_data_using_id_tbl(tbl_used, col_data, tbl_random_id, col_random_id, data_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
+        __utils_cv_split_data_using_id_tbl(tbl_used, col_dep_var, col_ind_var_cp_new,
+                                           col_ind_var_cv_new, tbl_random_id, col_random_id,
+                                           data_id, row_num, tbl_inter, tbl_valid, fold_num, k+1)
 
     row_num_train = plpy.execute("select count(*) as n from " + tbl_inter)[0]["n"]
     kwargs["row_num_train"] = row_num_train
     
     if normalization:
-        __utils_ind_var_scales(tbl_data = tbl_inter, col_ind_var = col_ind_var, row_num = row_num_train, dimension = dimension, tbl_scales = tbl_ind_scales)
-        __utils_dep_var_scale(tbl_data = tbl_inter, col_dep_var = col_dep_var, row_num = row_num_train, tbl_scale = tbl_dep_scale)
-        __utils_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var, dimension = dimension, col_dep_var = col_dep_var, tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale, tbl_data_scaled = tbl_train)
+        __utils_ind_var_scales(tbl_data = tbl_inter, col_ind_var = col_ind_var_cv_new,
+                               row_num = row_num_train, dimension = dimension,
+                               tbl_scales = tbl_ind_scales)
+        __utils_dep_var_scale(tbl_data = tbl_inter, col_dep_var = col_dep_var,
+                              row_num = row_num_train, tbl_scale = tbl_dep_scale)
+        __utils_normalize_data(tbl_data = tbl_inter, col_ind_var = col_ind_var_cv_new,
+                               dimension = dimension, col_dep_var = col_dep_var,
+                               tbl_ind_scales = tbl_ind_scales, tbl_dep_scale = tbl_dep_scale,
+                               tbl_data_scaled = tbl_train, col_ind_var_norm_new = col_ind_var_norm_new)
         # dep_std = plpy.execute("select dep_std as std from " + tbl_dep_scale)[0]["std"]
         kwargs["dep_std"] = 1
+        kwargs["col_ind_var_new"] = col_ind_var_norm_new
     else:
         kwargs["tbl_train"] = tbl_inter
+        kwargs["col_ind_var_new"] = col_ind_var_cv_new
 
     return None
 
@@ -426,3 +422,102 @@ def __utils_accumulate_error(accum_count, tbl_accum_error, param_value, error):
     plpy.execute("insert into {tbl_accum_error} values ({param_value}, {error})".format(
         tbl_accum_error = tbl_accum_error,
         param_value = param_value, error = error))
+
+## ========================================================================
+
+def __utils_cv_produce_col_name_string(col_dep_var, col_ind_var,
+                                       col_ind_var_cv_new):
+    """
+    Given an array of strings, pick out the column names and form a single
+    string, so that we could select only the necessary data when copying is
+    inevitable.
+
+    @param tbl Name of the table that contains the columns
+    @param col_dep_var Name of dependent variable
+    @param col_ind_var Name of independent variable, might be an
+    array expression
+    @param col_ind_var_cv_new A single string to rename the independent
+    variable, so that we can refer to the possible array expression
+    """
+    return col_dep_var + ", " + col_ind_var + " as " + col_ind_var_cv_new
+
+# ========================================================================
+
+def __utils_cv_copy_data_with_id (rel_origin, col_dep_var, col_ind_var,
+                                  col_ind_var_cv_new, rel_copied, random_id):
+    """
+    If the user does not provide a ID column, the data table has to be
+    copied and at the same time create a random ID column with it.
+
+    @param rel_origin Original table name, a string
+    @param col_dep_var Name of dependent variable
+    @param col_ind_var Name of independent variable, might be an
+    array expression
+    @param col_ind_var_cv_new A single string to rename the independent
+    variable, so that we can refer to the possible array expression
+    @param rel_copied Name of the table that copies the data from the original table
+    @param random_id Column name for random unqiue ID in the newly created copied table
+    """
+    # We want to select only the columns that will be used in the computation.
+    col_string = __utils_cv_produce_col_name_string(col_dep_var, col_ind_var, col_ind_var_cv_new)
+    __cv_copy_data_with_id_compute (rel_origin, col_string, rel_copied, random_id)
+    return None
+
+# ========================================================================
+
+def __utils_cv_split_data_using_id_col (rel_source, col_dep_var, col_ind_var,
+                                        col_ind_var_cv_new, col_id, row_num,
+                                        rel_train, rel_valid, fold_num, which_fold):
+    """
+    A random ID column exists (originally exists or was created during copying),
+    split the data into training and validation.
+
+    @param rel_source Name of data source table
+    @param col_dep_var Name of dependent variable
+    @param col_ind_var Name of independent variable, might be an
+    array expression
+    @param col_ind_var_cv_new A single string to rename the independent
+    @param col_id Name of the unique ID column
+    @param row_num Total number of rows
+    @param rel_train Name of training data table
+    @param rel_valid Name of validation data table
+    @param fold_num How many fold cross validation
+    @param which_fold Which fold will be used as validation part?
+    """
+    col_string = __utils_cv_produce_col_name_string(col_dep_var, col_ind_var, col_ind_var_cv_new)
+    __cv_split_data_using_id_col_compute (rel_source, col_string, col_id, row_num,
+                                          rel_train, rel_valid, fold_num, which_fold)
+    return None
+
+# ========================================================================
+
+def __utils_cv_split_data_using_id_tbl (rel_origin, col_dep_var, col_ind_var,
+                                        col_ind_var_cv_new, rel_random_id,
+                                        random_id, origin_id, row_num, rel_train,
+                                        rel_valid, fold_num, which_fold):
+    """
+    Split the data table using a random ID mapping table
+    
+    A unique ID column exists in the original table, but it is not randomly assigned.
+    Thus a table that maps this non-random ID to a real random ID has been created by
+    __cv_generate_random_id.
+
+    @param rel_origin Name of the original data table
+    @param col_dep_var Name of dependent variable
+    @param col_ind_var Name of independent variable, might be an
+    array expression
+    @param col_ind_var_cv_new A single string to rename the independent
+    @param rel_random_id Name of the random ID mapping table
+    @param random_id Name of random ID column in the table rel_random_id
+    @param origin_id Name of the original non-random ID column in rel_origin and rel_random_id
+    @param row_num Total number of rows
+    @param rel_train Name of training data table
+    @param rel_valid Name of validation data table
+    @param fold_num How many fold cross validation
+    @param which_fold Which fold will be used as validation part?
+    """
+    col_string = __utils_cv_produce_col_name_string(col_dep_var, col_ind_var, col_ind_var_cv_new)
+    __cv_split_data_using_id_tbl_compute (rel_origin, col_string, rel_random_id,
+                                          random_id, origin_id, row_num, rel_train,
+                                          rel_valid, fold_num, which_fold)
+    return None
