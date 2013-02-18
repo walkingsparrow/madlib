@@ -27,8 +27,8 @@ from utilities.validate_args import __is_tbl_exists_in_schema
 from utilities.validate_args import __is_tbl_has_rows
 # from utilities.validate_args import __is_col_exists
 from utilities.validate_args import __is_scalar_col_no_null
-from utilities.validate_args import __is_array_col_same_dimension
-from utilities.validate_args import __is_array_col_no_null
+# from utilities.validate_args import __is_array_col_same_dimension
+# from utilities.validate_args import __is_array_col_no_null
 
 ## ========================================================================
 
@@ -82,7 +82,7 @@ def compute_lasso_igd(schema_madlib, rel_args, rel_state, rel_source,
             it.update("""
                 SELECT
                     {schema_madlib}.__lasso_igd_step(
-                        array_append(({col_ind_var})::FLOAT8[],1::FLOAT8), 
+                        array_append(({col_ind_var_new})::FLOAT8[],1::FLOAT8), 
                         ({col_dep_var})::FLOAT8,
                         (SELECT _state FROM {rel_state}
                             WHERE _iteration = {iteration}),
@@ -255,11 +255,11 @@ def __lasso_igd_cv_validate_args(args):
     if not __is_scalar_col_no_null(args["data_tbl"], args["col_dep_var"]):
         plpy.error("LASSO CV error: Dependent variable has Null values! Please filter out Null values before using this function!")
 
-    if not __is_array_col_same_dimension(args["data_tbl"], args["col_ind_var"]):
-        plpy.error("LASSO CV error: Independent variable arrays have unequal lengths!")
+    # if not __is_array_col_same_dimension(args["data_tbl"], args["col_ind_var"]):
+    #     plpy.error("LASSO CV error: Independent variable arrays have unequal lengths!")
 
-    if not __is_array_col_no_null(args["data_tbl"], args["col_ind_var"]):
-        plpy.error("LASSO CV error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+    # if not __is_array_col_no_null(args["data_tbl"], args["col_ind_var"]):
+    #     plpy.error("LASSO CV error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
 
     for lambda_value in args["lambda_values"]:
         if lambda_value < 0:
@@ -360,6 +360,7 @@ def __lasso_igd_cv_compute(**kwargs):
     tbl_train = kwargs["tbl_train"]
     col_ind_var = kwargs["col_ind_var"]
     col_dep_var = kwargs["col_dep_var"]
+    kwargs["col_ind_var_tmp"] = __unique_string()
     
     accum_count = 0
     coef_count = 0
@@ -372,7 +373,7 @@ def __lasso_igd_cv_compute(**kwargs):
         row_num_train = kwargs["row_num_train"]
         dep_std = kwargs["dep_std"]
 
-        plpy.execute("update pg_temp.{tbl_lasso_igd_args} set total_rows = {row_num_train}".format(**kwargs))
+        plpy.execute("update pg_temp.{tbl_lasso_igd_args} set {total_rows_name} = {row_num_train}".format(**kwargs))
         
         for value in lambda_values:
             coef_count += 1
@@ -381,13 +382,21 @@ def __lasso_igd_cv_compute(**kwargs):
             # so that same results can be produced 
             # as R glmnet package's shooting algorithm
             effective_lambda = value * row_num_train 
-            plpy.execute("update pg_temp.{tbl_lasso_igd_args} set lambda = {effective_lambda}".format(
+            plpy.execute("update pg_temp.{tbl_lasso_igd_args} set {lambda_name} = {effective_lambda}".format(
                 effective_lambda = effective_lambda,
                 **kwargs))
 
             # iteration without dropping any tables
             iteration_run = compute_lasso_igd(schema_madlib, tbl_lasso_igd_args, tbl_lasso_igd_state,
-                                              tbl_train, col_ind_var, col_dep_var, False, **kwargs)
+                                              tbl_train, col_ind_var, col_dep_var, False,
+                                              col_ind_var_new = kwargs["col_ind_var_new"],
+                                              dimension_name = kwargs["dimension_name"],
+                                              stepsize_name = kwargs["stepsize_name"],
+                                              lambda_name = kwargs["lambda_name"],
+                                              total_rows_name = kwargs["total_rows_name"],
+                                              num_iterations_name = kwargs["num_iterations_name"],
+                                              tolerance_name = kwargs["tolerance_name"])
+            
             # actually compute the fitting coefficients for only one step
             plpy.execute("""
                 insert into {tbl_coef}
@@ -415,9 +424,14 @@ def __lasso_igd_cv_compute(**kwargs):
                 select avg((real_value - pred)^2) as error
                 from (
                     select
-                        {schema_madlib}.lasso_linear_igd_predict(coef, intercept, {tbl_valid}.{col_ind_var}) as pred,
-                        {tbl_valid}.{col_dep_var} as real_value
-                    from {tbl_valid}, {tbl_coef}
+                        {schema_madlib}.lasso_linear_igd_predict(coef, intercept, z.{col_ind_var_tmp}) as pred,
+                        z.{col_dep_var} as real_value
+                    from
+                        {tbl_coef},
+                        (
+                            select {col_dep_var}, {col_ind_var_cp_new} as {col_ind_var_tmp}
+                            from {tbl_valid}
+                        ) z
                     where {tbl_coef}.id = {coef_count}
                 ) t
             """.format(coef_count = coef_count, **kwargs))[0]["error"]
@@ -479,6 +493,8 @@ def __lasso_igd_cv_help():
     """
 
 ## ========================================================================
+## ========================================================================
+## ========================================================================
 
 def lasso_igd_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                     tbl_output, lambda_value, normalization, stepsize,
@@ -521,11 +537,11 @@ def __lasso_igd_validate_args(tbl_source, col_ind_var, col_dep_var,
     if not __is_scalar_col_no_null(tbl_source, col_dep_var):
         plpy.error("LASSO error: Dependent variable has Null values! Please filter out Null values before using this function!")
 
-    if not __is_array_col_same_dimension(tbl_source, col_ind_var):
-        plpy.error("LASSO error: Independent variable arrays have unequal lengths!")
+    # if not __is_array_col_same_dimension(tbl_source, col_ind_var):
+    #     plpy.error("LASSO error: Independent variable arrays have unequal lengths!")
 
-    if not __is_array_col_no_null(tbl_source, col_ind_var):
-        plpy.error("LASSO error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
+    # if not __is_array_col_no_null(tbl_source, col_ind_var):
+    #     plpy.error("LASSO error: Independent variable arrays have Null values! Please filter out Null values before using this function!")
 
     if lambda_value < 0:
         plpy.error("LASSO error: The regularization parameter lambda cannot be negative!")
@@ -573,7 +589,10 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 tbl_dep_scale = __unique_string(),
                 tbl_data_scaled = __unique_string(),
                 tbl_lasso_igd_args = __unique_string(),
-                tbl_lasso_igd_state = __unique_string())
+                tbl_lasso_igd_state = __unique_string(),
+                col_ind_var_norm_new = __unique_string(),
+                col_ind_var_tmp = __unique_string())
+    
     row_num = plpy.execute("select count(*) from " + tbl_source)[0]["count"]
     dimension = plpy.execute("""
                              select max(array_upper({col_ind_var},1)) as d
@@ -591,14 +610,17 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                                dimension = dimension, col_dep_var = col_dep_var,
                                tbl_ind_scales = args["tbl_ind_scales"],
                                tbl_dep_scale = args["tbl_dep_scale"],
-                               tbl_data_scaled = args["tbl_data_scaled"])
+                               tbl_data_scaled = args["tbl_data_scaled"],
+                               col_ind_var_norm_new = args["col_ind_var_norm_new"])
         tbl_inter = args["tbl_data_scaled"]
         use_temp = "temp"
         tbl_inter_result = __unique_string()
+        args["col_ind_var_new"] = args["col_ind_var_norm_new"]
     else:
         tbl_inter = tbl_source
         tbl_inter_result = tbl_output
         use_temp = ""
+        args["col_ind_var_new"] = col_ind_var
 
     args.update(tbl_inter = tbl_inter,
                 tbl_inter_result = tbl_inter_result,
@@ -627,7 +649,14 @@ def lasso_igd_train_compute(schema_madlib, tbl_source, col_ind_var, col_dep_var,
 
     iteration_run = compute_lasso_igd(schema_madlib, args["tbl_lasso_igd_args"],
                                       args["tbl_lasso_igd_state"], tbl_inter,
-                                      col_ind_var, col_dep_var, True, **args)
+                                      col_ind_var, col_dep_var, True,
+                                      col_ind_var_new = args["col_ind_var_new"],
+                                      dimension_name = args["dimension_name"],
+                                      stepsize_name = args["stepsize_name"],
+                                      lambda_name = args["lambda_name"],
+                                      total_rows_name = args["total_rows_name"],
+                                      num_iterations_name = args["num_iterations_name"],
+                                      tolerance_name = args["tolerance_name"])
 
     plpy.execute("""
                  drop table if exists {tbl_inter_result};
