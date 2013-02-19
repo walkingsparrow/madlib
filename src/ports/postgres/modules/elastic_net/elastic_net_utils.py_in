@@ -1,8 +1,8 @@
 
 import plpy
-from convex.ridge import __ridge_ind_var_scales
-from convex.ridge import __ridge_dep_var_scale
-from convex.ridge import __ridge_normalize_data
+from convex.utils_regularization import __utils_ind_var_scales
+from convex.utils_regularization import __utils_dep_var_scale
+from convex.utils_regularization import __utils_normalize_data
 from utilities.control import IterationController
 from convex.lasso_igd import IterationControllerNoTableDrop
 
@@ -15,9 +15,9 @@ def __normalize_data(**args):
 
     The output is stored in tbl_data_scaled
     """
-    __ridge_ind_var_scales(**args)
-    __ridge_dep_var_scale(**args)
-    __ridge_normalize_data(**args)
+    __utils_ind_var_scales(**args)
+    __utils_dep_var_scale(**args)
+    __utils_normalize_data(**args)
 
     return None
 

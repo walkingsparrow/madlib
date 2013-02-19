@@ -82,7 +82,7 @@ class FistaState
         task.dimension.rebind(&mStorage[0]);
         task.lambda.rebind(&mStorage[1]);
         task.alpha.rebind(&mStorage[2]);
-        task.lipschitz.rebind(&mStorage[3]);
+        task.stepsize.rebind(&mStorage[3]);
         task.totalRows.rebind(&mStorage[4]);
         task.intercept.rebind(&mStorage[5]);
         task.coef.rebind(&mStorage[6], task.dimension);
@@ -102,7 +102,7 @@ class FistaState
         typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
         typename HandleTraits<Handle>::ReferenceToDouble lambda;
         typename HandleTraits<Handle>::ReferenceToDouble alpha;
-        typename HandleTraits<Handle>::ReferenceToDouble lipschitz;
+        typename HandleTraits<Handle>::ReferenceToDouble stepsize;
         typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
         typename HandleTraits<Handle>::ReferenceToDouble intercept;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
