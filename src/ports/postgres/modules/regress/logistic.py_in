@@ -38,13 +38,13 @@ def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
     @param ind_col Name of independent column in training data (of type
                    DOUBLE PRECISION[])
     @param optimizer Name of the optimizer. 'newton' or 'irls': Iteratively
-                     reweighted least squares, 'cg': conjugate gradient or 'igd': 
+                     reweighted least squares, 'cg': conjugate gradient or 'igd':
                      incremental gradient descent
     @param kwargs We allow the caller to specify additional arguments (all of
            which will be ignored though). The purpose of this is to allow the
-           caller to unpack a dictionary whose element set is a superset of 
+           caller to unpack a dictionary whose element set is a superset of
            the required arguments by this function.
-    
+
     @return Number of iterations that has been run
     """
     iterationCtrl = IterationController (
@@ -84,38 +84,42 @@ def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
 
 # ========================================================================
 
-def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
+def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
                    grouping_col, max_iter, optimizer, tolerance, **kwargs):
     """
     Train logistic model
 
     @param schema_madlib Name of the MADlib schema, properly escaped/quoted
     @param tbl_source Name of relation containing the training data
+    @param tbl_output Name of relation where model will be outputted
     @param dep_col Name of dependent column in training data (of type BOOLEAN)
     @param ind_col Name of independent column in training data (of type
                    DOUBLE PRECISION[])
+    @param grouping_col List of column names on which to group the data
     @param max_iter The maximum number of iterations that are allowed.
     @param optimizer Name of the optimizer. 'newton' or 'irls': Iteratively
-                     reweighted least squares, 'cg': conjugate gradient or 'igd': 
+                     reweighted least squares, 'cg': conjugate gradient or 'igd':
                      incremental gradient descent
     @param tolerance The precision that the results should have
     @param kwargs We allow the caller to specify additional arguments (all of
            which will be ignored though). The purpose of this is to allow the
-           caller to unpack a dictionary whose element set is a superset of 
+           caller to unpack a dictionary whose element set is a superset of
            the required arguments by this function.
 
     @return A composite value which is __logregr_result defined in logistic.sql_in
     """
     (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter,
-     optimizer, tolerance) = __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col, 
-                                                     grouping_col, max_iter, optimizer, tolerance)
-
-    return __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
-                                   grouping_col, max_iter, optimizer, tolerance, **kwargs)
+     optimizer, tolerance) = __logregr_validate_args(tbl_source, tbl_output,
+                                                      dep_col, ind_col,
+                                                      grouping_col, max_iter,
+                                                      optimizer, tolerance)
+    return __logregr_train_compute(schema_madlib, tbl_source, tbl_output,
+                                    dep_col, ind_col, grouping_col, max_iter,
+                                    optimizer, tolerance, **kwargs)
 
 # ========================================================================
 
-def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col, 
+def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
                              grouping_col, max_iter, optimizer, tolerance):
     """
     Validate the arguments
@@ -133,10 +137,11 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
     #     plpy.error("Logregr error: Dependent column does not exist!")
 
     if not __is_scalar_col_no_null(tbl_source, dep_col):
-        plpy.error("Logregr error: Dependent variable has Null values! Please filter out Null values before using this function!")
+        plpy.error("Logregr error: Dependent variable has Null values! \
+                    Please filter out Null values before using this function!")
 
     if max_iter <= 0:
-        plpy.error("Logregr error: Maximum number of iterations must be a positive integer!")
+        plpy.error("Logregr error: Maximum number of iterations must be positive!")
 
     if tolerance < 0:
         plpy.error("Logregr error: The tolerance cannot be negative!")
@@ -153,12 +158,15 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
 
 # ========================================================================
 
-def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
-                             grouping_col, max_iter, optimizer, tolerance, **kwargs):
+def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col,
+                              ind_col, grouping_col, max_iter, optimizer,
+                              tolerance, **kwargs):
     """
-    Compute the logistic regression
+    Create an output table (drop if exists) that contains the logistic
+    regression model
     """
-    old_msg_level = plpy.execute("select setting from pg_settings where name='client_min_messages'")[0]['setting']
+    old_msg_level = plpy.execute("select setting from pg_settings where \
+                                  name='client_min_messages'")[0]['setting']
     plpy.execute("set client_min_messages to error")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
@@ -176,7 +184,7 @@ def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};
                  create table pg_temp.{tbl_logregr_args} as
-                     select 
+                     select
                          {max_iter} as max_iter,
                          {tolerance} as tolerance
                  """.format(**args))
@@ -186,6 +194,7 @@ def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind
                                       dep_col, ind_col, optimizer)
 
     plpy.execute("""
+                 drop table if exists {tbl_output};
                  create table {tbl_output} as
                      select
                          (result).coef,
@@ -205,7 +214,7 @@ def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind
                  """.format(fnName = args[args["optimizer"]],
                             iteration_run = iteration_run,
                             **args))
-    
+
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};
                  drop table if exists pg_temp.{tbl_logregr_state}
