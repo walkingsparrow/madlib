@@ -13,6 +13,7 @@ import plpy
 from utilities.control import IterationController
 from utilities.utilities import __unique_string
 from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_tbl_exists_in_schema
 from utilities.validate_args import __is_tbl_has_rows
 # from utilities.validate_args import __is_col_exists
 from utilities.validate_args import __is_scalar_col_no_null
@@ -83,8 +84,8 @@ def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
 
 # ========================================================================
 
-def logregr_train (schema_madlib, tbl_source, dep_col, ind_col, 
-                   max_iter, optimizer, tolerance, **kwargs):
+def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
+                   grouping_col, max_iter, optimizer, tolerance, **kwargs):
     """
     Train logistic model
 
@@ -105,17 +106,17 @@ def logregr_train (schema_madlib, tbl_source, dep_col, ind_col,
 
     @return A composite value which is __logregr_result defined in logistic.sql_in
     """
-    (tbl_source, dep_col, ind_col, max_iter,
+    (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter,
      optimizer, tolerance) = __logregr_validate_args(tbl_source, dep_col, ind_col, 
                                                      max_iter, optimizer, tolerance)
 
-    return __logregr_train_compute(schema_madlib, tbl_source, dep_col, ind_col, 
-                                   max_iter, optimizer, tolerance, **kwargs)
+    return __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
+                                   grouping_col, max_iter, optimizer, tolerance, **kwargs)
 
 # ========================================================================
 
-def __logregr_validate_args (tbl_source, dep_col, ind_col, 
-                             max_iter, optimizer, tolerance):
+def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col, 
+                             grouping_col, max_iter, optimizer, tolerance):
     """
     Validate the arguments
     """
@@ -124,6 +125,9 @@ def __logregr_validate_args (tbl_source, dep_col, ind_col,
 
     if not __is_tbl_has_rows(tbl_source):
         plpy.error("Logregr error: Data table is empty!")
+
+    if __is_tbl_exists_in_schema(tbl_output):
+        plpy.error("CV error: Output table already exists!")
 
     # if not __is_col_exists(tbl_source, [dep_col]):
     #     plpy.error("Logregr error: Dependent column does not exist!")
@@ -149,8 +153,8 @@ def __logregr_validate_args (tbl_source, dep_col, ind_col,
 
 # ========================================================================
 
-def __logregr_train_compute (schema_madlib, tbl_source, dep_col, ind_col, 
-                             max_iter, optimizer, tolerance, **kwargs):
+def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
+                             grouping_col, max_iter, optimizer, tolerance, **kwargs):
     """
     Compute the logistic regression
     """
@@ -158,6 +162,7 @@ def __logregr_train_compute (schema_madlib, tbl_source, dep_col, ind_col,
     plpy.execute("set client_min_messages to error")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
+                tbl_output = tbl_output,
                 dep_col = dep_col, ind_col = ind_col, max_iter = max_iter,
                 optimizer = optimizer, tolerance = tolerance,
                 tbl_logregr_args = __unique_string(),
@@ -180,19 +185,20 @@ def __logregr_train_compute (schema_madlib, tbl_source, dep_col, ind_col,
                                       args["tbl_logregr_state"], tbl_source,
                                       dep_col, ind_col, optimizer)
 
-    result = plpy.execute("""
-                          select
-                              (result).*,
-                              {iteration_run} as num_iterations
-                          from (
-                              select
-                                  {schema_madlib}.{fnName}(_state) as result
-                              from {tbl_logregr_state}
-                              where _iteration = {iteration_run}
-                          ) t
-                          """.format(fnName = args[args["optimizer"]],
-                                     iteration_run = iteration_run,
-                                     **args))[0]
+    plpy.execute("""
+                 create table {tbl_output} as
+                     select
+                         (result).*,
+                         {iteration_run} as num_iterations
+                     from (
+                         select
+                             {schema_madlib}.{fnName}(_state) as result
+                         from {tbl_logregr_state}
+                         where _iteration = {iteration_run}
+                     ) t
+                 """.format(fnName = args[args["optimizer"]],
+                            iteration_run = iteration_run,
+                            **args))[0]
     
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};
@@ -201,4 +207,4 @@ def __logregr_train_compute (schema_madlib, tbl_source, dep_col, ind_col,
 
     plpy.execute("set client_min_messages to " + old_msg_level)
 
-    return result
+    return None
