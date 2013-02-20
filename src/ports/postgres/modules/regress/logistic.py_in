@@ -107,8 +107,8 @@ def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
     @return A composite value which is __logregr_result defined in logistic.sql_in
     """
     (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter,
-     optimizer, tolerance) = __logregr_validate_args(tbl_source, dep_col, ind_col, 
-                                                     max_iter, optimizer, tolerance)
+     optimizer, tolerance) = __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col, 
+                                                     grouping_col, max_iter, optimizer, tolerance)
 
     return __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col, ind_col, 
                                    grouping_col, max_iter, optimizer, tolerance, **kwargs)
@@ -149,7 +149,7 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
                    Must be 'newton'/'irls', 'cg', or 'igd'.
                    """)
 
-    return (tbl_source, dep_col, ind_col, max_iter, optimizer, tolerance)
+    return (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter, optimizer, tolerance)
 
 # ========================================================================
 
@@ -188,7 +188,13 @@ def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind
     plpy.execute("""
                  create table {tbl_output} as
                      select
-                         (result).*,
+                         (result).coef,
+                         (result).log_likelihood,
+                         (result).std_err,
+                         (result).z_stats,
+                         (result).p_values,
+                         (result).odds_ratios,
+                         (result).condition_no,
                          {iteration_run} as num_iterations
                      from (
                          select
@@ -198,7 +204,7 @@ def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col, ind
                      ) t
                  """.format(fnName = args[args["optimizer"]],
                             iteration_run = iteration_run,
-                            **args))[0]
+                            **args))
     
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};

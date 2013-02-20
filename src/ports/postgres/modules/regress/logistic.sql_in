@@ -115,23 +115,14 @@ The training data is expected to be of the following form:\n
 @usage
 - Get vector of coefficients \f$ \boldsymbol c \f$ and all diagnostic
   statistics:\n
-  <pre>SELECT * FROM \ref logregr(
-    '<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>'
-    [, <em>numberOfIterations</em> [, '<em>optimizer</em>' [, <em>precision</em> ] ] ]
+  <pre>SELECT \ref logregr_train(
+    '<em>sourceName</em>', '<em>output_table</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>'
+    [, <em>grouping_columns_string</em>' [, '<em>numberOfIterations</em> [, '<em>optimizer</em>' [, <em>precision</em> ] ] ] ]
 );</pre>
-  Output:
+  Output table:
   <pre>coef | log_likelihood | std_err | z_stats | p_values | odds_ratios | condition_no | num_iterations
 -----+----------------+---------+---------+----------+-------------+--------------+---------------
                                                ...
-</pre>
-- Get vector of coefficients \f$ \boldsymbol c \f$:\n
-  <pre>SELECT (\ref logregr('<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>')).coef;</pre>
-- Get a subset of the output columns, e.g., only the array of coefficients
-  \f$ \boldsymbol c \f$, the log-likelihood of determination
-  \f$ l(\boldsymbol c) \f$, and the array of p-values \f$ \boldsymbol p \f$:
-  <pre>SELECT coef, log_likelihood, p_values
-FROM \ref logregr('<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>');</pre>
-
 @examp
 
 -# Create the sample data set:
@@ -151,7 +142,8 @@ sql> SELECT * FROM data;
 @verbatim
 sql> \x on
 Expanded display is off.
-sql> SELECT * FROM logregr('data', 'val', 'r1', 100, 'irls', 0.001);
+sql> SELECT logregr_train('data', 'out_tbl', 'val', 'r1', Null, 100, 'irls', 0.001);
+sql> SELECT * from out_tbl;
 -[ RECORD 1 ]--+--------------------------------------------------------------
 coef           | {5.59049410898112,2.11077546770772,-0.237276684606453}
 log_likelihood | -467.214718489873
@@ -424,7 +416,7 @@ LANGUAGE c IMMUTABLE STRICT;
  *        value here disables the convergence criterion, and execution will only
  *        stop after \c maxNumIterations iterations.
  *
- * @return A composite value:
+ * @return A table which contains:
  *  - <tt>coef FLOAT8[]</tt> - Array of coefficients, \f$ \boldsymbol c \f$
  *  - <tt>log_likelihood FLOAT8</tt> - Log-likelihood \f$ l(\boldsymbol c) \f$
  *  - <tt>std_err FLOAT8[]</tt> - Array of standard errors,
@@ -443,14 +435,7 @@ LANGUAGE c IMMUTABLE STRICT;
  * @usage
  *  - Get vector of coefficients \f$ \boldsymbol c \f$ and all diagnostic
  *    statistics:\n
- *    <pre>SELECT * FROM logregr('<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>');</pre>
- *  - Get vector of coefficients \f$ \boldsymbol c \f$:\n
- *    <pre>SELECT (logregr('<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>')).coef;</pre>
- *  - Get a subset of the output columns, e.g., only the array of coefficients
- *    \f$ \boldsymbol c \f$, the log-likelihood of determination
- *    \f$ l(\boldsymbol c) \f$, and the array of p-values \f$ \boldsymbol p \f$:
- *    <pre>SELECT coef, log_likelihood, p_values
- *FROM logregr('<em>sourceName</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>');</pre>
+ *    <pre>SELECT logregr_train('<em>sourceName</em>', '<em>outputTable</em>', '<em>dependentVariable</em>', '<em>independentVariables</em>');</pre>
  *
  * @note This function starts an iterative algorithm. It is not an aggregate
  *       function. Source and column names have to be passed as strings (due to
@@ -469,7 +454,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.logregr_train (
     max_iter            INTEGER,
     optimizer           VARCHAR,
     tolerance           DOUBLE PRECISION
-) RETURNS None AS $$
+) RETURNS VOID AS $$
 PythonFunction(regress, logistic, logregr_train)
 $$ LANGUAGE plpythonu;
 
@@ -480,8 +465,8 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     tbl_output          VARCHAR,
     dep_col             VARCHAR,
     ind_col             VARCHAR)
-RETURNS MADLIB_SCHEMA.__logregr_result AS $$
-    SELECT MADLIB_SCHEMA.logregr($1, $2, $3, $4, Null::VARCHAR, 20, 'irls', 0.0001);
+RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, Null::VARCHAR, 20, 'irls', 0.0001);
 $$ LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
@@ -492,8 +477,8 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     dep_col             VARCHAR,
     ind_col             VARCHAR,
     max_iter            INTEGER)
-RETURNS MADLIB_SCHEMA.__logregr_result AS $$
-    SELECT MADLIB_SCHEMA.logregr($1, $2, $3, $4, Null::VARCHAR, $5, 'irls', 0.0001);
+RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, Null::VARCHAR, $5, 'irls', 0.0001);
 $$LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
@@ -505,8 +490,8 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     ind_col             VARCHAR,
     max_iter            INTEGER,
     optimizer           VARCHAR)
-RETURNS MADLIB_SCHEMA.__logregr_result AS $$
-    SELECT MADLIB_SCHEMA.logregr($1, $2, $3, $4, Null::VARCHAR, $5, $6, 0.0001);
+RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, Null::VARCHAR, $5, $6, 0.0001);
 $$ LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
