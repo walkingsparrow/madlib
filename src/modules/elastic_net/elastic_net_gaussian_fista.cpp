@@ -29,7 +29,7 @@ AnyType gaussian_fista_transition::run (Anytype& args)
         {
             double lambda = args[4].getAs<double>();
             double alpha = args[5].getAs<double>();
-            double lipschitz = args[6].getAs<double>();
+            double stepsize = args[6].getAs<double>();
             int dimension = args[7].getAs<double>();
             MappedColumnVector xmean = args[8].getAs<MappedColumnVector>();
             double ymean = args[9].getAs<double>();
@@ -39,14 +39,16 @@ AnyType gaussian_fista_transition::run (Anytype& args)
             state.allocate(*this, dimension);
             state.task.lambda = lambda;
             state.task.alpha = alpha;
-            state.task.lipschitz = lipschitz;
+            state.task.stepsize = stepsize;
             state.task.totalRows = totalRows;
             state.task.ymean = ymean;
             state.task.tk = tk;
 
             for (Index i = 0; i < dimension; i++)
             {
+                // initial values
                 state.task.coef(i) = 0;
+                state.task.coef_y(i) = 0;
                 state.task.xmean(i) = xmean(i);
                 state.algo.gradient(i) = 0;
             }
@@ -61,9 +63,9 @@ AnyType gaussian_fista_transition::run (Anytype& args)
         state.algo.gradient(j) += - x(j) * y;
     
     for (Index i = 0; i < dimension; i++)
-        if (state.task.coef(i) != 0)
+        if (state.task.coef_y(i) != 0)
             for (Index j = 0; j < dimension; j++)
-                state.algo.gradient(j) += x(j) * state.task.coef(i) * x(i);
+                state.algo.gradient(j) += x(j) * state.task.coef_y(i) * x(i);
 
     state.algo.numRows++;
 
@@ -96,6 +98,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
 
     // Aggregates that haven't seen any data just return Null
     if (state.algo.numRows == 0) return Null();
+
+    
 }
 
 }

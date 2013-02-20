@@ -386,10 +386,10 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
     pre_state           DOUBLE PRECISION[],
     lambda              DOUBLE PRECISION,
     alpha               DOUBLE PRECISION,
-    lipschitz           DOUBLE PRECISION,
+    stepsize            DOUBLE PRECISION,
     dimension           INTEGER,
-    mean                DOUBLE PRECISION[],
-    mean_y              DOUBLE PRECISION,
+    xmean               DOUBLE PRECISION[],
+    ymean               DOUBLE PRECISION,
     tk                  DOUBLE PRECISION,
     total_rows          INTEGER
 ) RETURNS DOUBLE PRECISION[]
