@@ -44,23 +44,28 @@ AnyType gaussian_fista_transition::run (Anytype& args)
             state.task.ymean = ymean;
             state.task.tk = tk;
 
-            for (Index i = 0; i < dimension; i++)
-            {
-                // initial values
-                state.task.coef(i) = 0;
-                state.task.coef_y(i) = 0;
-                state.task.xmean(i) = xmean(i);
-                state.algo.gradient(i) = 0;
-            }
+            // for (Index i = 0; i < dimension; i++)
+            // {
+            //     // initial values
+            //     state.task.coef(i) = 0;
+            //     state.task.coef_y(i) = 0;
+            //     state.task.xmean(i) = xmean(i);
+            //     state.algo.gradient(i) = 0;
+            // }
+            state.task.coef = 0;
+            state.task.coef_y = 0;
+            state.task.xmean = xmean;
+            state.algo.gradient = 0;
+            
             state.task.intercept = ymean;
+            state.task.intercept_y = ymean;
         }
     }
 
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
 
-    for (Index j = 0; j < dimension; j++)
-        state.algo.gradient(j) += - x(j) * y;
+    state.algo.gradient += - x * (y - state.task.intercept_y);
     
     for (Index i = 0; i < dimension; i++)
         if (state.task.coef_y(i) != 0)
@@ -98,6 +103,28 @@ AnyType gaussian_fista_final::run (AnyType& args)
 
     // Aggregates that haven't seen any data just return Null
     if (state.algo.numRows == 0) return Null();
+
+    state.algo.gradient = state.algo.gradient / state.task.totalRows
+        + state.task.lambda * (1 - state.task.alpha) * state.task.coef_y;
+
+    double u = state.task.coef_y - state.task.stepsize * state.algo.gradient;
+
+    double effective_lambda = state.task.lambda * state.task.alpha * state.task.tk;
+
+    // update tk
+    
+    for (Index i = 0; i < state.task.dimension; i++)
+    {
+        // soft thresholding with respective to effective_lambda
+        if (u(i) > effective_lambda)
+            state.task.coef(i) = u(i) - effective_lambda;
+        else if (u(i) < - effective_lambda)
+            state.task.coef(i) = u(i) + effective_lambda;
+        else
+            state.task.coef(i) = 0;
+
+        // update coef_y
+    }
 
     
 }

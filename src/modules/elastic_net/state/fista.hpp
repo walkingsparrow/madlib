@@ -73,7 +73,7 @@ class FistaState
     */
     static inline int arraySize (const uint32_t inDimension)
     {
-        return 9 + 4 * inDimension;
+        return 10 + 4 * inDimension;
     }
 
   protected:
@@ -85,14 +85,15 @@ class FistaState
         task.stepsize.rebind(&mStorage[3]);
         task.totalRows.rebind(&mStorage[4]);
         task.intercept.rebind(&mStorage[5]);
-        task.coef.rebind(&mStorage[6], task.dimension);
-        task.coef_y.rebind(&mStorage[6 + task.dimension], task.dimension);
-        task.xmean.rebind(&mStorage[6 + 2 * task.dimension], task.dimension);
-        task.ymean.rebind(&mStorage[6 + 3 * task.dimension]);
-        task.tk.rebind(&mStorage[7 + 3 * task.dimension]);
+        task.intercept_y.rebind(&mStorage[6]);
+        task.coef.rebind(&mStorage[7], task.dimension);
+        task.coef_y.rebind(&mStorage[7 + task.dimension], task.dimension);
+        task.xmean.rebind(&mStorage[7 + 2 * task.dimension], task.dimension);
+        task.ymean.rebind(&mStorage[7 + 3 * task.dimension]);
+        task.tk.rebind(&mStorage[8 + 3 * task.dimension]);
 
-        algo.numRows.rebind(&mStorage[8 + 3 * task.dimension]);
-        algo.gradient.rebind(&mStorage[9 + 3 * task.dimension], task.dimension);
+        algo.numRows.rebind(&mStorage[9 + 3 * task.dimension]);
+        algo.gradient.rebind(&mStorage[10 + 3 * task.dimension], task.dimension);
     }
 
     Handle mStorage;
@@ -106,6 +107,7 @@ class FistaState
         typename HandleTraits<Handle>::ReferenceToDouble stepsize;
         typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
         typename HandleTraits<Handle>::ReferenceToDouble intercept;
+        typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef_y;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;

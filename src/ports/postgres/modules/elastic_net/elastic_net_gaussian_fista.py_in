@@ -128,7 +128,7 @@ def __fista_create_tbl_args(**args):
         else:
             xmean_str += "]"
     
-    effective_lambda = lambda_value * row_num
+    effective_lambda = lambda_value # * row_num
     tbl_fista_state = __unique_string()
     tbl_fista_args = __unique_string()
     plpy.execute("""
