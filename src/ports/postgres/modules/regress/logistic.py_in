@@ -143,17 +143,17 @@ def __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col,
     # if not __is_col_exists(tbl_source, [dep_col]):
     #     plpy.error("Logregr error: Dependent column does not exist!")
 
-    if any(dep_col.lower() == i for i in ['null', '']):
+    if any(dep_col is None or dep_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid dependent column name!")
 
     if not __is_scalar_col_no_null(tbl_source, dep_col):
         plpy.error("Logregr error: Dependent variable has Null values! \
                     Please filter out Null values before using this function!")
 
-    if any(ind_col.lower() == i for i in ['null', '']):
+    if any(ind_col is None or ind_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid independent column name!")
 
-    if any(grouping_col.lower() == i for i in ['null', '']):
+    if any(grouping_col is not None and grouping_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid grouping columns name!")
 
     if max_iter <= 0:
