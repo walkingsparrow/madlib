@@ -7,6 +7,8 @@ def __is_tbl_exists(tbl):
     """
     Whether a table exists in the database
     """
+    if tbl is None or tbl.upper() == 'NULL':
+        return plpy.error('Input error: Table name is invalid')
     names = tbl.split(".")
     if len(names) == 1:
         return plpy.execute("select count(*) from information_schema.tables where table_name = '{0}'".format(tbl))[0]['count'] > 0
