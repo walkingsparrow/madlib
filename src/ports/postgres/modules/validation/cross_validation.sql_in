@@ -489,7 +489,7 @@ $$ LANGUAGE plpythonu;
  * @brief Metric function for logistic regression
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.logregr_accuracy(
-    coef            DOUBLE PRECISION,
+    coef            DOUBLE PRECISION[],
     col_ind         DOUBLE PRECISION[],
     col_dep         BOOLEAN
 ) RETURNS INTEGER AS $$
