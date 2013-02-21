@@ -13,15 +13,14 @@ import plpy
 from utilities.control import IterationController
 from utilities.utilities import __unique_string
 from utilities.validate_args import __is_tbl_exists
-from utilities.validate_args import __is_tbl_exists_in_schema
 from utilities.validate_args import __is_tbl_has_rows
-# from utilities.validate_args import __is_col_exists
 from utilities.validate_args import __is_scalar_col_no_null
 
 # ========================================================================
 
-def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
-                     dep_col, ind_col, optimizer, **kwargs):
+
+def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
+                        dep_col, ind_col, optimizer, **kwargs):
     """
     Compute logistic regression coefficients
 
@@ -47,16 +46,16 @@ def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
 
     @return Number of iterations that has been run
     """
-    iterationCtrl = IterationController (
-        rel_args = rel_args,
-        rel_state = rel_state,
-        stateType = "double precision[]",
-        truncAfterIteration = False,
-        schema_madlib = schema_madlib, # Identifiers start here
-        rel_source = rel_source,
-        ind_col = ind_col,
-        dep_col = dep_col,
-        optimizer = optimizer)
+    iterationCtrl = IterationController(
+        rel_args=rel_args,
+        rel_state=rel_state,
+        stateType="double precision[]",
+        truncAfterIteration=False,
+        schema_madlib=schema_madlib,  # Identifiers start here
+        rel_source=rel_source,
+        ind_col=ind_col,
+        dep_col=dep_col,
+        optimizer=optimizer)
 
     with iterationCtrl as it:
         it.iteration = 0
@@ -84,7 +83,8 @@ def __compute_logregr (schema_madlib, rel_args, rel_state, rel_source,
 
 # ========================================================================
 
-def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
+
+def logregr_train(schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
                    grouping_col, max_iter, optimizer, tolerance, **kwargs):
     """
     Train logistic model
@@ -119,7 +119,8 @@ def logregr_train (schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
 
 # ========================================================================
 
-def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
+
+def __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col,
                              grouping_col, max_iter, optimizer, tolerance):
     """
     Validate the arguments
@@ -131,10 +132,10 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
 
     if not __is_tbl_has_rows(tbl_source):
         plpy.error("Logregr error: Data table is empty!")
-    
+
     if any(tbl_output.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid output table name!")
-  
+
     # output table will be dropped if already exists
     # if __is_tbl_exists_in_schema(tbl_output):
     #     plpy.error("Logregr error: Output table already exists!")
@@ -149,12 +150,12 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
         plpy.error("Logregr error: Dependent variable has Null values! \
                     Please filter out Null values before using this function!")
 
-   if any(ind_col.lower() == i for i in ['null', '']):
+    if any(ind_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid independent column name!")
 
-   if any(grouping_col.lower() == i for i in ['null', '']):
+    if any(grouping_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid grouping columns name!")
- 
+
     if max_iter <= 0:
         plpy.error("Logregr error: Maximum number of iterations must be positive!")
 
@@ -168,12 +169,13 @@ def __logregr_validate_args (tbl_source, tbl_output, dep_col, ind_col,
                    Must be 'newton'/'irls', 'cg', or 'igd'.
                    """)
 
-    return (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter, 
+    return (tbl_source, tbl_output, dep_col, ind_col, grouping_col, max_iter,
                   optimizer, tolerance)
 
 # ========================================================================
 
-def __logregr_train_compute (schema_madlib, tbl_source, tbl_output, dep_col,
+
+def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                               ind_col, grouping_col, max_iter, optimizer,
                               tolerance, **kwargs):
     """
