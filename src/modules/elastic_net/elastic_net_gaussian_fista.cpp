@@ -112,9 +112,13 @@ AnyType gaussian_fista_final::run (AnyType& args)
     double effective_lambda = state.task.lambda * state.task.alpha * state.task.tk;
 
     // update tk
-    
+    double old_tk = state.task.tk;
+    state.task.tk = 0.5 * (1 + sqrt(1 + 4*state.task.tk));
+
+    double old_coef;
     for (Index i = 0; i < state.task.dimension; i++)
     {
+        old_coef = state.task.coef(i);
         // soft thresholding with respective to effective_lambda
         if (u(i) > effective_lambda)
             state.task.coef(i) = u(i) - effective_lambda;
@@ -124,9 +128,11 @@ AnyType gaussian_fista_final::run (AnyType& args)
             state.task.coef(i) = 0;
 
         // update coef_y
+        state.task.coef_y(i) = state.task.coef(i) + (old_tk - 1) *
+            (state.task.coef(i) - old_coef) / state.task.tk;
     }
 
-    
+    return state;
 }
 
 }
