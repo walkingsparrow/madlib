@@ -60,6 +60,8 @@ class IterationController:
             truncAfterIteration = False,
             schema_madlib = "MADLIB_SCHEMA_MISSING",
             verbose = False,
+            groups = None,
+            group_types = None,
             **kwargs):
         self.kwargs = kwargs
         self.kwargs.update(
@@ -76,15 +78,28 @@ class IterationController:
 
     def __enter__(self):
         with MinWarning('warning'):
-            self.runSQL("""
-                DROP TABLE IF EXISTS {rel_state};
-                CREATE {temp} TABLE {unqualified_rel_state} (
-                    _iteration INTEGER PRIMARY KEY,
-                    _state {stateType}
-                );
-                """.format(
-                    temp = 'TEMPORARY' if self.temporaryTables else '',
-                    **self.kwargs))
+            if groups:
+                self.runSQL("""
+                    DROP TABLE IF EXISTS {rel_state};
+                    CREATE {temp} TABLE {unqualified_rel_state} (
+                        _iteration INTEGER PRIMARY KEY,
+                        _state {stateType}
+                        );
+                    """.format(
+                        temp = 'TEMPORARY' if self.temporaryTables else '',
+                        **self.kwargs))
+            else:
+                self.runSQL("""
+                    DROP TABLE IF EXISTS {rel_state};
+                    CREATE {temp} TABLE {unqualified_rel_state} (
+                        _iteration INTEGER,
+
+                        _state {stateType}
+                        );
+                    """.format(
+                        temp = 'TEMPORARY' if self.temporaryTables else '',
+                        **self.kwargs))   
+                    """)
         self.inWith = True
         return self
 
