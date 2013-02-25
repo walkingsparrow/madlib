@@ -38,7 +38,6 @@ def __string_to_array(s):
     
 class __mad_version:
     def __init__ (self):
-        import re
         self.version = plpy.execute("select version()")[0]["version"]
 
     def select_vecfunc (self):
