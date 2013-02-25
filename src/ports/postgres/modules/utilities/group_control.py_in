@@ -60,7 +60,7 @@ class GroupIterationController:
             truncAfterIteration = False,
             schema_madlib = "MADLIB_SCHEMA_MISSING",
             verbose = False,
-            groups = False,
+            perform_grouping = False,
             **kwargs):
         self.kwargs = kwargs
         self.kwargs.update(
@@ -74,7 +74,7 @@ class GroupIterationController:
         self.verbose = verbose
         self.inWith = False
         self.iteration = -1
-        self.groups = groups
+        self.perform_grouping = perform_grouping
 
 
     def __enter__(self):
@@ -133,13 +133,21 @@ class GroupIterationController:
                 # update status for each group
                 if each_elem['_expression']:
                     self.runSQL("""
-                        UPDATE {{rel_state}} SET (_state).status = 1
-                        WHERE _groups = {{_group_val}}
+                        UPDATE {rel_state} SET (_state).status = 1
+                        WHERE _groups = {_group_val}
                             AND (_state).status < 2
                     """.format(_group_val = each_elem['_groups'], 
-                        **self.kwargs))
+                        **self.kwargs
+                        )
+                    )
 
-        return resultObject[0]['expression']
+        return self.runSQL("""
+                SELECT bool_and((_state).status::boolean) 
+                    FROM {rel_state} AS _state_table
+                    WHERE _state._iteration = {iteration} ;
+                """.format(iteration=self.iteration, 
+                            **self.kwargs)
+                ) 
 
     def test(self, condition):
         """
@@ -159,7 +167,8 @@ class GroupIterationController:
             CAST(({condition}) AS BOOLEAN)
             """.format(condition = condition))
 
-    def update(self, newState, **updateKwargs):
+    def update(self, newState, 
+                group_string="ARRAY['__sentinel_value']", **updateKwargs):
         """
         Update the inter-iteration state
 
@@ -179,7 +188,6 @@ class GroupIterationController:
         this will replace the old state, otherwise the history of all old states
         is kept.
         """
-
         newState = newState.format(
             iteration = self.iteration,
             **self.kwargs)
@@ -188,6 +196,7 @@ class GroupIterationController:
             INSERT INTO {rel_state}
             SELECT
                 {iteration},
+                group_string, 
                 ({newState})
             """.format(
                 iteration = self.iteration,
@@ -195,7 +204,7 @@ class GroupIterationController:
                 **self.kwargs))
         if self.truncAfterIteration:
             self.runSQL("""
-                DELETE FROM {rel_state} AS _state
+                DELETE FROM {rel_state} AS _state_table
                 WHERE _state._iteration < {iteration}
                 """.format(iteration = self.iteration, **self.kwargs))
 
