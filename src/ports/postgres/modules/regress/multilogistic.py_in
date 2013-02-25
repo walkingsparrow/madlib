@@ -41,36 +41,26 @@ def __runIterativeAlg(stateType, initialState, source, updateExpr,
     """
 
     updateSQL = """
-        INSERT INTO _madlib_iterative_alg
         SELECT
-            {{iteration}},
-            {updateExpr}
+            {{iteration}} AS iter,
+            {updateExpr} AS state
         FROM
-            _madlib_iterative_alg AS st,
-            {{source}} AS src
-        WHERE
-            st._madlib_iteration = {{iteration}} - 1
-        """.format(updateExpr = updateExpr)
+            {source} AS src
+        """.format(updateExpr = updateExpr, source = source)
+    updateSQL = updateSQL.format(iteration = '$1', state = '$2')
     terminateSQL = """
-        SELECT
-            {terminateExpr} AS should_terminate
-        FROM
-        (
-            SELECT _madlib_state
-            FROM _madlib_iterative_alg
-            WHERE _madlib_iteration = {{iteration}} - {{cyclesPerIteration}}
-        ) AS older,
-        (
-            SELECT _madlib_state
-            FROM _madlib_iterative_alg
-            WHERE _madlib_iteration = {{iteration}}
-        ) AS newer
+        SELECT {terminateExpr} AS should_terminate
         """.format(terminateExpr = terminateExpr)
-    checkForNullStateSQL = """
-        SELECT _madlib_state IS NULL AS should_terminate
-        FROM _madlib_iterative_alg
-        WHERE _madlib_iteration = {iteration}
-        """
+    terminateSQL = terminateSQL.format(newState = '$1', oldState = '$2')
+    checkForNullStateSQL = """SELECT {state} IS NULL AS should_terminate"""
+    checkForNullStateSQL = checkForNullStateSQL.format(state = '$1')
+
+    plan_update = plpy.prepare(
+        updateSQL, [ 'INTEGER', 'FLOAT8[]' ])
+    plan_terminatesql = plpy.prepare(
+        terminateSQL, [ 'FLOAT8[]', 'FLOAT8[]' ])
+    plan_checkfornullstate = plpy.prepare(
+        checkForNullStateSQL, [ 'FLOAT8[]' ])
 
     oldMsgLevel = plpy.execute("SELECT setting FROM pg_settings WHERE name='client_min_messages'"
         )[0]['setting']
@@ -86,30 +76,32 @@ def __runIterativeAlg(stateType, initialState, source, updateExpr,
         """.format(stateType = stateType, oldMsgLevel = oldMsgLevel))
 
     iteration = 0
-    plpy.execute("""
-        INSERT INTO _madlib_iterative_alg VALUES ({iteration}, {initialState})
-        """.format(iteration = iteration, initialState = initialState))
+    state_old = plpy.execute("""
+        SELECT {iteration} AS iter, {initialState} AS state
+        """.format(iteration = iteration, initialState = 'NULL'))
     while True:
         iteration = iteration + 1
-        plpy.execute(updateSQL.format(
-            source = source,
-            state = "(st._madlib_state)",
-            iteration = iteration,
-            sourceAlias = "src"))
-        if plpy.execute(checkForNullStateSQL.format(
-                iteration = iteration))[0]['should_terminate'] or (
+        state_new = plpy.execute(plan_update, [ iteration, state_old[0]['state'] ])
+
+        if plpy.execute(
+            plan_checkfornullstate,
+            [ state_new[0]['state'] ])[0]['should_terminate'] or (
             iteration > cyclesPerIteration and (
             iteration >= cyclesPerIteration * maxNumIterations or
-            plpy.execute(terminateSQL.format(
-                iteration = iteration,
-                cyclesPerIteration = cyclesPerIteration,
-                oldState = "(older._madlib_state)",
-                newState = "(newer._madlib_state)"))[0]['should_terminate'])):
+            plpy.execute(
+                plan_terminatesql, 
+                [ state_new[0]['state'], state_old[0]['state'] ])[0]['should_terminate'])):
+            plan_final = plpy.prepare(
+                'insert into _madlib_iterative_alg values($1, $2)',
+                [ 'INTEGER', 'FLOAT8[]' ])
+            plpy.execute(
+                plan_final, 
+                [ state_new[0]['iter'], state_new[0]['state'] ])
             break
-
+        state_old = state_new
+    
     # Note: We do not drop the temporary table
     return iteration
-
 
 def compute_mlogregr(schema_madlib, source, depvar, numcategories, indepvar, optimizer,
     maxnumiterations, precision, **kwargs):
