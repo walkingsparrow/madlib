@@ -839,7 +839,7 @@ logregr_igd_step_merge_states::run(AnyType &args) {
  */
 AnyType
 logregr_igd_step_final::run(AnyType &args) {
-    LogRegrIRLSTransitionState<ArrayHandle<double> > state = args[0];
+    LogRegrIGDTransitionState<ArrayHandle<double> > state = args[0];
 
     if(!state.coef.is_finite())
         throw NoSolutionFoundException("Overflow or underflow in "
