@@ -10,11 +10,13 @@
 @brief Logistic Regression: Driver functions
 """
 import plpy
+import re
 from utilities.control import IterationController
 from utilities.utilities import __unique_string
 from utilities.validate_args import __is_tbl_exists
 from utilities.validate_args import __is_tbl_has_rows
 from utilities.validate_args import __is_scalar_col_no_null
+from utilities.utilities import __string_to_array
 
 # ========================================================================
 
@@ -46,7 +48,7 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
 
     @return Number of iterations that has been run
     """
-    iterationCtrl = IterationController(
+    iterationCtrl = GroupIterationController(
         rel_args=rel_args,
         rel_state=rel_state,
         stateType="double precision[]",
@@ -55,8 +57,10 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
         rel_source=rel_source,
         ind_col=ind_col,
         dep_col=dep_col,
-        optimizer=optimizer)
-
+        optimizer=optimizer,
+        grouping_col = kwargs["grouping_col"],
+        grouping_list = kwargs["grouping_list"])
+    
     with iterationCtrl as it:
         it.iteration = 0
         while True:
@@ -68,16 +72,14 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
                               (select _state from {rel_state}
                                   where _iteration = {iteration}))
                       from {rel_source} AS _src
+                      group by {grouping_col}
                       """)
-            if it.test("""
-                       {iteration} >= _args.max_iter
-                       or
-                       {schema_madlib}.__logregr_{optimizer}_step_distance((
-                           select _state from {rel_state}
-                           where _iteration = {iteration} - 1),
-                           (select _state from {rel_state}
-                           where _iteration = {iteration})) < _args.tolerance
-                       """):
+            if it.evaluate("""
+                           {iteration} >= _args.max_iter
+                           or
+                           {schema_madlib}.__logregr_{optimizer}_step_distance(
+                               _state1, _state2) < _args.tolerance
+                           """):
                 break
     return iterationCtrl.iteration
 
@@ -142,10 +144,10 @@ def __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col,
 
     # if not __is_col_exists(tbl_source, [dep_col]):
     #     plpy.error("Logregr error: Dependent column does not exist!")
-
-    if (grouping_col is not None and
-        not __is_col_exists(tbl_source, __string_to_array[grouping_col])):
-        plpy.error("Logregr error: Grouping column does not exist!")
+        
+    if grouping_col is not None:
+        if not __is_col_exists(tbl_source, __string_to_array(grouping_col)):
+            plpy.error("Logregr error: Grouping column does not exist!")
         
     if any(dep_col is None or dep_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid dependent column name!")
@@ -212,9 +214,13 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
 
     # return an array of dict
     # each dict has two elements: iteration number, and grouping value array
+    grouping_list = __string_to_array(grouping_col)
+    for i in range(len(grouping_list)):
+        grouping_list[i] += "::text"
     iteration_run = __compute_logregr(schema_madlib, args["tbl_logregr_args"],
                                       args["tbl_logregr_state"], tbl_source,
-                                      dep_col, ind_col, optimizer)
+                                      dep_col, ind_col, optimizer, grouping_col,
+                                      grouping_list)
 
     grouping_str1 = "" if grouping_col is None else grouping_col + ","
     grouping_str2 = "1" if grouping_col is None else grouping_col

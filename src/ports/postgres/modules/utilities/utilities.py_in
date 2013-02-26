@@ -23,13 +23,13 @@ def __unique_string(**kwargs):
 def __string_to_array(s):
     """
     Split a string into an array of strings
-    Any space or quotes around the substrings are removed
+    Any space around the substrings are removed
     """
     elm = []
     for m in re.finditer(r"(\"(\\\"|[^\"])*\"|[^\",\s]+)", s):
         elm.append(m.group(1))
     for i in range(len(elm)):
-        elm[i] = elm[i].strip(" \"")
+        elm[i] = elm[i].strip()
     return elm
 
 ## ========================================================================

@@ -74,6 +74,7 @@ class GroupIterationController:
         self.verbose = verbose
         self.inWith = False
         self.iteration = -1
+        self.dim = -1
         self.grouping_list = grouping_list
         if self.grouping_list is None:
             self.grouping_list = []
@@ -122,18 +123,37 @@ class GroupIterationController:
             \c expression
         """
         resultObject = self.runSQL("""
-            SELECT ({expression}) AS _expression, 
-                    ARRAY[{grouping_str}] as _groups, 
-            FROM {{rel_args}} AS _args
-            LEFT OUTER JOIN (
-                SELECT *
-                FROM {{rel_state}} AS _state_table
-                WHERE _state_table._iteration = {{iteration}}
-                ) AS subq1 ON True
-        """.format(expression = expression).format(
+                                   SELECT
+                                       ({expression}) as _expression,
+                                       array[{grouping_str}] as _groups
+                                   FROM {{rel_args}} AS _args
+                                   LEFT OUTER JOIN (
+                                       (
+                                           select {grouping_col}, _state as _state1
+                                           from {rel_state}
+                                           where _iteration = {iteration} - 1
+                                       ) sub1
+                                       join
+                                       (
+                                           select {grouping_col}, _state as _state2
+                                           from {rel_state}
+                                           where _iteration = {iteration}
+                                       ) sub2
+                                       using ({grouping_col})
+                                   ) AS subq1 ON True
+                                   """.format(expression = expression).format(
             iteration=self.iteration,
             grouping_str=self.grouping_str,
             **self.kwargs))
+        
+        if self.dim == -1:
+            self.dim = plpy.execute("""
+                                    select array_upper(_state, 1) as dim
+                                    from {rel_state}
+                                    where _iteration = {iteration}
+                                    """.format(iteration = self.iteration,
+                                               **self.kwargs))[0]["dim"]
+
         if resultObject.nrows() == 0:
             return None
         else:
@@ -141,24 +161,22 @@ class GroupIterationController:
                 # update status for each group
                 if each_elem['_expression']:
                     self.runSQL("""
-                        UPDATE {rel_state} SET (_state).status = 1
-                        WHERE ARRAY[{grouping_str}] = {_group_val}
-                            AND (_state).status < 2
-                            AND _iteration = {iteration}
-                    """.format(_group_val = each_elem['_groups'], 
-                        grouping_str=self.grouping_str,
-                        iteration = self.iteration,
-                        **self.kwargs
-                        )
-                    )
+                                UPDATE {rel_state} SET _state[{dim}] = 1
+                                WHERE ARRAY[{grouping_str}] = {_group_val}
+                                    AND _state[{dim}] < 2
+                                    AND _iteration = {iteration}
+                    """.format(_group_val = each_elem['_groups'],
+                               dim = self.dim,
+                               grouping_str=self.grouping_str,
+                               iteration = self.iteration,
+                               **self.kwargs))
 
         return self.runSQL("""
-                SELECT bool_and((_state).status::boolean) 
-                    FROM {rel_state} AS _state_table
-                    WHERE _state_table._iteration = {iteration} ;
-                """.format(iteration=self.iteration, 
-                            **self.kwargs)
-                ) 
+                           SELECT bool_and((_state).status::boolean) 
+                           FROM {rel_state} AS _state_table
+                           WHERE _state_table._iteration = {iteration} ;
+                           """.format(iteration=self.iteration, 
+                                      **self.kwargs)) 
 
     def test(self, condition):
         """
