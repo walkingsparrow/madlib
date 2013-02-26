@@ -60,7 +60,7 @@ class GroupIterationController:
             truncAfterIteration = False,
             schema_madlib = "MADLIB_SCHEMA_MISSING",
             verbose = False,
-            perform_grouping = False,
+            grouping_list = None,
             **kwargs):
         self.kwargs = kwargs
         self.kwargs.update(
@@ -74,7 +74,10 @@ class GroupIterationController:
         self.verbose = verbose
         self.inWith = False
         self.iteration = -1
-        self.perform_grouping = perform_grouping
+        self.grouping_list = grouping_list
+        if self.grouping_list is None:
+            self.grouping_list = []
+        self.grouping_str = ','.join(grouping_list)
 
 
     def __enter__(self):
@@ -83,12 +86,15 @@ class GroupIterationController:
             # array
             self.runSQL("""
                 DROP TABLE IF EXISTS {rel_state};
-                CREATE {temp} TABLE {unqualified_rel_state} (
-                    _iteration INTEGER,
-                    _groups   TEXT[],
-                    _state {stateType}
-                        );
-                    """.format(
+                CREATE {temp} TABLE {unqualified_rel_state} AS (
+                    SELECT 
+                        1::INTEGER as _iteration,
+                        {grouping_str},
+                        ARRAY[1.1]::{stateType} as _state 
+                    FROM {rel_source}
+                    LIMIT 0
+                );
+                """.format(
                         temp='TEMPORARY' if self.temporaryTables else '',
                         **self.kwargs))
         self.inWith = True
@@ -116,15 +122,17 @@ class GroupIterationController:
             \c expression
         """
         resultObject = self.runSQL("""
-            SELECT ({expression}) AS _expression, _groups, 
+            SELECT ({expression}) AS _expression, 
+                    ARRAY[{grouping_str}] as _groups, 
             FROM {{rel_args}} AS _args
             LEFT OUTER JOIN (
                 SELECT *
                 FROM {{rel_state}} AS _state_table
-                WHERE _state._iteration = {{iteration}}
+                WHERE _state_table._iteration = {{iteration}}
                 ) AS subq1 ON True
         """.format(expression = expression).format(
-            iteration = self.iteration,
+            iteration=self.iteration,
+            grouping_str=self.grouping_str,
             **self.kwargs))
         if resultObject.nrows() == 0:
             return None
@@ -134,9 +142,12 @@ class GroupIterationController:
                 if each_elem['_expression']:
                     self.runSQL("""
                         UPDATE {rel_state} SET (_state).status = 1
-                        WHERE _groups = {_group_val}
+                        WHERE ARRAY[{grouping_str}] = {_group_val}
                             AND (_state).status < 2
+                            AND _iteration = {iteration}
                     """.format(_group_val = each_elem['_groups'], 
+                        grouping_str=self.grouping_str,
+                        iteration = self.iteration,
                         **self.kwargs
                         )
                     )
@@ -144,7 +155,7 @@ class GroupIterationController:
         return self.runSQL("""
                 SELECT bool_and((_state).status::boolean) 
                     FROM {rel_state} AS _state_table
-                    WHERE _state._iteration = {iteration} ;
+                    WHERE _state_table._iteration = {iteration} ;
                 """.format(iteration=self.iteration, 
                             **self.kwargs)
                 ) 
