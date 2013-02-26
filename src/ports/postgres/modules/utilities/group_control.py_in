@@ -167,8 +167,7 @@ class GroupIterationController:
             CAST(({condition}) AS BOOLEAN)
             """.format(condition = condition))
 
-    def update(self, newState, 
-                group_string="ARRAY['__sentinel_value']", **updateKwargs):
+    def update(self, newState, **updateKwargs):
         """
         Update the inter-iteration state
 
@@ -194,10 +193,8 @@ class GroupIterationController:
         self.iteration = self.iteration + 1
         self.runSQL("""
             INSERT INTO {rel_state}
-            SELECT
-                {iteration},
-                group_string, 
-                ({newState})
+            SELECT {iteration}, * from 
+                ({newState}) _t2
             """.format(
                 iteration = self.iteration,
                 newState = newState,
