@@ -27,6 +27,9 @@ using dbal::NoSolutionFoundException;
 
 namespace regress {
 
+// valid status values
+enum { IN_PROCESS, COMPLETED, TERMINATED};
+
 // Internal functions
 AnyType stateToResult(const Allocator &inAllocator,
     const HandleMap<const ColumnVector, TransparentHandle<double> >& inCoef,
@@ -110,6 +113,9 @@ public:
         gradNew += inOtherState.gradNew;
         X_transp_AX += inOtherState.X_transp_AX;
         logLikelihood += inOtherState.logLikelihood;
+        // merged state should have the higher status 
+        // (see top of file for more on 'status' )
+        status = (inOtherState.status > status) ? inOtherState.status : status;
         return *this;
     }
 
@@ -121,6 +127,7 @@ public:
         X_transp_AX.fill(0);
         gradNew.fill(0);
         logLikelihood = 0;
+        status = IN_PROCESS;
     }
 
 private:
@@ -159,6 +166,7 @@ private:
         gradNew.rebind(&mStorage[4 + 3 * inWidthOfX], inWidthOfX);
         X_transp_AX.rebind(&mStorage[4 + 4 * inWidthOfX], inWidthOfX, inWidthOfX);
         logLikelihood.rebind(&mStorage[4 + inWidthOfX * inWidthOfX + 4 * inWidthOfX]);
+        status.rebind(&mStorage[5 + inWidthOfX * inWidthOfX + 4 * inWidthOfX])
     }
 
     Handle mStorage;
@@ -194,13 +202,25 @@ logregr_cg_step_transition::run(AnyType &args) {
     MappedColumnVector x = args[2].getAs<MappedColumnVector>();
 
     // The following check was added with MADLIB-138.
-    if (!isfinite(x))
-        throw std::domain_error("Design matrix is not finite.");
+    if (!isfinite(x)){
+        // throw std::domain_error("Design matrix is not finite.");
+        dberr << "Design matrix is not finite." << std::endl;
+        state.status = TERMINATED;
+        return state;
+    }
+
 
     if (state.numRows == 0) {
-        if (x.size() > std::numeric_limits<uint16_t>::max())
-            throw std::domain_error("Number of independent variables cannot be "
-                "larger than 65535.");
+        if (x.size() > std::numeric_limits<uint16_t>::max()){
+            // throw std::domain_error("Number of independent variables cannot be "
+                // "larger than 65535.");
+            dberr << "Number of independent variables cannot be
+                        larger than 65535."
+                        << std::endl;
+            state.status = TERMINATED;
+            return state;
+        }
+
 
         state.initialize(*this, static_cast<uint16_t>(x.size()));
         if (!args[3].isNull()) {
@@ -314,10 +334,18 @@ logregr_cg_step_final::run(AnyType &args) {
         as_scalar(trans(state.dir) * state.X_transp_AX * state.dir)
         * state.dir;
 
-    if(!state.coef.is_finite())
-        throw NoSolutionFoundException("Over- or underflow in "
-            "conjugate-gradient step, while updating coefficients. Input data "
-            "is likely of poor numerical condition.");
+    if(!state.coef.is_finite()){
+        // throw NoSolutionFoundException("Over- or underflow in "
+        //     "conjugate-gradient step, while updating coefficients. Input data "
+        //     "is likely of poor numerical condition.");
+        dberr << "Over- or underflow in
+                    conjugate-gradient step, while updating coefficients. 
+                    Input data is likely of poor numerical condition." 
+                << std::endl;
+        state.status = TERMINATED;
+        return state;
+    }
+
 
     state.iteration++;
     return state;
@@ -424,6 +452,9 @@ public:
         X_transp_Az += inOtherState.X_transp_Az;
         X_transp_AX += inOtherState.X_transp_AX;
         logLikelihood += inOtherState.logLikelihood;
+        // merged state should have the higher status 
+        // (see top of file for more on 'status' )
+        status = (inOtherState.status > status) ? inOtherState.status : status;
         return *this;
     }
 
@@ -431,10 +462,11 @@ public:
      * @brief Reset the inter-iteration fields.
      */
     inline void reset() {
-        numRows = 0;
+        numRows         = 0;
         X_transp_Az.fill(0);
         X_transp_AX.fill(0);
-        logLikelihood = 0;
+        logLikelihood   = 0;
+        status          = IN_PROCESS;
     }
 
 private:
@@ -465,6 +497,7 @@ private:
         X_transp_Az.rebind(&mStorage[2 + inWidthOfX], inWidthOfX);
         X_transp_AX.rebind(&mStorage[2 + 2 * inWidthOfX], inWidthOfX, inWidthOfX);
         logLikelihood.rebind(&mStorage[2 + inWidthOfX * inWidthOfX + 2 * inWidthOfX]);
+        status.rebind(&mStorage[3 + inWidthOfX * inWidthOfX + 2 * inWidthOfX]);
     }
 
     Handle mStorage;
@@ -477,6 +510,8 @@ public:
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap X_transp_Az;
     typename HandleTraits<Handle>::MatrixTransparentHandleMap X_transp_AX;
     typename HandleTraits<Handle>::ReferenceToDouble logLikelihood;
+    typename HandleTraits<Handle>::ReferenceToUInt16 status;
+
 };
 
 AnyType
@@ -486,13 +521,22 @@ logregr_irls_step_transition::run(AnyType &args) {
     MappedColumnVector x = args[2].getAs<MappedColumnVector>();
 
     // The following check was added with MADLIB-138.
-    if (!x.is_finite())
-        throw std::domain_error("Design matrix is not finite.");
+    if (!x.is_finite()){
+        // throw std::domain_error("Design matrix is not finite.");
+        dberr << "Design matrix is not finite." << std::endl;
+        state.status = TERMINATED; 
+        return state;
+    }
 
     if (state.numRows == 0) {
-        if (x.size() > std::numeric_limits<uint16_t>::max())
-            throw std::domain_error("Number of independent variables cannot be "
-                "larger than 65535.");
+        if (x.size() > std::numeric_limits<uint16_t>::max()){
+            // throw std::domain_error("Number of independent variables cannot be "
+                // "larger than 65535.");
+            dberr << "Number of independent variables cannot be 
+                        larger than 65535." << std::endl;
+            state.status = TERMINATED;
+            return state;
+        }
 
         state.initialize(*this, static_cast<uint16_t>(x.size()));
         if (!args[3].isNull()) {
@@ -570,9 +614,16 @@ logregr_irls_step_final::run(AnyType &args) {
     // See MADLIB-138. At least on certain platforms and with certain versions,
     // LAPACK will run into an infinite loop if pinv() is called for non-finite
     // matrices. We extend the check also to the dependent variables.
-    if (!state.X_transp_AX.is_finite() || !state.X_transp_Az.is_finite())
-        throw NoSolutionFoundException("Over- or underflow in intermediate "
-            "calulation. Input data is likely of poor numerical condition.");
+    if (!state.X_transp_AX.is_finite() || !state.X_transp_Az.is_finite()){
+        // throw NoSolutionFoundException("Over- or underflow in intermediate "
+            // "calulation. Input data is likely of poor numerical condition.");
+        dberr   << "Over- or underflow in intermediate
+                    calulation. Input data is likely of poor 
+                    numerical condition."
+                << std::endl;
+        state.status = TERMINATED;
+        return state;
+    }
 
     SymmetricPositiveDefiniteEigenDecomposition<Matrix> decomposition(
         state.X_transp_AX, EigenvaluesOnly, ComputePseudoInverse);
@@ -581,10 +632,17 @@ logregr_irls_step_final::run(AnyType &args) {
     Matrix inverse_of_X_transp_AX = decomposition.pseudoInverse();
 
     state.coef.noalias() = inverse_of_X_transp_AX * state.X_transp_Az;
-    if(!state.coef.is_finite())
-        throw NoSolutionFoundException("Over- or underflow in Newton step, "
-            "while updating coefficients. Input data is likely of poor "
-            "numerical condition.");
+    if(!state.coef.is_finite()){
+        // throw NoSolutionFoundException("Over- or underflow in Newton step, "
+        //     "while updating coefficients. Input data is likely of poor "
+        //     "numerical condition.");
+        dberr   << "Overflow or underflow in 
+                    Newton step. while updating coefficients. 
+                    Input data is likely of poor numerical condition." 
+                << std::endl;
+        state.status = TERMINATED;
+        return state;
+    }
 
     // We use the intra-iteration field X_transp_Az for storing the diagonal
     // of X^T A X, so that we don't have to recompute it in the result function.
@@ -703,6 +761,9 @@ public:
         numRows += inOtherState.numRows;
         X_transp_AX += inOtherState.X_transp_AX;
         logLikelihood += inOtherState.logLikelihood;
+        // merged state should have the higher status 
+        // (see top of file for more on 'status' )
+        status = (inOtherState.status == TERMINATED) ? inOtherState.status : status;
         return *this;
     }
 
@@ -710,11 +771,12 @@ public:
      * @brief Reset the inter-iteration fields.
      */
     inline void reset() {
-		// FIXME: HAYING: stepsize if hard-coded here now
+		// FIXME: HAYING: stepsize is hard-coded here now
         stepsize = .1;
         numRows = 0;
         X_transp_AX.fill(0);
         logLikelihood = 0;
+        status = IN_PROCESS;
     }
 
 private:
@@ -744,6 +806,7 @@ private:
         numRows.rebind(&mStorage[2 + inWidthOfX]);
         X_transp_AX.rebind(&mStorage[3 + inWidthOfX], inWidthOfX, inWidthOfX);
         logLikelihood.rebind(&mStorage[3 + inWidthOfX * inWidthOfX + inWidthOfX]);
+        status.rebind(&mStorage[4 + inWidthOfX * inWidthOfX + inWidthOfX]);
     }
 
     Handle mStorage;
@@ -756,6 +819,7 @@ public:
     typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
 	typename HandleTraits<Handle>::MatrixTransparentHandleMap X_transp_AX;
     typename HandleTraits<Handle>::ReferenceToDouble logLikelihood;
+    typename HandleTraits<Handle>::ReferenceToUInt16 status;
 };
 
 AnyType
@@ -765,15 +829,24 @@ logregr_igd_step_transition::run(AnyType &args) {
     MappedColumnVector x = args[2].getAs<MappedColumnVector>();
 
     // The following check was added with MADLIB-138.
-    if (!x.is_finite())
-        throw std::domain_error("Design matrix is not finite.");
+    if (!x.is_finite()){
+        // throw std::domain_error("Design matrix is not finite.");
+        dberr << "Design matrix is not finite." << std::endl;
+        state.status = TERMINATED; 
+        return state;
+    }
 
 	// We only know the number of independent variables after seeing the first
     // row.
     if (state.numRows == 0) {
-        if (x.size() > std::numeric_limits<uint16_t>::max())
-            throw std::domain_error("Number of independent variables cannot be "
-                "larger than 65535.");
+        if (x.size() > std::numeric_limits<uint16_t>::max()){
+            // throw std::domain_error("Number of independent variables cannot be "
+                // "larger than 65535.");
+            dberr << "Number of independent variables cannot be 
+                        larger than 65535." << std::endl;
+            state.status = TERMINATED;
+            return state;
+        }
 
         state.initialize(*this, static_cast<uint16_t>(x.size()));
 
@@ -841,10 +914,16 @@ AnyType
 logregr_igd_step_final::run(AnyType &args) {
     LogRegrIGDTransitionState<ArrayHandle<double> > state = args[0];
 
-    if(!state.coef.is_finite())
-        throw NoSolutionFoundException("Overflow or underflow in "
-            "incremental-gradient iteration. Input data is likely of poor "
-            "numerical condition.");
+    if(!state.coef.is_finite()){
+        // throw NoSolutionFoundException("Overflow or underflow in "
+            // "incremental-gradient iteration. Input data is likely of poor "
+            // "numerical condition.");
+        dberr << "Overflow or underflow in 
+                    incremental-gradient iteration. Input data is likely of poor
+                    numerical condition." << std::endl;
+        state.status = TERMINATED;
+        return state;
+    }
 
     // Aggregates that haven't seen any data just return Null.
     if (state.numRows == 0)
