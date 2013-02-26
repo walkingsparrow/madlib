@@ -12,8 +12,10 @@
 import plpy
 import re
 from utilities.control import IterationController
+from utilities.group_control import GroupIterationController
 from utilities.utilities import __unique_string
 from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_col_exists
 from utilities.validate_args import __is_tbl_has_rows
 from utilities.validate_args import __is_scalar_col_no_null
 from utilities.utilities import __string_to_array
@@ -48,6 +50,7 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
 
     @return Number of iterations that has been run
     """
+
     iterationCtrl = GroupIterationController(
         rel_args=rel_args,
         rel_state=rel_state,
@@ -59,27 +62,23 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
         dep_col=dep_col,
         optimizer=optimizer,
         grouping_col = kwargs["grouping_col"],
-        grouping_list = kwargs["grouping_list"])
-    
+        grouping_str = kwargs["grouping_str"])
+
     with iterationCtrl as it:
         it.iteration = 0
         while True:
             it.update("""
-                      select
-                          {schema_madlib}.__logregr_{optimizer}_step(
-                              ({dep_col})::boolean,
-                              ({ind_col})::double precision[],
-                              (select _state from {rel_state}
-                                  where _iteration = {iteration}))
-                      from {rel_source} AS _src
-                      group by {grouping_col}
+                      {schema_madlib}.__logregr_{optimizer}_step(
+                          ({dep_col})::boolean,
+                          ({ind_col})::double precision[],
+                           {rel_state}._state)               
                       """)
-            if it.evaluate("""
-                           {iteration} >= _args.max_iter
-                           or
-                           {schema_madlib}.__logregr_{optimizer}_step_distance(
-                               _state1, _state2) < _args.tolerance
-                           """):
+            if it.test("""
+                       {iteration} >= _args.max_iter
+                       or
+                       {schema_madlib}.__logregr_{optimizer}_step_distance(
+                       _state1, _state2) < _args.tolerance
+                       """):
                 break
     return iterationCtrl.iteration
 
@@ -115,6 +114,7 @@ def logregr_train(schema_madlib, tbl_source, tbl_output, dep_col, ind_col,
                                                       dep_col, ind_col,
                                                       grouping_col, max_iter,
                                                       optimizer, tolerance)
+
     return __logregr_train_compute(schema_madlib, tbl_source, tbl_output,
                                     dep_col, ind_col, grouping_col, max_iter,
                                     optimizer, tolerance, **kwargs)
@@ -190,7 +190,7 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
     """
     old_msg_level = plpy.execute("select setting from pg_settings where \
                                   name='client_min_messages'")[0]['setting']
-    plpy.execute("set client_min_messages to error")
+    plpy.execute("set client_min_messages to warning")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_output = tbl_output,
@@ -214,16 +214,22 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
 
     # return an array of dict
     # each dict has two elements: iteration number, and grouping value array
-    grouping_list = __string_to_array(grouping_col)
-    for i in range(len(grouping_list)):
-        grouping_list[i] += "::text"
+    if grouping_col is not None:
+        grouping_list = __string_to_array(grouping_col)
+        for i in range(len(grouping_list)):
+            grouping_list[i] += "::text"
+        grouping_str = ','.join(grouping_list)
+    else:
+        grouping_str = "Null"
+
     iteration_run = __compute_logregr(schema_madlib, args["tbl_logregr_args"],
                                       args["tbl_logregr_state"], tbl_source,
-                                      dep_col, ind_col, optimizer, grouping_col,
-                                      grouping_list)
+                                      dep_col, ind_col, optimizer,
+                                      grouping_col = grouping_col,
+                                      grouping_str = grouping_str)
 
     grouping_str1 = "" if grouping_col is None else grouping_col + ","
-    grouping_str2 = "1" if grouping_col is None else grouping_col
+    grouping_str2 = "1 = 1" if grouping_col is None else grouping_col
 
     plpy.execute("""
                  drop table if exists {tbl_output};
@@ -237,13 +243,13 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                          (result).p_values,
                          (result).odds_ratios,
                          (result).condition_no,
-                         (result).status
-                         iter as num_iterations
+                         (result).status,
+                         _iteration as num_iterations
                      from
                          (select
                              {grouping_str1}
                              {schema_madlib}.{fnName}(_state) as result,
-                             iter
+                             _iteration
                          from {tbl_logregr_state}) t
                          join
                          (
@@ -253,7 +259,7 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                          from {tbl_logregr_state}
                          group by {grouping_str2}
                          ) s
-                         using (_iteration, _groups)
+                         using ({grouping_str1} _iteration)
                  """.format(grouping_str1 = grouping_str1,
                             grouping_str2 = grouping_str2,
                             fnName = args[args["optimizer"]],

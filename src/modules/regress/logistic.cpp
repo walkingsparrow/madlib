@@ -32,10 +32,10 @@ enum { IN_PROCESS, COMPLETED, TERMINATED};
 
 // Internal functions
 AnyType stateToResult(const Allocator &inAllocator,
-    const HandleMap<const ColumnVector, TransparentHandle<double> >& inCoef,
-    const ColumnVector &diagonal_of_inverse_of_X_transp_AX,
-    double logLikelihood,
-    double conditionNo);
+                      const HandleMap<const ColumnVector, TransparentHandle<double> >& inCoef,
+                      const ColumnVector &diagonal_of_inverse_of_X_transp_AX,
+                      double logLikelihood,
+                      double conditionNo, int status);
 
 /**
  * @brief Inter- and intra-iteration state for conjugate-gradient method for
@@ -132,7 +132,7 @@ public:
 
 private:
     static inline size_t arraySize(const uint16_t inWidthOfX) {
-        return 5 + inWidthOfX * inWidthOfX + 4 * inWidthOfX;
+        return 6 + inWidthOfX * inWidthOfX + 4 * inWidthOfX;
     }
 
     /**
@@ -374,7 +374,7 @@ internal_logregr_cg_result::run(AnyType &args) {
 
     return stateToResult(*this, state.coef,
         decomposition.pseudoInverse().diagonal(), state.logLikelihood,
-        decomposition.conditionNo());
+        decomposition.conditionNo(), state.status);
 }
 
 /**
@@ -471,7 +471,7 @@ public:
 
 private:
     static inline uint32_t arraySize(const uint16_t inWidthOfX) {
-        return 3 + inWidthOfX * inWidthOfX + 2 * inWidthOfX;
+        return 4 + inWidthOfX * inWidthOfX + 2 * inWidthOfX;
     }
 
     /**
@@ -673,7 +673,8 @@ internal_logregr_irls_result::run(AnyType &args) {
     LogRegrIRLSTransitionState<ArrayHandle<double> > state = args[0];
 
     return stateToResult(*this, state.coef,
-        state.X_transp_Az, state.logLikelihood, state.X_transp_AX(0,0));
+                         state.X_transp_Az, state.logLikelihood, state.X_transp_AX(0,0),
+                         state.status);
 }
 
 /**
@@ -781,7 +782,7 @@ public:
 
 private:
     static inline uint32_t arraySize(const uint16_t inWidthOfX) {
-        return 4 + inWidthOfX * inWidthOfX + inWidthOfX;
+        return 5 + inWidthOfX * inWidthOfX + inWidthOfX;
     }
     /**
      * @brief Rebind to a new storage array
@@ -847,13 +848,12 @@ logregr_igd_step_transition::run(AnyType &args) {
             state.status = TERMINATED;
             return state;
         }
-
+ 
         state.initialize(*this, static_cast<uint16_t>(x.size()));
-
+ 
 		// For the first iteration, the previous state is NULL
         if (!args[3].isNull()) {
-			LogRegrIGDTransitionState<ArrayHandle<double> > previousState = args[3];
-
+ 			LogRegrIGDTransitionState<ArrayHandle<double> > previousState = args[3];
             state = previousState;
             state.reset();
         }
@@ -954,8 +954,8 @@ internal_logregr_igd_result::run(AnyType &args) {
         state.X_transp_AX, EigenvaluesOnly, ComputePseudoInverse);
 
     return stateToResult(*this, state.coef,
-        decomposition.pseudoInverse().diagonal(), state.logLikelihood,
-        decomposition.conditionNo());
+                         decomposition.pseudoInverse().diagonal(), state.logLikelihood,
+                         decomposition.conditionNo(), state.status);
 }
 
 /**
@@ -969,7 +969,8 @@ AnyType stateToResult(
     const HandleMap<const ColumnVector, TransparentHandle<double> > &inCoef,
     const ColumnVector &diagonal_of_inverse_of_X_transp_AX,
     double logLikelihood,
-    double conditionNo) {
+    double conditionNo,
+    int status) {
 
     MutableNativeColumnVector stdErr(
         inAllocator.allocateArray<double>(inCoef.size()));
@@ -991,7 +992,7 @@ AnyType stateToResult(
     // Return all coefficients, standard errors, etc. in a tuple
     AnyType tuple;
     tuple << inCoef << logLikelihood << stdErr << waldZStats << waldPValues
-        << oddsRatios << conditionNo;
+          << oddsRatios << conditionNo << status;
     return tuple;
 }
 

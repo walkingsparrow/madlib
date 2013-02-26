@@ -209,6 +209,7 @@ CREATE TYPE MADLIB_SCHEMA.__logregr_result AS (
     p_values DOUBLE PRECISION[],
     odds_ratios DOUBLE PRECISION[],
     condition_no DOUBLE PRECISION,
+    status      INTEGER,
     num_iterations INTEGER
 );
 
@@ -350,7 +351,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__logregr_igd_step(
     SFUNC=MADLIB_SCHEMA.__logregr_igd_step_transition,
     m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.__logregr_igd_step_merge_states,')
     FINALFUNC=MADLIB_SCHEMA.__logregr_igd_step_final,
-    INITCOND='{0,0,0,0}'
+    INITCOND='{0,0,0,0,0}'
 );
 
 ------------------------------------------------------------------------
