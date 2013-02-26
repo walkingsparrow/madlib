@@ -166,7 +166,7 @@ private:
         gradNew.rebind(&mStorage[4 + 3 * inWidthOfX], inWidthOfX);
         X_transp_AX.rebind(&mStorage[4 + 4 * inWidthOfX], inWidthOfX, inWidthOfX);
         logLikelihood.rebind(&mStorage[4 + inWidthOfX * inWidthOfX + 4 * inWidthOfX]);
-        status.rebind(&mStorage[5 + inWidthOfX * inWidthOfX + 4 * inWidthOfX])
+        status.rebind(&mStorage[5 + inWidthOfX * inWidthOfX + 4 * inWidthOfX]);
     }
 
     Handle mStorage;
@@ -183,6 +183,7 @@ public:
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradNew;
     typename HandleTraits<Handle>::MatrixTransparentHandleMap X_transp_AX;
     typename HandleTraits<Handle>::ReferenceToDouble logLikelihood;
+    typename HandleTraits<Handle>::ReferenceToUInt16 status;
 };
 
 /**
@@ -214,9 +215,8 @@ logregr_cg_step_transition::run(AnyType &args) {
         if (x.size() > std::numeric_limits<uint16_t>::max()){
             // throw std::domain_error("Number of independent variables cannot be "
                 // "larger than 65535.");
-            dberr << "Number of independent variables cannot be
-                        larger than 65535."
-                        << std::endl;
+            dberr << "Number of independent variables cannot be"
+                        "larger than 65535." << std::endl;
             state.status = TERMINATED;
             return state;
         }
@@ -338,9 +338,9 @@ logregr_cg_step_final::run(AnyType &args) {
         // throw NoSolutionFoundException("Over- or underflow in "
         //     "conjugate-gradient step, while updating coefficients. Input data "
         //     "is likely of poor numerical condition.");
-        dberr << "Over- or underflow in
-                    conjugate-gradient step, while updating coefficients. 
-                    Input data is likely of poor numerical condition." 
+        dberr << "Over- or underflow in"
+                    "conjugate-gradient step, while updating coefficients."
+                    "Input data is likely of poor numerical condition." 
                 << std::endl;
         state.status = TERMINATED;
         return state;
@@ -532,8 +532,8 @@ logregr_irls_step_transition::run(AnyType &args) {
         if (x.size() > std::numeric_limits<uint16_t>::max()){
             // throw std::domain_error("Number of independent variables cannot be "
                 // "larger than 65535.");
-            dberr << "Number of independent variables cannot be 
-                        larger than 65535." << std::endl;
+            dberr << "Number of independent variables cannot be "
+                     "larger than 65535." << std::endl;
             state.status = TERMINATED;
             return state;
         }
@@ -617,9 +617,9 @@ logregr_irls_step_final::run(AnyType &args) {
     if (!state.X_transp_AX.is_finite() || !state.X_transp_Az.is_finite()){
         // throw NoSolutionFoundException("Over- or underflow in intermediate "
             // "calulation. Input data is likely of poor numerical condition.");
-        dberr   << "Over- or underflow in intermediate
-                    calulation. Input data is likely of poor 
-                    numerical condition."
+        dberr   << "Over- or underflow in intermediate"
+                    " calulation. Input data is likely of poor"
+                    " numerical condition."
                 << std::endl;
         state.status = TERMINATED;
         return state;
@@ -636,9 +636,9 @@ logregr_irls_step_final::run(AnyType &args) {
         // throw NoSolutionFoundException("Over- or underflow in Newton step, "
         //     "while updating coefficients. Input data is likely of poor "
         //     "numerical condition.");
-        dberr   << "Overflow or underflow in 
-                    Newton step. while updating coefficients. 
-                    Input data is likely of poor numerical condition." 
+        dberr   << "Overflow or underflow in"
+                    " Newton step. while updating coefficients."
+                    " Input data is likely of poor numerical condition." 
                 << std::endl;
         state.status = TERMINATED;
         return state;
@@ -842,8 +842,8 @@ logregr_igd_step_transition::run(AnyType &args) {
         if (x.size() > std::numeric_limits<uint16_t>::max()){
             // throw std::domain_error("Number of independent variables cannot be "
                 // "larger than 65535.");
-            dberr << "Number of independent variables cannot be 
-                        larger than 65535." << std::endl;
+            dberr << "Number of independent variables cannot be"
+                     " larger than 65535." << std::endl;
             state.status = TERMINATED;
             return state;
         }
@@ -912,15 +912,15 @@ logregr_igd_step_merge_states::run(AnyType &args) {
  */
 AnyType
 logregr_igd_step_final::run(AnyType &args) {
-    LogRegrIGDTransitionState<ArrayHandle<double> > state = args[0];
+    LogRegrIGDTransitionState<MutableArrayHandle<double> > state = args[0];
 
     if(!state.coef.is_finite()){
         // throw NoSolutionFoundException("Overflow or underflow in "
             // "incremental-gradient iteration. Input data is likely of poor "
             // "numerical condition.");
-        dberr << "Overflow or underflow in 
-                    incremental-gradient iteration. Input data is likely of poor
-                    numerical condition." << std::endl;
+        dberr << "Overflow or underflow in"
+                 " incremental-gradient iteration. Input data is likely of poor"
+                 " numerical condition." << std::endl;
         state.status = TERMINATED;
         return state;
     }
