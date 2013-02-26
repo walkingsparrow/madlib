@@ -143,6 +143,10 @@ def __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col,
     # if not __is_col_exists(tbl_source, [dep_col]):
     #     plpy.error("Logregr error: Dependent column does not exist!")
 
+    if (grouping_col is not None and
+        not __is_col_exists(tbl_source, __string_to_array[grouping_col])):
+        plpy.error("Logregr error: Grouping column does not exist!")
+        
     if any(dep_col is None or dep_col.lower() == i for i in ['null', '']):
         plpy.error("Logregr error: Invalid dependent column name!")
 
@@ -206,14 +210,20 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                          {tolerance} as tolerance
                  """.format(**args))
 
+    # return an array of dict
+    # each dict has two elements: iteration number, and grouping value array
     iteration_run = __compute_logregr(schema_madlib, args["tbl_logregr_args"],
                                       args["tbl_logregr_state"], tbl_source,
                                       dep_col, ind_col, optimizer)
+
+    grouping_str1 = "" if grouping_col is None else grouping_col + ","
+    grouping_str2 = "1" if grouping_col is None else grouping_col
 
     plpy.execute("""
                  drop table if exists {tbl_output};
                  create table {tbl_output} as
                      select
+                         {grouping_str1}
                          (result).coef,
                          (result).log_likelihood,
                          (result).std_err,
@@ -221,14 +231,26 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                          (result).p_values,
                          (result).odds_ratios,
                          (result).condition_no,
-                         {iteration_run} as num_iterations
-                     from (
+                         (result).status
+                         iter as num_iterations
+                     from
+                         (select
+                             {grouping_str1}
+                             {schema_madlib}.{fnName}(_state) as result,
+                             iter
+                         from {tbl_logregr_state}) t
+                         join
+                         (
                          select
-                             {schema_madlib}.{fnName}(_state) as result
+                             {grouping_str1}
+                             max(_iteration) as _iteration
                          from {tbl_logregr_state}
-                         where _iteration = {iteration_run}
-                     ) t
-                 """.format(fnName = args[args["optimizer"]],
+                         group by {grouping_str2}
+                         ) s
+                         using (_iteration, _groups)
+                 """.format(grouping_str1 = grouping_str1,
+                            grouping_str2 = grouping_str2,
+                            fnName = args[args["optimizer"]],
                             iteration_run = iteration_run,
                             **args))
 
