@@ -81,7 +81,8 @@ class GroupIterationController:
                     from {rel_source}
                     {limit_str}
                 );
-                alter table {rel_state} add primary key (_iteration {primary_str})
+				m4_ifdef(`__GREENPLUM__',`alter table {rel_state} set distributed by (_iteration {primary_str});')
+                alter table {rel_state} add primary key (_iteration {primary_str});
                 """.format(distinct_group = distinct_group,
                            primary_str = primary_str,
                            limit_str = limit_str,
