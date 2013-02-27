@@ -79,7 +79,7 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
                     {iteration} >= _args.max_iter
                     or
                     {schema_madlib}.__logregr_{optimizer}_step_distance(
-                        _state_old, _state_new) < _args.tolerance
+                        _state_previous, _state_current) < _args.tolerance
                     """):
                 break
     return iterationCtrl.iteration

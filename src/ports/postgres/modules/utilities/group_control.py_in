@@ -119,13 +119,13 @@ class GroupIterationController:
             from {{rel_args}} as _args
             left outer join (
                 (
-                    select {{grouping_col}}, _state as _state_old
+                    select {{grouping_col}}, _state as _state_previous
                     from {{rel_state}}
                     where _iteration = {{iteration}} - 1
                 ) sub1
                 join
                 (
-                    select {{grouping_col}}, _state as _state_new
+                    select {{grouping_col}}, _state as _state_current
                     from {{rel_state}}
                     where _iteration = {{iteration}}
                 ) sub2
