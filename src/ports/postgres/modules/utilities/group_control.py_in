@@ -110,7 +110,7 @@ class GroupIterationController:
               inter-iteration state
         @return None if \c expression evaluates to NULL, otherwise the value of
             \c expression
-        """        
+        """
         resultObject = self.runSQL(
             """
             select
@@ -135,7 +135,7 @@ class GroupIterationController:
                        **self.kwargs).format(
                            iteration=self.iteration,
                            **self.kwargs))
-        
+
         if self.dim == 0:
             self.dim = plpy.execute(
                 """
@@ -167,13 +167,13 @@ class GroupIterationController:
 
         return self.runSQL(
             """
-            select bool_and(_state[{dim}]::integer::boolean)
+            select bool_and(_state[{dim}]::integer::boolean) as rst
             from {rel_state} as _state_table
             where _state_table._iteration = {iteration}
             """.format(
                 iteration=self.iteration,
                 dim = self.dim,
-                **self.kwargs)) 
+                **self.kwargs))[0]["rst"] 
 
     def test(self, condition):
         """
@@ -188,7 +188,6 @@ class GroupIterationController:
         @return None if \c condition evaluates to NULL, otherwise the Boolean
             value of \c condition
         """
-
         return self.evaluate(
             """
             CAST(({condition}) AS BOOLEAN)
