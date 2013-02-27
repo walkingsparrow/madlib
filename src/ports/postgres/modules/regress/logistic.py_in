@@ -23,7 +23,8 @@ from utilities.utilities import __string_to_array
 # ========================================================================
 
 def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
-                        dep_col, ind_col, optimizer, **kwargs):
+                      dep_col, ind_col, optimizer, grouping_col,
+                      grouping_str, **kwargs):
     """
     Compute logistic regression coefficients
 
@@ -54,14 +55,14 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
         rel_args=rel_args,
         rel_state=rel_state,
         stateType="double precision[]",
-        truncAfterIteration=False,
+        # truncAfterIteration=False,
         schema_madlib=schema_madlib,  # Identifiers start here
         rel_source=rel_source,
         ind_col=ind_col,
         dep_col=dep_col,
         optimizer=optimizer,
-        grouping_col = kwargs["grouping_col"],
-        grouping_str = kwargs["grouping_str"])
+        grouping_col = grouping_col,
+        grouping_str = grouping_str)
 
     with iterationCtrl as it:
         it.iteration = 0

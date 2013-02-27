@@ -36,13 +36,13 @@ class GroupIterationController:
 
     def __init__(self, rel_args, rel_state, stateType,
             temporaryTables = True,
-            truncAfterIteration = False,
+            # truncAfterIteration = False,
             schema_madlib = "MADLIB_SCHEMA_MISSING",
             verbose = False,
             grouping_str = "Null",
             **kwargs):
         self.temporaryTables = temporaryTables
-        self.truncAfterIteration = truncAfterIteration
+        # self.truncAfterIteration = truncAfterIteration
         self.verbose = verbose
         self.inWith = False
         self.iteration = -1
@@ -68,6 +68,8 @@ class GroupIterationController:
             # array
             distinct_group = "Null::integer" if self.is_group_null \
                              else "distinct {grouping_col}".format(**self.kwargs)
+            primary_str = "" if self.is_group_null else ", {grouping_col}".format(**self.kwargs)
+            limit_str = "limit 1" if self.is_group_null else ""
             self.runSQL(
                 """
                 drop table if exists {rel_state};
@@ -77,8 +79,12 @@ class GroupIterationController:
                         0::integer as _iteration,
                         Null::{stateType} as _state 
                     from {rel_source}
+                    {limit_str}
                 );
+                alter table {rel_state} add primary key (_iteration {primary_str})
                 """.format(distinct_group = distinct_group,
+                           primary_str = primary_str,
+                           limit_str = limit_str,
                            temp='TEMPORARY' if self.temporaryTables else '',
                            **self.kwargs))
         self.inWith = True
