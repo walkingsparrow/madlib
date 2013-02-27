@@ -239,7 +239,8 @@ logregr_cg_step_transition::run(AnyType &args) {
     // Note: sigma(-x) = 1 - sigma(x).
     // a_i = sigma(x_i c) sigma(-x_i c)
     double a = sigma(xc) * sigma(-xc);
-    triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+    //triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+    state.X_transp_AX += x * trans(x) * a;
 
     //          n
     //         --
@@ -567,7 +568,8 @@ logregr_irls_step_transition::run(AnyType &args) {
     double az = xc * a + sigma(-y * xc) * y;
 
     state.X_transp_Az.noalias() += x * az;
-    triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+    //triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+    state.X_transp_AX += x * trans(x) * a;
 
     //          n
     //         --
@@ -875,7 +877,8 @@ logregr_igd_step_transition::run(AnyType &args) {
 
         // a_i = sigma(x_i c) sigma(-x_i c)
 		double a = sigma(previous_xc) * sigma(-previous_xc);
-		triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+		//triangularView<Lower>(state.X_transp_AX) += x * trans(x) * a;
+        state.X_transp_AX += x * trans(x) * a;
 
 		// l_i(c) = - ln(1 + exp(-y_i * c^T x_i))
 		state.logLikelihood -= std::log( 1. + std::exp(-y * previous_xc) );
