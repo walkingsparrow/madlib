@@ -22,7 +22,6 @@ from utilities.utilities import __string_to_array
 
 # ========================================================================
 
-
 def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
                         dep_col, ind_col, optimizer, **kwargs):
     """

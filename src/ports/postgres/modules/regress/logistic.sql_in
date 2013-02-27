@@ -332,7 +332,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__logregr_irls_step(
     SFUNC=MADLIB_SCHEMA.__logregr_irls_step_transition,
     m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.__logregr_irls_step_merge_states,')
     FINALFUNC=MADLIB_SCHEMA.__logregr_irls_step_final,
-    INITCOND='{0,0,0}'
+    INITCOND='{0,0,0,0}'
 );
 
 ------------------------------------------------------------------------
