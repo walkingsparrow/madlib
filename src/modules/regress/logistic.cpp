@@ -775,7 +775,7 @@ public:
      */
     inline void reset() {
 		// FIXME: HAYING: stepsize is hard-coded here now
-        stepsize = .1;
+        stepsize = .01;
         numRows = 0;
         X_transp_AX.fill(0);
         logLikelihood = 0;
