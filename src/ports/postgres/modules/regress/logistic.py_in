@@ -67,18 +67,20 @@ def __compute_logregr(schema_madlib, rel_args, rel_state, rel_source,
     with iterationCtrl as it:
         it.iteration = 0
         while True:
-            it.update("""
-                      {schema_madlib}.__logregr_{optimizer}_step(
-                          ({dep_col})::boolean,
-                          ({ind_col})::double precision[],
-                           {rel_state}._state)               
-                      """)
-            if it.test("""
-                       {iteration} >= _args.max_iter
-                       or
-                       {schema_madlib}.__logregr_{optimizer}_step_distance(
-                       _state1, _state2) < _args.tolerance
-                       """):
+            it.update(
+                """
+                {schema_madlib}.__logregr_{optimizer}_step(
+                    ({dep_col})::boolean,
+                    ({ind_col})::double precision[],
+                    {rel_state}._state)               
+                """)
+            if it.test(
+                    """
+                    {iteration} >= _args.max_iter
+                    or
+                    {schema_madlib}.__logregr_{optimizer}_step_distance(
+                    _state1, _state2) < _args.tolerance
+                    """):
                 break
     return iterationCtrl.iteration
 
@@ -190,7 +192,7 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
     """
     old_msg_level = plpy.execute("select setting from pg_settings where \
                                   name='client_min_messages'")[0]['setting']
-    plpy.execute("set client_min_messages to warning")
+    plpy.execute("set client_min_messages to error")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_output = tbl_output,
@@ -204,13 +206,14 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                 igd = "__logregr_igd_result")
 
     plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
-    plpy.execute("""
-                 drop table if exists pg_temp.{tbl_logregr_args};
-                 create table pg_temp.{tbl_logregr_args} as
-                     select
-                         {max_iter} as max_iter,
-                         {tolerance} as tolerance
-                 """.format(**args))
+    plpy.execute(
+        """
+        drop table if exists pg_temp.{tbl_logregr_args};
+        create table pg_temp.{tbl_logregr_args} as
+            select
+                {max_iter} as max_iter,
+                {tolerance} as tolerance
+        """.format(**args))
 
     # return an array of dict
     # each dict has two elements: iteration number, and grouping value array
@@ -231,41 +234,43 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
     grouping_str1 = "" if grouping_col is None else grouping_col + ","
     grouping_str2 = "1 = 1" if grouping_col is None else grouping_col
 
-    plpy.execute("""
-                 drop table if exists {tbl_output};
-                 create table {tbl_output} as
-                     select
-                         {grouping_str1}
-                         (result).coef,
-                         (result).log_likelihood,
-                         (result).std_err,
-                         (result).z_stats,
-                         (result).p_values,
-                         (result).odds_ratios,
-                         (result).condition_no,
-                         (result).status,
-                         _iteration as num_iterations
-                     from
-                         (select
-                             {grouping_str1}
-                             {schema_madlib}.{fnName}(_state) as result,
-                             _iteration
-                         from {tbl_logregr_state}) t
-                         join
-                         (
-                         select
-                             {grouping_str1}
-                             max(_iteration) as _iteration
-                         from {tbl_logregr_state}
-                         group by {grouping_str2}
-                         ) s
-                         using ({grouping_str1} _iteration)
-                 """.format(grouping_str1 = grouping_str1,
-                            grouping_str2 = grouping_str2,
-                            fnName = args[args["optimizer"]],
-                            iteration_run = iteration_run,
-                            **args))
-
+    plpy.execute(
+        """
+        drop table if exists {tbl_output};
+        create table {tbl_output} as
+            select
+                {grouping_str1}
+                (result).coef,
+                (result).log_likelihood,
+                (result).std_err,
+                (result).z_stats,
+                (result).p_values,
+                (result).odds_ratios,
+                (result).condition_no,
+                (result).status,
+                _iteration as num_iterations
+            from
+                (select
+                    {grouping_str1}
+                    {schema_madlib}.{fnName}(_state) as result,
+                    _iteration
+                from
+                    {tbl_logregr_state}) t
+                    join
+                    (
+                    select
+                        {grouping_str1}
+                        max(_iteration) as _iteration
+                    from {tbl_logregr_state}
+                    group by {grouping_str2}
+                    ) s
+                using ({grouping_str1} _iteration)
+        """.format(grouping_str1 = grouping_str1,
+                   grouping_str2 = grouping_str2,
+                   fnName = args[args["optimizer"]],
+                   iteration_run = iteration_run,
+                   **args))
+    
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};
                  drop table if exists pg_temp.{tbl_logregr_state}

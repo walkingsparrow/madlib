@@ -46,7 +46,7 @@ class GroupIterationController:
         self.verbose = verbose
         self.inWith = False
         self.iteration = -1
-        self.dim = -1
+        self.dim = 0
         self.grouping_str = grouping_str
         self.kwargs = kwargs
         self.kwargs.update(
@@ -58,6 +58,7 @@ class GroupIterationController:
             grouping_str = self.grouping_str)
         grouping_col = "Null" if kwargs["grouping_col"] is None else kwargs["grouping_col"]
         using_str = "on True" if kwargs["grouping_col"] is None else "using ({grouping_col})".format(**kwargs)
+        self.is_group_null = True if kwargs["grouping_col"] is None else False
         self.kwargs["grouping_col"] = grouping_col
         self.kwargs["using_str"] = using_str
 
@@ -65,19 +66,21 @@ class GroupIterationController:
         with MinWarning('warning'):
             # currently assuming that groups is passed as a valid
             # array
-            self.runSQL("""
-                DROP TABLE IF EXISTS {rel_state};
-                CREATE {temp} TABLE {unqualified_rel_state} AS (
-                    SELECT 
-                        1::INTEGER as _iteration,
-                        {grouping_col},
-                        ARRAY[1.1]::{stateType} as _state 
-                    FROM {rel_source}
-                    LIMIT 0
+            distinct_group = "Null::integer" if self.is_group_null \
+                             else "distinct {grouping_col}".format(**self.kwargs)
+            self.runSQL(
+                """
+                drop table if exists {rel_state};
+                create {temp} table {unqualified_rel_state} as (
+                    select
+                        {distinct_group},
+                        0::integer as _iteration,
+                        Null::{stateType} as _state 
+                    from {rel_source}
                 );
-                """.format(
-                        temp='TEMPORARY' if self.temporaryTables else '',
-                        **self.kwargs))
+                """.format(distinct_group = distinct_group,
+                           temp='TEMPORARY' if self.temporaryTables else '',
+                           **self.kwargs))
         self.inWith = True
         return self
 
@@ -102,65 +105,69 @@ class GroupIterationController:
         @return None if \c expression evaluates to NULL, otherwise the value of
             \c expression
         """        
-        resultObject = self.runSQL("""
-                                   SELECT
-                                       ({expression}) as _expression,
-                                       array[{{grouping_str}}] as _groups
-                                   FROM {{rel_args}} AS _args
-                                   LEFT OUTER JOIN (
-                                       (
-                                           select {{grouping_col}}, _state as _state1
-                                           from {{rel_state}}
-                                           where _iteration = {{iteration}} - 1
-                                       ) sub1
-                                       join
-                                       (
-                                           select {{grouping_col}}, _state as _state2
-                                           from {{rel_state}}
-                                           where _iteration = {{iteration}}
-                                       ) sub2
-                                       {using_str}
-                                   ) AS subq1 ON True
-                                   """.format(expression = expression,
-                                          **self.kwargs).format(
-                                       iteration=self.iteration,
-                                       **self.kwargs))
+        resultObject = self.runSQL(
+            """
+            select
+                ({expression}) as _expression,
+                array[{{grouping_str}}] as _groups
+            from {{rel_args}} as _args
+            left outer join (
+                (
+                    select {{grouping_col}}, _state as _state1
+                    from {{rel_state}}
+                    where _iteration = {{iteration}} - 1
+                ) sub1
+                join
+                (
+                    select {{grouping_col}}, _state as _state2
+                    from {{rel_state}}
+                    where _iteration = {{iteration}}
+                ) sub2
+                {using_str}
+            ) as subq1 on True
+            """.format(expression = expression,
+                       **self.kwargs).format(
+                           iteration=self.iteration,
+                           **self.kwargs))
         
-        if self.dim == -1:
-            dim_result = plpy.execute("""
-                                    select array_upper(_state, 1) as dim
-                                    from {rel_state}
-                                    where _iteration = {iteration}
-                                    """.format(iteration = self.iteration,
-                                               **self.kwargs))
-            plpy.info("**** " + str(len(dim_result)) + " *******")
-            dim = dim_result[0]["dim"]
+        if self.dim == 0:
+            self.dim = plpy.execute(
+                """
+                select array_upper(_state, 1) as dim
+                from {rel_state}
+                where _iteration = {iteration}
+                """.format(iteration = self.iteration,
+                           **self.kwargs))[0]["dim"]
 
         if resultObject.nrows == 0 or resultObject[0]["_expression"] is None:
             return None
         else:
             for each_elem in resultObject:
-                array_str = "array[" + ",".join(str(i) for i in each_elem["_groups"]).replace("None", "Null") + "]"
+                array_str = "array[" + ",".join(str(i)+"::text" for i in each_elem["_groups"]).replace("None", "Null") + "]"
                 # update status for each group
                 if each_elem['_expression']:
-                    self.runSQL("""
-                                UPDATE {rel_state} SET _state[{dim}] = 1
-                                WHERE
-                                ARRAY[{grouping_str}] = {_group_val}
-                                    AND _state[{dim}] < 2
-                                    AND _iteration = {iteration}
-                    """.format(_group_val = array_str,
-                               dim = self.dim,
-                               iteration = self.iteration,
-                               **self.kwargs))
+                    self.runSQL(
+                        """
+                        update {rel_state} set _state[{dim}] = 1
+                        where
+                            array[{grouping_str}] = {_group_val} and
+                            _state[{dim}] < 2 and
+                            _iteration = {iteration}
+                        """.format(
+                            _group_val = array_str,
+                            dim = self.dim,
+                            iteration = self.iteration,
+                            **self.kwargs))
 
-        return self.runSQL("""
-                           SELECT bool_and(_state[{dim}]::integer::boolean)
-                           FROM {rel_state} AS _state_table
-                           WHERE _state_table._iteration = {iteration} ;
-                           """.format(iteration=self.iteration,
-                                      dim = self.dim,
-                                      **self.kwargs)) 
+        return self.runSQL(
+            """
+            select bool_and(_state[{dim}]::integer::boolean)
+            from {rel_state} as _state_table
+            where _state_table._iteration = {iteration}
+            """.format(
+                iteration=self.iteration,
+                dim = self.dim,
+                **self.kwargs)) 
 
     def test(self, condition):
         """
@@ -176,7 +183,8 @@ class GroupIterationController:
             value of \c condition
         """
 
-        return self.evaluate("""
+        return self.evaluate(
+            """
             CAST(({condition}) AS BOOLEAN)
             """.format(condition = condition))
 
@@ -205,46 +213,38 @@ class GroupIterationController:
             **self.kwargs)
         self.iteration = self.iteration + 1
 
-        groupby_str = "" if self.kwargs["grouping_col"] is "Null" \
+        groupby_str = "" if self.is_group_null \
                       else "group by {grouping_col}".format(**self.kwargs)
 
-        plpy.info("""
-            INSERT INTO {rel_state}
-            (SELECT
-                {iteration},
-                {grouping_col},
-                ({newState})
-            from {rel_source} AS _src
+        self.runSQL(
+            """
+            insert into {rel_state}
+                (select
+                    {grouping_col},
+                    {iteration},
+                    ({newState})
+                from
+                    ({rel_source} AS _src
                     join
-                 {rel_state}
-                   {using_str}
-            where {rel_state}._iteration = {iteration}
-            {groupby_str})
+                    {rel_state}
+                    {using_str})
+                where
+                    {rel_state}._iteration = {iteration} - 1 and
+                    (case when {iteration} = 1 then
+                        True
+                    else
+                        {rel_state}._state[{dim}] = 0
+                    end)
+                {groupby_str})
             """.format(
+                dim = self.dim,
                 groupby_str = groupby_str,
                 iteration = self.iteration,
                 newState = newState,
                 **self.kwargs))
         
-        self.runSQL("""
-            INSERT INTO {rel_state}
-            (SELECT
-                {iteration},
-                {grouping_col},
-                ({newState})
-            from {rel_source} AS _src
-                    join
-                 {rel_state}
-                   {using_str}
-            where {rel_state}._iteration = {iteration}
-            {groupby_str})
-            """.format(
-                groupby_str = groupby_str,
-                iteration = self.iteration,
-                newState = newState,
-                **self.kwargs))
-        if self.truncAfterIteration:
-            self.runSQL("""
-                DELETE FROM {rel_state} AS _state_table
-                WHERE _state._iteration < {iteration}
-                """.format(iteration = self.iteration, **self.kwargs))
+        # if self.truncAfterIteration:
+        #     self.runSQL("""
+        #         DELETE FROM {rel_state} AS _state_table
+        #         WHERE _state._iteration < {iteration}
+        #         """.format(iteration = self.iteration, **self.kwargs))
