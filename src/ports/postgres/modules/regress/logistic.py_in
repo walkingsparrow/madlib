@@ -240,14 +240,13 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
         create table {tbl_output} as
             select
                 {grouping_str1}
-                (result).coef,
-                (result).log_likelihood,
-                (result).std_err,
-                (result).z_stats,
-                (result).p_values,
-                (result).odds_ratios,
-                (result).condition_no,
-                (result).status,
+                (case when (result).status = 2 then NULL::double precision[] else (result).coef end) as coef,
+                (case when (result).status = 2 then NULL::double precision else (result).log_likelihood end) as log_likelihood,
+                (case when (result).status = 2 then NULL::double precision[] else (result).std_err end) as std_err,
+                (case when (result).status = 2 then NULL::double precision[] else (result).z_stats end) as z_stats,
+                (case when (result).status = 2 then NULL::double precision[] else (result).p_values end) as p_values,
+                (case when (result).status = 2 then NULL::double precision[] else (result).odds_ratios end) as odds_ratios,
+                (case when (result).status = 2 then NULL::double precision else (result).condition_no end) as condition_no,
                 _iteration as num_iterations
             from
                 (select
@@ -270,6 +269,21 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                    fnName = args[args["optimizer"]],
                    iteration_run = iteration_run,
                    **args))
+
+    failed = plpy.execute(
+        """
+        select count(*)
+        from {tbl_output}
+        where coef is Null       
+        """.format(**args))[0]["count"]
+
+    alls = plpy.execute(
+        """
+        select count(*)
+        from {tbl_output}
+        """.format(**args))[0]["count"]
+
+    plpy.info(str(alls-failed) + " groups succeeded, and " + str(failed) + " groups failed")
     
     plpy.execute("""
                  drop table if exists pg_temp.{tbl_logregr_args};
