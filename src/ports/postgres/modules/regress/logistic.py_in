@@ -192,7 +192,7 @@ def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
     """
     old_msg_level = plpy.execute("select setting from pg_settings where \
                                   name='client_min_messages'")[0]['setting']
-    plpy.execute("set client_min_messages to error")
+    plpy.execute("set client_min_messages to warning")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_output = tbl_output,
