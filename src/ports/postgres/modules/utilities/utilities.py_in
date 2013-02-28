@@ -20,7 +20,7 @@ def __unique_string(**kwargs):
 
 ## ========================================================================
 
-def __string_to_array(s):
+def _string_to_array(s):
     """
     Split a string into an array of strings
     Any space around the substrings are removed
@@ -67,7 +67,7 @@ class __mad_version:
         # elm = []
         # for m in re.finditer(r"([^,\{\}\"]+)", origin):
         #     elm.append(m.group(1).strip())
-        elm = __string_to_array(re.match(r"^\{(.*)\}$", origin).group(1))
+        elm = _string_to_array(re.match(r"^\{(.*)\}$", origin).group(1))
         if text is False:
             for i in range(len(elm)):
                 elm[i] = float(elm[i])

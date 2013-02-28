@@ -12,6 +12,11 @@
 
 import plpy
 from control import MinWarning
+import re
+from utilities import __mad_version
+
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 class GroupIterationController:
     """
@@ -157,8 +162,8 @@ class GroupIterationController:
             return None
         else:
             for each_elem in resultObject:
-                array_str = "ARRAY[" + ",".join(str(i)+"::TEXT" 
-                    for i in each_elem["_groups"]).replace("None", "Null") + "]"
+                array_str = "array[" + ",".join(str(i)+"::text" for i in \
+                                                mad_vec(each_elem["_groups"])).replace("None", "Null") + "]"
                 # update status for each group
                 if each_elem['_expression']:
                     self.runSQL(
