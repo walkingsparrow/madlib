@@ -21,14 +21,16 @@ class GroupIterationController:
     goal is to avoid any conversion between backend-native types and those of
     procedureal languages like PL/Python. Therefore, the expectation is that
 
-    ***all only "template" parameters are passes as PL/Python arguments***,
+    *** all "template" parameters are passed as PL/Python arguments ***,
 
     whereas non-template arguments are provided in an argument table. Here,
     "template" arguments are those parameters that cannot be SQL parameters,
 
-    ***such as table and column names***.
+    *** such as table and column names ***.
 
-    The inter-state iteration table contains two columns:
+    The inter-state iteration table contains three columns:
+    - <tt>_grouping_cols</tt> - List of columns that are provided as grouping 
+                                arguments 
     - <tt>_iteration INTEGER</tt> - The 0-based iteration number
     - <tt>_state <em>self.kwargs.stateType</em></tt> - The state (after
       iteration \c _interation)
@@ -56,8 +58,10 @@ class GroupIterationController:
             stateType = stateType.format(schema_madlib = schema_madlib),
             schema_madlib = schema_madlib,
             grouping_str = self.grouping_str)
-        grouping_col = "Null" if kwargs["grouping_col"] is None else kwargs["grouping_col"]
-        using_str = "on True" if kwargs["grouping_col"] is None else "using ({grouping_col})".format(**kwargs)
+        grouping_col = "Null" if kwargs["grouping_col"] is None \
+                                else kwargs["grouping_col"]
+        using_str = "on True" if kwargs["grouping_col"] is None \
+                                else "using ({grouping_col})".format(**kwargs)
         self.is_group_null = True if kwargs["grouping_col"] is None else False
         self.kwargs["grouping_col"] = grouping_col
         self.kwargs["using_str"] = using_str
@@ -67,8 +71,9 @@ class GroupIterationController:
             # currently assuming that groups is passed as a valid
             # array
             distinct_group = "Null::integer" if self.is_group_null \
-                             else "distinct {grouping_col}".format(**self.kwargs)
-            primary_str = "" if self.is_group_null else ", {grouping_col}".format(**self.kwargs)
+                            else "distinct {grouping_col}".format(**self.kwargs)
+            primary_str = "" if self.is_group_null \
+                                else ", {grouping_col}".format(**self.kwargs)
             limit_str = "limit 1" if self.is_group_null else ""
             self.runSQL(
                 """
@@ -81,8 +86,10 @@ class GroupIterationController:
                     from {rel_source}
                     {limit_str}
                 );
-				m4_ifdef(`__GREENPLUM__',`alter table {rel_state} set distributed by (_iteration {primary_str});')
-                alter table {rel_state} add primary key (_iteration {primary_str});
+				m4_ifdef(`__GREENPLUM__',`alter table {rel_state} 
+                                set distributed by (_iteration {primary_str});')
+                alter table {rel_state} 
+                                add primary key (_iteration {primary_str});
                 """.format(distinct_group = distinct_group,
                            primary_str = primary_str,
                            limit_str = limit_str,
@@ -114,24 +121,24 @@ class GroupIterationController:
         """
         resultObject = self.runSQL(
             """
-            select
-                ({expression}) as _expression,
-                array[{{grouping_str}}] as _groups
-            from {{rel_args}} as _args
+            SELECT
+                ({expression}) AS _expression,
+                ARRAY[{{grouping_str}}] AS _groups
+            FROM {{rel_args}} AS _args
             left outer join (
                 (
-                    select {{grouping_col}}, _state as _state_previous
-                    from {{rel_state}}
-                    where _iteration = {{iteration}} - 1
+                    SELECT {{grouping_col}}, _state AS _state_previous
+                    FROM {{rel_state}}
+                    WHERE _iteration = {{iteration}} - 1
                 ) sub1
-                join
+                JOIN
                 (
-                    select {{grouping_col}}, _state as _state_current
-                    from {{rel_state}}
-                    where _iteration = {{iteration}}
+                    SELECT {{grouping_col}}, _state AS _state_current
+                    FROM {{rel_state}}
+                    WHERE _iteration = {{iteration}}
                 ) sub2
                 {using_str}
-            ) as subq1 on True
+            ) AS subq1 ON True
             """.format(expression = expression,
                        **self.kwargs).format(
                            iteration=self.iteration,
@@ -150,14 +157,15 @@ class GroupIterationController:
             return None
         else:
             for each_elem in resultObject:
-                array_str = "array[" + ",".join(str(i)+"::text" for i in each_elem["_groups"]).replace("None", "Null") + "]"
+                array_str = "ARRAY[" + ",".join(str(i)+"::TEXT" 
+                    for i in each_elem["_groups"]).replace("None", "Null") + "]"
                 # update status for each group
                 if each_elem['_expression']:
                     self.runSQL(
                         """
-                        update {rel_state} set _state[{dim}] = 1
-                        where
-                            array[{grouping_str}] = {_group_val} and
+                        UPDATE {rel_state} set _state[{dim}] = 1
+                        WHERE
+                            ARRAY[{grouping_str}] = {_group_val} and
                             _state[{dim}] < 2 and
                             _iteration = {iteration}
                         """.format(
