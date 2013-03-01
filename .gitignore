@@ -25,3 +25,10 @@
 
 # Ignore specific generated files
 /doc/design/design.pdf
+
+/Makefile
+/cscope.files
+/refresh_index.sh
+/tags
+*.swp
+*.swo
