@@ -475,7 +475,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.logregr_train (
     grouping_col        VARCHAR,
     max_iter            INTEGER,
     optimizer           VARCHAR,
-    tolerance           DOUBLE PRECISION
+    tolerance           DOUBLE PRECISION,
+    verbose             BOOLEAN
 ) RETURNS VOID AS $$
 PythonFunction(regress, logistic, logregr_train)
 $$ LANGUAGE plpythonu;
@@ -488,7 +489,7 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     dep_col             VARCHAR,
     ind_col             VARCHAR)
 RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, NULL::VARCHAR, 20, 'irls', 0.0001);
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, NULL::VARCHAR, 20, 'irls', 0.0001, False);
 $$ LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
@@ -498,9 +499,9 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     tbl_output          VARCHAR,
     dep_col             VARCHAR,
     ind_col             VARCHAR,
-    max_iter            INTEGER)
+    grouping_col        VARCHAR)
 RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, NULL::VARCHAR, $5, 'irls', 0.0001);
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, $5, 20, 'irls', 0.0001, False);
 $$LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
@@ -510,10 +511,24 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     tbl_output          VARCHAR,
     dep_col             VARCHAR,
     ind_col             VARCHAR,
+    grouping_col        VARCHAR,
+    max_iter            INTEGER)
+RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, $5, $6, 'irls', 0.0001, False);
+$$LANGUAGE sql VOLATILE;
+
+------------------------------------------------------------------------
+
+CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
+    tbl_source          VARCHAR,
+    tbl_output          VARCHAR,
+    dep_col             VARCHAR,
+    ind_col             VARCHAR,
+    grouping_col        VARCHAR,
     max_iter            INTEGER,
     optimizer           VARCHAR)
 RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, NULL::VARCHAR, $5, $6, 0.0001);
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, $5, $6, $7, 0.0001, False);
 $$ LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------
@@ -523,11 +538,12 @@ CREATE FUNCTION MADLIB_SCHEMA.logregr_train (
     tbl_output          VARCHAR,
     dep_col             VARCHAR,
     ind_col             VARCHAR,
+    grouping_col        VARCHAR,
     max_iter            INTEGER,
     optimizer           VARCHAR,
-    convergence         DOUBLE PRECISION)
+    tolerance           DOUBLE PRECISION)
 RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, NULL::VARCHAR, $5, $6, $7);
+    SELECT MADLIB_SCHEMA.logregr_train($1, $2, $3, $4, $5, $6, $7, $8, False);
 $$ LANGUAGE sql VOLATILE;
 
 ------------------------------------------------------------------------

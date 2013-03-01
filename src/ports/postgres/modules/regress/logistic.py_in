@@ -185,14 +185,17 @@ def __logregr_validate_args(tbl_source, tbl_output, dep_col, ind_col,
 
 def __logregr_train_compute(schema_madlib, tbl_source, tbl_output, dep_col,
                               ind_col, grouping_col, max_iter, optimizer,
-                              tolerance, **kwargs):
+                              tolerance, verbose, **kwargs):
     """
     Create an output table (drop if exists) that contains the logistic
     regression model
     """
     old_msg_level = plpy.execute("select setting from pg_settings where \
                                   name='client_min_messages'")[0]['setting']
-    plpy.execute("set client_min_messages to warning")
+    if verbose:
+        plpy.execute("set client_min_messages to warning")
+    else:
+        plpy.execute("set client_min_messages to error")
 
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_output = tbl_output,
