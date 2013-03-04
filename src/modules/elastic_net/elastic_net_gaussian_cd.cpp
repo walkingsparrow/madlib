@@ -1,22 +1,23 @@
 
 #include "dbconnector/dbconnector.hpp"
-#include "elastic_net_gaussian_bcd.hpp"
+#include "elastic_net_gaussian_cd.hpp"
 
-#include "task/ols.hpp"
-#include "task/elastic_net.hpp"
-#include "algo/igd.hpp"
-#include "algo/regularized_igd.hpp"
-#include "type/tuple.hpp"
-#include "type/model.hpp"
-#include "type/state.hpp"
-#include "algo/loss.hpp"
+// #include "task/ols.hpp"
+// #include "task/elastic_net.hpp"
+// #include "algo/igd.hpp"
+// #include "algo/regularized_igd.hpp"
+// #include "type/tuple.hpp"
+// #include "type/model.hpp"
+// #include "type/state.hpp"
+// #include "algo/loss.hpp"
+#include "state/cd.hpp"
 
 #include <ctime>
 #include <cstdlib>
 
 namespace madlib {
 namespace modules {
-namespace convex {
+namespace elastic_net {
 
 // This 4 classes contain public static methods that can be called
 // typedef ElasticNet<GLMModel > GLMENRegularizer;
@@ -44,9 +45,9 @@ namespace convex {
    pre_state, lambda, alpha, dimension, stepsize, totalrows
 */
 AnyType
-gaussian_bcd_transition::run (AnyType& args)
+gaussian_cd_transition::run (AnyType& args)
 {
-    EN1RegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
+    CdState<MutableArrayHandle<double> > state = args[0];
     double lambda = args[4].getAs<double>();
     double alpha = args[5].getAs<double>();
     int dimension = args[6].getAs<int>();
@@ -57,7 +58,7 @@ gaussian_bcd_transition::run (AnyType& args)
     {
         if (!args[3].isNull())
         {
-            EN1RegularizedGLMIGDState<ArrayHandle<double> > pre_state = args[3];
+            CdState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.task.dimension);
             state = pre_state;
             state.task.lambda = lambda;
@@ -112,10 +113,10 @@ gaussian_bcd_transition::run (AnyType& args)
  * @brief Perform the perliminary aggregation function: Merge transition states
  */
 AnyType
-gaussian_bcd_merge::run (AnyType& args)
+gaussian_cd_merge::run (AnyType& args)
 {
-    EN1RegularizedGLMIGDState<MutableArrayHandle<double> > stateLeft = args[0];
-    EN1RegularizedGLMIGDState<MutableArrayHandle<double> > stateRight = args[1];
+    CdState<MutableArrayHandle<double> > stateLeft = args[0];
+    CdState<MutableArrayHandle<double> > stateRight = args[1];
 
     // We first handle the trivial case where this function is called with one
     // of the states being the initial state
@@ -138,11 +139,11 @@ gaussian_bcd_merge::run (AnyType& args)
  * @brief Perform the final step
  */
 AnyType
-gaussian_bcd_final::run (AnyType& args)
+gaussian_cd_final::run (AnyType& args)
 {
     // We request a mutable object. Depending on the backend, this might perform
     // a deep copy.
-    EN1RegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
+    CdState<MutableArrayHandle<double> > state = args[0];
 
     // Aggregates that haven't seen any data just return Null.
     if (state.algo.numRows == 0) return Null(); 
@@ -176,10 +177,10 @@ gaussian_bcd_final::run (AnyType& args)
  * @brief Return the difference in RMSE between two states
  */
 AnyType
-internal_gaussian_bcd_state_diff::run (AnyType& args)
+internal_gaussian_cd_state_diff::run (AnyType& args)
 {
-    EN1RegularizedGLMIGDState<ArrayHandle<double> > state1 = args[0];
-    EN1RegularizedGLMIGDState<ArrayHandle<double> > state2 = args[1];
+    CdState<ArrayHandle<double> > state1 = args[0];
+    CdState<ArrayHandle<double> > state2 = args[1];
 
     double diff = 0;    
     Index i;
@@ -200,9 +201,9 @@ internal_gaussian_bcd_state_diff::run (AnyType& args)
  * @brief Return the coefficients and diagnostic statistics of the state
  */
 AnyType
-internal_gaussian_bcd_result::run (AnyType& args)
+internal_gaussian_cd_result::run (AnyType& args)
 {
-    EN1RegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
+    CdState<ArrayHandle<double> > state = args[0];
     // double norm = 0;
 
     // for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
@@ -218,6 +219,6 @@ internal_gaussian_bcd_result::run (AnyType& args)
     return tuple;
 }
  
-} // namespace convex 
+} // namespace elastic_net
 } // namespace modules
-} // namespace convex
+} // namespace madlib

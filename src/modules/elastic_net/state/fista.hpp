@@ -49,7 +49,7 @@ class FistaState
     {
         mStorage = inAllocator.allocateArray<double,
                                              dbal::AggregateContext,
-                                             dbal:DoZero,
+                                             dbal::DoZero,
                                              dbal::ThrowBadAlloc>
             (arraySize(inDimension));
         task.dimension.rebind(&mStorage[0]);
@@ -71,7 +71,7 @@ class FistaState
     /**
        @brief Total size of the state object
     */
-    static inline int arraySize (const uint32_t inDimension)
+    static inline uint32_t arraySize (const uint32_t inDimension)
     {
         return 10 + 4 * inDimension;
     }

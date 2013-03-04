@@ -2,32 +2,32 @@
 #include "dbconnector/dbconnector.hpp"
 #include "elastic_net_gaussian_igd.hpp"
 
-#include "task/ols.hpp"
-#include "task/elastic_net.hpp"
-#include "algo/igd.hpp"
-#include "algo/regularized_igd.hpp"
-#include "type/tuple.hpp"
-#include "type/model.hpp"
-#include "type/state.hpp"
-#include "algo/loss.hpp"
+#include "../convex/task/ols.hpp"
+#include "../convex/task/elastic_net.hpp"
+#include "../convex/algo/igd.hpp"
+#include "../convex/algo/regularized_igd.hpp"
+#include "../convex/type/tuple.hpp"
+#include "../convex/type/model.hpp"
+#include "state/igd.hpp"
+#include "../convex/algo/loss.hpp"
 
 namespace madlib {
 namespace modules {
-namespace convex {
+namespace elastic_net {
 
 // This 4 classes contain public static methods that can be called
 typedef ElasticNet<GLMModel > GLMENRegularizer;
 
-typedef ENRegularizedIGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
+typedef ENRegularizedIGD<IgdState<MutableArrayHandle<double> >,
                          OLS<GLMModel, GLMTuple >,
                          GLMENRegularizer > OLSENRegularizedIGDAlgorithm;
 
-typedef IGD<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
-            ENRegularizedGLMIGDState<ArrayHandle<double> >,
+typedef IGD<IgdState<MutableArrayHandle<double> >, 
+            IgdState<ArrayHandle<double> >,
             OLS<GLMModel, GLMTuple > > OLSIGDAlgorithm;
 
-typedef Loss<ENRegularizedGLMIGDState<MutableArrayHandle<double> >, 
-             ENRegularizedGLMIGDState<ArrayHandle<double> >,
+typedef Loss<IgdState<MutableArrayHandle<double> >, 
+             IgdState<ArrayHandle<double> >,
              OLS<GLMModel, GLMTuple > > OLSLossAlgorithm;
 
 // ------------------------------------------------------------------------
@@ -43,14 +43,14 @@ typedef Loss<ENRegularizedGLMIGDState<MutableArrayHandle<double> >,
 AnyType
 gaussian_igd_transition::run (AnyType& args)
 {
-    ENRegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
+    IgdState<MutableArrayHandle<double> > state = args[0];
     
     // initialize the state if working on the first tuple
     if (state.algo.numRows == 0)
     {
         if (!args[3].isNull())
         {
-            ENRegularizedGLMIGDState<ArrayHandle<double> > pre_state = args[3];
+            IgdState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.task.dimension);
             state = pre_state;
         }
@@ -94,8 +94,8 @@ gaussian_igd_transition::run (AnyType& args)
 AnyType
 gaussian_igd_merge::run (AnyType& args)
 {
-    ENRegularizedGLMIGDState<MutableArrayHandle<double> > stateLeft = args[0];
-    ENRegularizedGLMIGDState<ArrayHandle<double> > stateRight = args[1];
+    IgdState<MutableArrayHandle<double> > stateLeft = args[0];
+    IgdState<ArrayHandle<double> > stateRight = args[1];
 
     // We first handle the trivial case where this function is called with one
     // of the states being the initial state
@@ -123,7 +123,7 @@ gaussian_igd_final::run (AnyType& args)
 {
     // We request a mutable object. Depending on the backend, this might perform
     // a deep copy.
-    ENRegularizedGLMIGDState<MutableArrayHandle<double> > state = args[0];
+    IgdState<MutableArrayHandle<double> > state = args[0];
 
     // Aggregates that haven't seen any data just return Null.
     if (state.algo.numRows == 0) return Null(); 
@@ -142,8 +142,8 @@ gaussian_igd_final::run (AnyType& args)
 AnyType
 internal_gaussian_igd_state_diff::run (AnyType& args)
 {
-    ENRegularizedGLMIGDState<ArrayHandle<double> > state1 = args[0];
-    ENRegularizedGLMIGDState<ArrayHandle<double> > state2 = args[1];
+    IgdState<ArrayHandle<double> > state1 = args[0];
+    IgdState<ArrayHandle<double> > state2 = args[1];
 
     // double diff = 0;    
     // Index i;
@@ -166,7 +166,7 @@ internal_gaussian_igd_state_diff::run (AnyType& args)
 AnyType
 internal_gaussian_igd_result::run (AnyType& args)
 {
-    ENRegularizedGLMIGDState<ArrayHandle<double> > state = args[0];
+    IgdState<ArrayHandle<double> > state = args[0];
     double norm = 0;
 
     for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
@@ -201,6 +201,6 @@ internal_gaussian_igd_result::run (AnyType& args)
 //     return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
 // }
  
-} // namespace convex 
+} // namespace elastic_net 
 } // namespace modules
-} // namespace convex
+} // namespace madlib
