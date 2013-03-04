@@ -74,9 +74,8 @@ gaussian_igd_transition::run (AnyType& args)
     // tuple
     using madlib::dbal::eigen_integration::MappedColumnVector;
     GLMTuple tuple;
-    MappedColumnVector indVar = args[1].getAs<MappedColumnVector>();
-    tuple.indVar.rebind(indVar.memoryHandle(), indVar.size());
-    tuple.depVar = args[2].getAs<double>();
+    MappedColumnVector x = args[1].getAs<MappedColumnVector>();
+    y = args[2].getAs<double>();
 
     // Now do the transition step
     OLSENRegularizedIGDAlgorithm::transition(state, tuple);
