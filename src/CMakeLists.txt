@@ -47,11 +47,11 @@ endif (NOT BOOST_TAR_SOURCE)
 # specify an alternative path to the Eigen tarball:
 # -DEIGEN_TAR_SOURCE=/path/to/eigen-x.x.x.tar.gz
 
-set(EIGEN_VERSION "3.0.3")
-set(EIGEN_TAR_MD5 695f24be85c4fe957ce6a4dd11161f48)
+set(EIGEN_VERSION "3.1.2")
+set(EIGEN_TAR_MD5 e9c081360dde5e7dcb8eba3c8430fde2)
 
-set(EIGEN_TAR "eigen-${EIGEN_VERSION}.tar.gz")
-set(EIGEN_URL "${BITBUCKET_BASE_URL}/eigen/eigen/get/${EIGEN_VERSION}.tar.gz")
+set(EIGEN_TAR "eigen-${EIGEN_VERSION}.tar.bz2")
+set(EIGEN_URL "${BITBUCKET_BASE_URL}/eigen/eigen/get/${EIGEN_VERSION}.tar.bz2")
 
 if(NOT EIGEN_TAR_SOURCE)
     find_file(EIGEN_TAR_SOURCE ${EIGEN_TAR}
