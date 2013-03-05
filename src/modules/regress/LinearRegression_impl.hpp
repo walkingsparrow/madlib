@@ -68,7 +68,7 @@ LinearRegressionAccumulator<Container>::operator<<(const tuple_type& inTuple) {
     // useful to have clear error messages in case of infinite input values.
     if (!std::isfinite(y))
         throw std::domain_error("Dependent variables are not finite.");
-    else if (!isfinite(x))
+    else if (!dbal::eigen_integration::isfinite(x))
         throw std::domain_error("Design matrix is not finite.");
     else if (x.size() > std::numeric_limits<uint16_t>::max())
         throw std::domain_error("Number of independent variables cannot be "
@@ -160,7 +160,8 @@ LinearRegression::compute(
 
     // The following checks were introduced with MADLIB-138. It still seems
     // useful to have clear error messages in case of infinite input values.
-    if (!isfinite(inState.X_transp_X) || !isfinite(inState.X_transp_Y))
+    if (!dbal::eigen_integration::isfinite(inState.X_transp_X) ||
+    !dbal::eigen_integration::isfinite(inState.X_transp_Y))
         throw std::domain_error("Design matrix is not finite.");
 
     SymmetricPositiveDefiniteEigenDecomposition<Matrix> decomposition(
