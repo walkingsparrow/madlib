@@ -690,9 +690,9 @@ void compute_logli_gradient(LinCrfLBFGSTransitionState<MutableArrayHandle<double
     int sparse_m_size = static_cast<int>(sparse_m.size());
     int seq_len = static_cast<int>(sparse_r(r_size-2)) + 1;
 
-    Eigen::MatrixXd betas(state.num_labels, seq_len);
+    Eigen::MatrixXd betas(int(state.num_labels), seq_len);
     Eigen::VectorXd scale(seq_len);
-    Eigen::MatrixXd Mi(state.num_labels,state.num_labels);
+    Eigen::MatrixXd Mi(int(state.num_labels),int(state.num_labels));
     Eigen::VectorXd Vi(state.num_labels);
     Eigen::VectorXd alpha(state.num_labels);
     Eigen::VectorXd next_alpha(state.num_labels);
