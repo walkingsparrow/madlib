@@ -49,6 +49,7 @@ endif (NOT BOOST_TAR_SOURCE)
 
 set(EIGEN_VERSION "3.1.2")
 set(EIGEN_TAR_MD5 bb639388192cb80f1ee797f5dbdbe74f)
+set(EIGEN_MPL2_ONLY TRUE)
 
 set(EIGEN_TAR "eigen-${EIGEN_VERSION}.tar.gz")
 set(EIGEN_URL "${BITBUCKET_BASE_URL}/eigen/eigen/get/${EIGEN_VERSION}.tar.gz")
