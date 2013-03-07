@@ -293,7 +293,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_state_diff (
     state1          DOUBLE PRECISION[],
     state2          DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
-'MODULE_PATHNAME', 'internal_gaussian_igd_state_diff'
+'MODULE_PATHNAME', '__gaussian_igd_state_diff'
 LANGUAGE C IMMUTABLE STRICT;
 
 --
@@ -301,7 +301,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
     in_state        DOUBLE PRECISION[]
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
-'MODULE_PATHNAME', 'internal_gaussian_igd_result'
+'MODULE_PATHNAME', '__gaussian_igd_result'
 LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
@@ -366,7 +366,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_state_diff (
     state1          DOUBLE PRECISION[],
     state2          DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
-'MODULE_PATHNAME', 'internal_gaussian_bcd_state_diff'
+'MODULE_PATHNAME', '__gaussian_bcd_state_diff'
 LANGUAGE C IMMUTABLE STRICT;
 
 --
@@ -374,7 +374,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_result (
     in_state        DOUBLE PRECISION[]
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
-'MODULE_PATHNAME', 'internal_gaussian_bcd_result'
+'MODULE_PATHNAME', '__gaussian_bcd_result'
 LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
@@ -443,7 +443,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_fista_state_diff (
     state1          DOUBLE PRECISION[],
     state2          DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
-'MODULE_PATHNAME', 'internal_gaussian_fista_state_diff'
+'MODULE_PATHNAME', '__gaussian_fista_state_diff'
 LANGUAGE C IMMUTABLE STRICT;
 
 --
@@ -451,7 +451,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_fista_result (
     in_state        DOUBLE PRECISION[]
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
-'MODULE_PATHNAME', 'internal_gaussian_fista_result'
+'MODULE_PATHNAME', '__gaussian_fista_result'
 LANGUAGE C IMMUTABLE STRICT;
 
 

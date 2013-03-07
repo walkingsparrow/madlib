@@ -9,6 +9,7 @@
 #define MADLIB_MODULES_ELASIC_NET_STATE_IGD_
 
 #include "dbconnector/dbconnector.hpp"
+#include "modules/shared/HandleTraits.hpp"
 
 namespace madlib {
 namespace modules {

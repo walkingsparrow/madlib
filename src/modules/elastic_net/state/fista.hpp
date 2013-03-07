@@ -10,6 +10,7 @@
 #define MADLIB_MODULES_ELASIC_NET_STATE_FISTA_
 
 #include "dbconnector/dbconnector.hpp"
+#include "modules/shared/HandleTraits.hpp"
 // #include "convex/type/model.hpp"
 
 namespace madlib {
@@ -99,7 +100,7 @@ class FistaState
     Handle mStorage;
 
   public:
-    struct TaskState
+struct TaskState
     {
         typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
         typename HandleTraits<Handle>::ReferenceToDouble lambda;
@@ -112,6 +113,7 @@ class FistaState
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef_y;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
         typename HandleTraits<Handle>::ReferenceToDouble ymean;
+        typename HandleTraits<Handle>::ReferenceToDouble tk;
     } task;
 
     struct AlgoState

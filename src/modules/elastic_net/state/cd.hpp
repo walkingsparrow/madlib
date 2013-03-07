@@ -9,6 +9,7 @@
 #define MADLIB_MODULES_ELASIC_NET_STATE_CD_
 
 #include "dbconnector/dbconnector.hpp"
+#include "modules/shared/HandleTraits.hpp"
 
 namespace madlib {
 namespace modules {
@@ -57,7 +58,7 @@ class CdState
      * @brief Support for assigning the previous state
      */
     template <class OtherHandle>
-    CdState &operator= (const IgdState<OtherHandle> &inOtherState)
+    CdState& operator= (const CdState<OtherHandle>& inOtherState)
     {
         for (size_t i = 0; i < mStorage.size(); i++)
             mStorage[i] = inOtherState.mStorage[i];

@@ -1,6 +1,6 @@
 
 #include "dbconnector/dbconnector.hpp"
-#include "elastic_net_gaussian_fista.cpp"
+#include "elastic_net_gaussian_fista.hpp"
 #include "state/fista.hpp"
 
 namespace madlib {
@@ -12,7 +12,7 @@ namespace elastic_net {
 
    It is called for each tuple of (x, y)
 */
-AnyType gaussian_fista_transition::run (Anytype& args)
+AnyType gaussian_fista_transition::run (AnyType& args)
 {
     FistaState<MutableArrayHandle<double> > state = args[0];
 
@@ -30,7 +30,7 @@ AnyType gaussian_fista_transition::run (Anytype& args)
             double lambda = args[4].getAs<double>();
             double alpha = args[5].getAs<double>();
             double stepsize = args[6].getAs<double>();
-            int dimension = args[7].getAs<double>();
+            uint32_t dimension = args[7].getAs<uint32_t>();
             MappedColumnVector xmean = args[8].getAs<MappedColumnVector>();
             double ymean = args[9].getAs<double>();
             double tk = args[10].getAs<double>();
@@ -44,18 +44,14 @@ AnyType gaussian_fista_transition::run (Anytype& args)
             state.task.ymean = ymean;
             state.task.tk = tk;
 
-            // for (Index i = 0; i < dimension; i++)
-            // {
-            //     // initial values
-            //     state.task.coef(i) = 0;
-            //     state.task.coef_y(i) = 0;
-            //     state.task.xmean(i) = xmean(i);
-            //     state.algo.gradient(i) = 0;
-            // }
-            state.task.coef = 0;
-            state.task.coef_y = 0;
-            state.task.xmean = xmean;
-            state.algo.gradient = 0;
+            for (uint32_t i = 0; i < dimension; i++)
+            {
+                // initial values
+                state.task.coef(i) = 0;
+                state.task.coef_y(i) = 0;
+                state.task.xmean(i) = xmean(i);
+                state.algo.gradient(i) = 0;
+            }
             
             state.task.intercept = ymean;
             state.task.intercept_y = ymean;
@@ -67,9 +63,9 @@ AnyType gaussian_fista_transition::run (Anytype& args)
 
     state.algo.gradient += - x * (y - state.task.intercept_y);
     
-    for (Index i = 0; i < dimension; i++)
+    for (uint32_t i = 0; i < state.task.dimension; i++)
         if (state.task.coef_y(i) != 0)
-            for (Index j = 0; j < dimension; j++)
+            for (uint32_t j = 0; j < state.task.dimension; j++)
                 state.algo.gradient(j) += x(j) * state.task.coef_y(i) * x(i);
 
     state.algo.numRows++;
@@ -107,7 +103,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
     state.algo.gradient = state.algo.gradient / state.task.totalRows
         + state.task.lambda * (1 - state.task.alpha) * state.task.coef_y;
 
-    double u = state.task.coef_y - state.task.stepsize * state.algo.gradient;
+    ColumnVector u = state.task.coef_y - state.task.stepsize * state.algo.gradient;
 
     double effective_lambda = state.task.lambda * state.task.alpha * state.task.tk;
 
@@ -116,7 +112,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
     state.task.tk = 0.5 * (1 + sqrt(1 + 4*state.task.tk));
 
     double old_coef;
-    for (Index i = 0; i < state.task.dimension; i++)
+    for (uint32_t i = 0; i < state.task.dimension; i++)
     {
         old_coef = state.task.coef(i);
         // soft thresholding with respective to effective_lambda
@@ -132,7 +128,34 @@ AnyType gaussian_fista_final::run (AnyType& args)
             (state.task.coef(i) - old_coef) / state.task.tk;
     }
 
+    // update intercept_y
+    // to be implemented
+
     return state;
+}
+
+// ------------------------------------------------------------------------
+
+/**
+ * @brief Return the difference in RMSE between two states
+ */
+AnyType
+__gaussian_fista_state_diff::run (AnyType& args)
+{
+    // to be implemented
+    return args;
+}
+
+// ------------------------------------------------------------------------
+
+/**
+ * @brief Return the coefficients and diagnostic statistics of the state
+ */
+AnyType
+__gaussian_fista_result::run (AnyType& args)
+{
+    // to be implemented
+    return args;
 }
 
 }

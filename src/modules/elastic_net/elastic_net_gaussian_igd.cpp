@@ -1,34 +1,17 @@
 
 #include "dbconnector/dbconnector.hpp"
 #include "elastic_net_gaussian_igd.hpp"
-
-#include "../convex/task/ols.hpp"
-#include "../convex/task/elastic_net.hpp"
-#include "../convex/algo/igd.hpp"
-#include "../convex/algo/regularized_igd.hpp"
-#include "../convex/type/tuple.hpp"
-#include "../convex/type/model.hpp"
 #include "state/igd.hpp"
-#include "../convex/algo/loss.hpp"
+#include <limits>
 
 namespace madlib {
 namespace modules {
 namespace elastic_net {
 
-// This 4 classes contain public static methods that can be called
-typedef ElasticNet<GLMModel > GLMENRegularizer;
-
-typedef ENRegularizedIGD<IgdState<MutableArrayHandle<double> >,
-                         OLS<GLMModel, GLMTuple >,
-                         GLMENRegularizer > OLSENRegularizedIGDAlgorithm;
-
-typedef IGD<IgdState<MutableArrayHandle<double> >, 
-            IgdState<ArrayHandle<double> >,
-            OLS<GLMModel, GLMTuple > > OLSIGDAlgorithm;
-
-typedef Loss<IgdState<MutableArrayHandle<double> >, 
-             IgdState<ArrayHandle<double> >,
-             OLS<GLMModel, GLMTuple > > OLSLossAlgorithm;
+static double sign(const double & x) {
+    if (x == 0.) { return 0.; }
+    else { return x > 0. ? 1. : -1.; }
+}
 
 // ------------------------------------------------------------------------
 
@@ -68,18 +51,59 @@ gaussian_igd_transition::run (AnyType& args)
             state.task.alpha = alpha;
             state.task.totalRows = total_rows;
         }
-        state.reset();
+      
+        state.algo.loss = 0.;
+        state.algo.incrModel = state.task.model;
     }
 
     // tuple
     using madlib::dbal::eigen_integration::MappedColumnVector;
-    GLMTuple tuple;
+   
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
-    y = args[2].getAs<double>();
+    double y = args[2].getAs<double>();
 
     // Now do the transition step
-    OLSENRegularizedIGDAlgorithm::transition(state, tuple);
-    OLSLossAlgorithm::transition(state, tuple);
+    double wx = dot(state.task.model, x);
+    double r = wx - y;
+    state.algo.gradient += r * x;
+
+    for (Index i = 0; i < state.task.model.rows() - 1; i ++)
+    {
+        if (std::abs(state.task.model(i)) <= std::numeric_limits<double>::denorm_min())
+        {
+            // soft thresholding
+            if (std::abs(state.algo.gradient(i)) > state.task.lambda * state.task.alpha)
+            {
+                state.algo.gradient(i) -= state.task.alpha * state.task.lambda
+                    * sign(state.algo.gradient(i));
+
+                state.algo.gradient(i) = - state.algo.gradient(i) / state.task.stepsize
+                    + state.task.alpha * state.task.model(i) * state.task.totalRows
+                    / state.task.stepsize;
+            }
+            else
+            {
+                state.algo.gradient(i) = state.task.alpha * state.task.model(i)
+                    * state.task.totalRows / state.task.stepsize;
+                //gradient(i) = 0;
+            }
+        }
+        else
+        {
+            state.algo.gradient(i) += state.task.alpha * state.task.lambda
+                * sign(state.task.model(i));
+        }
+
+        state.algo.gradient(i) += (1 - state.task.alpha) * state.task.lambda
+            * state.task.model(i);
+    }
+    
+    state.algo.incrModel -= state.task.stepsize * state.algo.gradient
+        / state.task.totalRows;
+    
+    // OLSENRegularizedIGDAlgorithm::transition(state, tuple);
+    state.algo.loss += r * r / 2.;
+    // OLSLossAlgorithm::transition(state, tuple);
     state.algo.numRows ++;
 
     return state;
@@ -93,23 +117,29 @@ gaussian_igd_transition::run (AnyType& args)
 AnyType
 gaussian_igd_merge::run (AnyType& args)
 {
-    IgdState<MutableArrayHandle<double> > stateLeft = args[0];
-    IgdState<ArrayHandle<double> > stateRight = args[1];
+    IgdState<MutableArrayHandle<double> > state1 = args[0];
+    IgdState<ArrayHandle<double> > state2 = args[1];
 
     // We first handle the trivial case where this function is called with one
     // of the states being the initial state
-    if (stateLeft.algo.numRows == 0) { return stateRight; }
-    else if (stateRight.algo.numRows == 0) { return stateLeft; }
+    if (state1.algo.numRows == 0) { return state2; }
+    else if (state2.algo.numRows == 0) { return state1; }
 
     // Merge states together
-    OLSIGDAlgorithm::merge(stateLeft, stateRight);
-    OLSLossAlgorithm::merge(stateLeft, stateRight);
+    double totalNumRows = static_cast<double>(state1.algo.numRows + state2.algo.numRows);
+    state1.algo.incrModel *= static_cast<double>(state1.algo.numRows) /
+        static_cast<double>(state2.algo.numRows);
+    state1.algo.incrModel += state2.algo.incrModel;
+    state1.algo.incrModel *= static_cast<double>(state2.algo.numRows) /
+        static_cast<double>(totalNumRows);
+
+    state1.algo.loss += state2.algo.loss;
     
     // The following numRows update, cannot be put above, because the model
     // averaging depends on their original values
-    stateLeft.algo.numRows += stateRight.algo.numRows;
+    state1.algo.numRows += state2.algo.numRows;
 
-    return stateLeft;
+    return state1;
 }
 
 // ------------------------------------------------------------------------
@@ -128,7 +158,7 @@ gaussian_igd_final::run (AnyType& args)
     if (state.algo.numRows == 0) return Null(); 
 
     // finalizing
-    OLSIGDAlgorithm::final(state);
+    state.task.model = state.algo.incrModel;
 
     return state;
 }
@@ -139,7 +169,7 @@ gaussian_igd_final::run (AnyType& args)
  * @brief Return the difference in RMSE between two states
  */
 AnyType
-internal_gaussian_igd_state_diff::run (AnyType& args)
+__gaussian_igd_state_diff::run (AnyType& args)
 {
     IgdState<ArrayHandle<double> > state1 = args[0];
     IgdState<ArrayHandle<double> > state2 = args[1];
@@ -163,7 +193,7 @@ internal_gaussian_igd_state_diff::run (AnyType& args)
  * @brief Return the coefficients and diagnostic statistics of the state
  */
 AnyType
-internal_gaussian_igd_result::run (AnyType& args)
+__gaussian_igd_result::run (AnyType& args)
 {
     IgdState<ArrayHandle<double> > state = args[0];
     double norm = 0;

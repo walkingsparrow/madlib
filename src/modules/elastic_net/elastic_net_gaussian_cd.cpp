@@ -1,5 +1,5 @@
 
-#include "dbconnector/dbconnector.hpp"
+#include <dbconnector/dbconnector.hpp>
 #include "elastic_net_gaussian_cd.hpp"
 
 // #include "task/ols.hpp"
@@ -177,7 +177,7 @@ gaussian_cd_final::run (AnyType& args)
  * @brief Return the difference in RMSE between two states
  */
 AnyType
-internal_gaussian_cd_state_diff::run (AnyType& args)
+__gaussian_cd_state_diff::run (AnyType& args)
 {
     CdState<ArrayHandle<double> > state1 = args[0];
     CdState<ArrayHandle<double> > state2 = args[1];
@@ -201,7 +201,7 @@ internal_gaussian_cd_state_diff::run (AnyType& args)
  * @brief Return the coefficients and diagnostic statistics of the state
  */
 AnyType
-internal_gaussian_cd_result::run (AnyType& args)
+__gaussian_cd_result::run (AnyType& args)
 {
     CdState<ArrayHandle<double> > state = args[0];
     // double norm = 0;
