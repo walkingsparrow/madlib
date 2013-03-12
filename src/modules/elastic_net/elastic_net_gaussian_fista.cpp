@@ -112,6 +112,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
     state.task.tk = 0.5 * (1 + sqrt(1 + 4*state.task.tk));
 
     double old_coef;
+    state.task.intercept_y = ymean;
+    state.task.intercept = ymean;
     for (uint32_t i = 0; i < state.task.dimension; i++)
     {
         old_coef = state.task.coef(i);
@@ -126,10 +128,11 @@ AnyType gaussian_fista_final::run (AnyType& args)
         // update coef_y
         state.task.coef_y(i) = state.task.coef(i) + (old_tk - 1) *
             (state.task.coef(i) - old_coef) / state.task.tk;
-    }
 
-    // update intercept_y
-    // to be implemented
+        // update intercept_y and intercept
+        state.task.intercept -= state.task.coef(i) * xmean(i);
+        state.task.intercept_y -= state.task.coef_y(i) * xmean(i);
+    }
 
     return state;
 }
@@ -164,7 +167,7 @@ __gaussian_fista_result::run (AnyType& args)
     FistaState<ArrayHandle<double> > state = args[0];
     AnyType tuple;
     
-    tuple << state.task.coef;
+    tuple << state.task.intercept << state.task.coef;
 
     return tuple;
 }
