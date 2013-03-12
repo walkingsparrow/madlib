@@ -142,8 +142,15 @@ AnyType gaussian_fista_final::run (AnyType& args)
 AnyType
 __gaussian_fista_state_diff::run (AnyType& args)
 {
-    // to be implemented
-    return args;
+    FistaState<ArrayHandle<double> > state1 = args[0];
+    FistaState<ArrayHandle<double> > state2 = args[1];
+
+    double diff = 0;    
+    int n = state1.task.coef.rows();
+    for (uint32_t i = 0; i < n; i++)
+        diff += std::abs(state1.task.coef(i) - state2.task.coef(i));
+
+    return diff / n;
 }
 
 // ------------------------------------------------------------------------
@@ -154,8 +161,12 @@ __gaussian_fista_state_diff::run (AnyType& args)
 AnyType
 __gaussian_fista_result::run (AnyType& args)
 {
-    // to be implemented
-    return args;
+    FistaState<ArrayHandle<double> > state = args[0];
+    AnyType tuple;
+    
+    tuple << state.task.coef;
+
+    return tuple;
 }
 
 }
