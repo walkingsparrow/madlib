@@ -44,13 +44,14 @@ class IgdState
      */
     inline void allocate(const Allocator& inAllocator, uint32_t inDimension)
     {
-        mStorage = inAllocator.allocateArray<double, dbal::AggregateContext,
-                                             dbal::DoZero, dbal::ThrowBadAlloc>(
+        mStorage = inAllocator.allocateArray<double,
+                                             dbal::AggregateContext,
+                                             dbal::DoZero,
+                                             dbal::ThrowBadAlloc>(
                                                  arraySize(inDimension));
 
         task.dimension.rebind(&mStorage[0]);
         task.dimension = inDimension;
-        
         rebind();
     }
 
@@ -70,7 +71,7 @@ class IgdState
      */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 7 + 3 * inDimension;
+        return 12 + 4 * inDimension;
     }
 
   protected:
@@ -81,33 +82,56 @@ class IgdState
         task.lambda.rebind(&mStorage[2]);
         task.alpha.rebind(&mStorage[3]);
         task.totalRows.rebind(&mStorage[4]);
-        task.model.rebind(&mStorage[5], task.dimension);
+        task.intercept.rebind(&mStorage[5]);
+        task.ymean.rebind(&mStorage[6]);
+        task.xmean.rbind(&mStorage[7], task.dimension);
+        task.coef.rebind(&mStorage[7 + task.dimension], task.dimension);
 
-        algo.numRows.rebind(&mStorage[5 + task.dimension]);
-        algo.loss.rebind(&mStorage[6 + task.dimension]);
-        algo.incrModel.rebind(&mStorage[7 + task.dimension], task.dimension);
-        algo.gradient.rebind(&mStorage[7 + 2 * task.dimension], task.dimension);
+        algo.numRows.rebind(&mStorage[7 + 2 * task.dimension]);
+        algo.loss.rebind(&mStorage[8 + 2 * task.dimension]);
+        algo.p.rebind(&mStorage[9 + 2 * task.dimension]);
+        algo.q.rebind(&mStorage[10 + 2 * task.dimension]);
+        algo.incrIntercept.rebind(&mStorage[11 + 2 * task.dimension]);
+        algo.incrCoef.rebind(&mStorage[12 + 2 * task.dimension], task.dimension);
+        algo.theta.rebind(&mStorage[12 + 3 * task.dimension], task.dimension);
     }
 
     Handle mStorage;
 
   public:
+    /*
+      intercept and coef are updated after each scan of the data
+
+      During the scan of the data, incrIntercept and incrCoef are used for recording
+      changes.
+
+      With this setting, other quantities such as loss can be computed using
+      intercept and coef during the scan of the data.
+
+      xmean and ymean are used to compute the intercept
+     */
     struct TaskState
     {
         typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
         typename HandleTraits<Handle>::ReferenceToDouble stepsize;
-        typename HandleTraits<Handle>::ReferenceToDouble lambda;
-        typename HandleTraits<Handle>::ReferenceToDouble alpha;
+        typename HandleTraits<Handle>::ReferenceToDouble lambda; // regularization control
+        typename HandleTraits<Handle>::ReferenceToDouble alpha; // elastic net control
         typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap model;
+        typename HandleTraits<Handle>::ReferenceToDouble intercept;
+        typename HandleTraits<Handle>::ReferenceToDouble ymean;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
     } task;
 
     struct AlgoState
     {
         typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
         typename HandleTraits<Handle>::ReferenceToDouble loss;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrModel;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
+        typename HandleTraits<Handle>::ReferenceToDoubl p; // used for mirror truncation
+        typename HandleTraits<Handle>::ReferenceToDoubl q; // used for mirror truncation
+        typename HandleTraits<Handle>::ReferenceToDouble incrIntercept; 
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrCoef;
+        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap theta; // used for mirror truncation
     } algo;
 };
 

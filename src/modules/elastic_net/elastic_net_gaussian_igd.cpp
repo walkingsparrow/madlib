@@ -14,24 +14,40 @@ static double sign(const double & x) {
     else { return x > 0. ? 1. : -1.; }
 }
 
-static ColumnVector p_abs (ColumnVector v, double r)
+// ------------------------------------------------------------------------
+// Need divided-by-zero type check
+
+static double p_abs (ColumnVector v, double r)
 {
     double sum = 0;
     for (int i = 0; i < v.size(); i++)
-        sum += pow(abs(v(i)), r);
+        sum += pow(fabs(v(i)), r);
     return pow(sum, 1./r);
 }
 
 // p-form link function, q = p/(p-1)
+// For inverse function, jut replace w with theta and q with p 
 static ColumnVector link_fn (ColumnVector w, double q)
 {
+    ColumnVector theta(w.size());
+    double abs_w = p_abs(w, q);
+    if (abs_w == 0)
+    {
+        for (int i = 0; i < w.size(); i++)
+            theta(i) = 0;
+        
+        return theta;
+    }
+
+    double denominator = pow(abs_w, q - 2);
+
+    for (int i = 0; i < w.size(); i++)
+        if (w(i) == 0) theta(i) = 0;
+        else
+            theta(i) = sign(w(i)) * pow(fabs(w(i)), q - 1)
+                / denominator;
     
-}
-
-// inverse of p-form link function
-static ColumnVector inverse_link_fn (ColumnVector theta, uint32_t size, double p)
-{
-
+    return theta;
 }
 
 // ------------------------------------------------------------------------
@@ -71,56 +87,49 @@ gaussian_igd_transition::run (AnyType& args)
             state.task.lambda = lambda;
             state.task.alpha = alpha;
             state.task.totalRows = total_rows;
+            // dual vector theta
+            state.algo.theta.setzeros();
+            state.algo.p = 2 * log(state.task.dimension);
+            state.algo.q = p / (p - 1);
         }
       
         state.algo.loss = 0.;
-        state.algo.incrModel = state.task.model;
+        state.algo.incrCoef = state.task.coef;
+        state.algo.incrIntercept = state.task.intercept;
     }
 
     // tuple
-    using madlib::dbal::eigen_integration::MappedColumnVector;
+    // using madlib::dbal::eigen_integration::MappedColumnVector;
    
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
 
     // Now do the transition step
-    double wx = dot(state.task.model, x);
+    double wx = dot(state.algo.incrCoef, x) + state.algo.incrIntercept;
     double r = wx - y;
-    state.algo.gradient += r * x;
 
-    for (Index i = 0; i < state.task.model.rows() - 1; i ++)
+    ColumnVector gradient(state.task.dimension);
+    state.algo.gradient = r * x;
+    
+    for (uint32_t i = 0; i < state.task.dimension; i++)
     {
-        if (std::abs(state.task.model(i)) <= std::numeric_limits<double>::denorm_min())
-        {
-            // soft thresholding
-            if (std::abs(state.algo.gradient(i)) > state.task.lambda * state.task.alpha)
-            {
-                state.algo.gradient(i) -= state.task.alpha * state.task.lambda
-                    * sign(state.algo.gradient(i));
-
-                state.algo.gradient(i) = - state.algo.gradient(i) / state.task.stepsize
-                    + state.task.alpha * state.task.model(i) * state.task.totalRows
-                    / state.task.stepsize;
-            }
-            else
-            {
-                state.algo.gradient(i) = state.task.alpha * state.task.model(i)
-                    * state.task.totalRows / state.task.stepsize;
-                //gradient(i) = 0;
-            }
-        }
-        else
-        {
-            state.algo.gradient(i) += state.task.alpha * state.task.lambda
-                * sign(state.task.model(i));
-        }
-
-        state.algo.gradient(i) += (1 - state.task.alpha) * state.task.lambda
-            * state.task.model(i);
+        gradient(i) += (1 - state.task.alpha) * state.task.lambda
+            * state.task.coef(i);
+        // step 1
+        state.algo.theta(i) -= state.task.stepsize * gradient(i)
+            / state.task.totalRows;
+        double step1_sign = sign(state.algo.theta(i));
+        // step 2
+        state.algo.theta(i) -= state.task.stepsize * state.task.alpha
+            * state.task.lambda * sign(state.task.coef(i))
+            / state.task.totalRows;
+        // set to 0 if the value crossed zero during the two steps
+        if (step1_sign != sign(state.algo.theta(i))) state.algo.theta(i);
     }
     
-    state.algo.incrModel -= state.task.stepsize * state.algo.gradient
-        / state.task.totalRows;
+    stata.algo.incrCoef = link_fn(state.algo.theta, state.algo.p);
+
+    state.algo.incrIntercept = ymean - dot(state.algo.incrCoef, xmean);
     
     // OLSENRegularizedIGDAlgorithm::transition(state, tuple);
     state.algo.loss += r * r / 2.;
@@ -148,15 +157,21 @@ gaussian_igd_merge::run (AnyType& args)
 
     // Merge states together
     double totalNumRows = static_cast<double>(state1.algo.numRows + state2.algo.numRows);
-    state1.algo.incrModel *= static_cast<double>(state1.algo.numRows) /
+    state1.algo.theta *= static_cast<double>(state1.algo.numRows) /
         static_cast<double>(state2.algo.numRows);
-    state1.algo.incrModel += state2.algo.incrModel;
-    state1.algo.incrModel *= static_cast<double>(state2.algo.numRows) /
+    state1.algo.theta += state2.algo.incrCoef;
+    state1.algo.theta *= static_cast<double>(state2.algo.numRows) /
         static_cast<double>(totalNumRows);
 
+    // the following two lines might not be necessary, since incrCoef is
+    // not used in merge, only in final function
+    // this can be put into final
+    stata1.algo.incrCoef = link_fn(state1.algo.theta, state1.algo.p);
+    state1.algo.incrIntercept = ymean - dot(state1.algo.incrCoef, xmean);
+    
     state1.algo.loss += state2.algo.loss;
     
-    // The following numRows update, cannot be put above, because the model
+    // The following numRows update, cannot be put above, because the coef
     // averaging depends on their original values
     state1.algo.numRows += state2.algo.numRows;
 
@@ -179,7 +194,8 @@ gaussian_igd_final::run (AnyType& args)
     if (state.algo.numRows == 0) return Null(); 
 
     // finalizing
-    state.task.model = state.algo.incrModel;
+    state.task.coef = state.algo.incrCoef;
+    state.task.intercept = state.algo.incrIntercept;
 
     return state;
 }
@@ -197,10 +213,10 @@ __gaussian_igd_state_diff::run (AnyType& args)
 
     // double diff = 0;    
     // Index i;
-    // int n = state1.task.model.rows();
+    // int n = state1.task.coef.rows();
     // for (i = 0; i < n; i++)
     // {
-    //     diff += std::abs(state1.task.model(i) - state2.task.model(i));
+    //     diff += std::abs(state1.task.coef(i) - state2.task.coef(i));
     // }
 
     // return diff / n;
@@ -219,16 +235,17 @@ __gaussian_igd_result::run (AnyType& args)
     IgdState<ArrayHandle<double> > state = args[0];
     double norm = 0;
 
-    for (Index i = 0; i < state.task.model.rows() - 1; i ++) {
-        double m = state.task.model(i);
+    for (Index i = 0; i < state.task.coef.rows() - 1; i ++) {
+        double m = state.task.coef(i);
         norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
     }
     norm *= state.task.lambda;
         
     AnyType tuple;
-    tuple << state.task.model
+    tuple << static_cast<double>(state.task.intercept)
+          << state.task.coef 
           << static_cast<double>(state.algo.loss) + norm;// +
-        // (double)(GLMENRegularizer::loss(state.task.model,
+        // (double)(GLMENRegularizer::loss(state.task.coef,
         //                                 state.task.lambda,
         //                                 state.task.alpha));
 
@@ -244,11 +261,11 @@ __gaussian_igd_result::run (AnyType& args)
 // gaussian_igd_predict::run (AnyType& args)
 // {
 //     using madlib::dbal::eigen_integration::MappedColumnVector;
-//     MappedColumnVector model = args[0].getAs<MappedColumnVector>();
+//     MappedColumnVector coef = args[0].getAs<MappedColumnVector>();
 //     double intercept = args[1].getAs<double>();
 //     MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
 
-//     return OLS<MappedColumnVector, GLMTuple>::predict(model, intercept, indVar);
+//     return OLS<MappedColumnVector, GLMTuple>::predict(coef, intercept, indVar);
 // }
  
 } // namespace elastic_net 

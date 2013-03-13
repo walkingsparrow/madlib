@@ -112,8 +112,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
     state.task.tk = 0.5 * (1 + sqrt(1 + 4*state.task.tk));
 
     double old_coef;
-    state.task.intercept_y = ymean;
-    state.task.intercept = ymean;
+    state.task.intercept_y = state.task.ymean;
+    state.task.intercept = state.task.ymean;
     for (uint32_t i = 0; i < state.task.dimension; i++)
     {
         old_coef = state.task.coef(i);
@@ -130,8 +130,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
             (state.task.coef(i) - old_coef) / state.task.tk;
 
         // update intercept_y and intercept
-        state.task.intercept -= state.task.coef(i) * xmean(i);
-        state.task.intercept_y -= state.task.coef_y(i) * xmean(i);
+        state.task.intercept -= state.task.coef(i) * state.task.xmean(i);
+        state.task.intercept_y -= state.task.coef_y(i) * state.task.xmean(i);
     }
 
     return state;
@@ -142,14 +142,13 @@ AnyType gaussian_fista_final::run (AnyType& args)
 /**
  * @brief Return the difference in RMSE between two states
  */
-AnyType
-__gaussian_fista_state_diff::run (AnyType& args)
+AnyType __gaussian_fista_state_diff::run (AnyType& args)
 {
     FistaState<ArrayHandle<double> > state1 = args[0];
     FistaState<ArrayHandle<double> > state2 = args[1];
 
     double diff = 0;    
-    int n = state1.task.coef.rows();
+    uint32_t n = state1.task.coef.rows();
     for (uint32_t i = 0; i < n; i++)
         diff += std::abs(state1.task.coef(i) - state2.task.coef(i));
 
@@ -161,13 +160,13 @@ __gaussian_fista_state_diff::run (AnyType& args)
 /**
  * @brief Return the coefficients and diagnostic statistics of the state
  */
-AnyType
-__gaussian_fista_result::run (AnyType& args)
+AnyType __gaussian_fista_result::run (AnyType& args)
 {
     FistaState<ArrayHandle<double> > state = args[0];
     AnyType tuple;
     
-    tuple << state.task.intercept << state.task.coef;
+    tuple << static_cast<double>(state.task.intercept)
+          << state.task.coef;
 
     return tuple;
 }
