@@ -18,7 +18,7 @@ from utilities.validate_args import __is_array_col_same_dimension
 from utilities.validate_args import __is_array_col_no_null
 from elastic_net_gaussian_igd import __tbl_dimension_rownum
 from utilities.control import IterationController
-from convex.lasso_igd import IterationControllerNoTableDrop
+from elastic_net_utils import IterationControllerNoTableDrop
 
 ## ========================================================================
 

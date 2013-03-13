@@ -4,7 +4,7 @@ from convex.utils_regularization import __utils_ind_var_scales
 from convex.utils_regularization import __utils_dep_var_scale
 from convex.utils_regularization import __utils_normalize_data
 from utilities.control import IterationController
-from convex.lasso_igd import IterationControllerNoTableDrop
+#from convex.lasso_igd import IterationControllerNoTableDrop
 
 ## ========================================================================
 
@@ -89,6 +89,82 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
     return (xmean_str, ymean)
     
 # ========================================================================
+
+## ========================================================================
+    
+class IterationControllerNoTableDrop (IterationController):
+    """
+    IterationController but without table dropping
+    
+    Useful if one wants to use it in cross validation
+    where dropping tables in a loop would use up all the locks
+    and get "out of memory" error
+    """
+    ## ------------------------------------------------------------------------
+    
+    def __init__(self, rel_args, rel_state, stateType,
+                 temporaryTables = True,
+                 truncAfterIteration = False,
+                 schema_madlib = "MADLIB_SCHEMA_MISSING",
+                 verbose = False,
+                 **kwargs):
+        # Need to call super class's init method to initialize
+        # member fields
+        IterationController.__init__(self, rel_args, rel_state, stateType,
+                                     temporaryTables, truncAfterIteration,
+                                     schema_madlib, verbose, **kwargs)
+        # self.kwargs["rel_state"] = "pg_temp" + rel_state, but for testing 
+        # the existence of a table, schema name should be used together
+        self.state_exists = plpy.execute("select count(*) from information_schema.tables where table_name = '{0}' and table_schema = 'pg_temp'".format(rel_state))[0]['count'] == 1
+        # The current total row number of rel_state table
+        if self.state_exists:
+            self.state_row_num = plpy.execute("select count(*) from {rel_state}".format(**self.kwargs))[0]["count"]
+
+    ## ------------------------------------------------------------------------
+            
+    def update(self, newState):
+        """
+        Update state of calculation. In ridge case, the state is an
+        array of double precision[].
+        """
+        newState = newState.format(iteration = self.iteration, **self.kwargs)
+        self.iteration += 1
+        if self.state_exists and self.iteration <= self.state_row_num:
+            # If the rel_state table already exists, and
+            # iteration number is smaller than total row number,
+            # use UPDATE instead of append. UP/tmp/madlib.mT37SL/convex/test/cross_validation.sql_in.logDATE does not use
+            # extra locks.
+            self.runSQL("""
+                update {rel_state} set _state = ({newState})
+                where _iteration = {iteration}
+            """.format(iteration = self.iteration,
+                       newState = newState,
+                       **self.kwargs))
+        else:
+            # rel_state table is newly created, and
+            # append data to this table
+            self.runSQL("""
+                INSERT INTO {rel_state}
+                    SELECT
+                        {iteration},
+                        ({newState})
+            """.format(iteration = self.iteration,
+                       newState = newState,
+                       **self.kwargs))
+
+    ## ------------------------------------------------------------------------
+            
+    def __enter__(self):
+        """
+        __enter__ and __exit__ methods are special. They are automatically called
+        when using "with" block.
+        """
+        if self.state_exists is False:
+            # create rel_state table when it does not already exist
+            IterationController.__enter__(self)
+        self.inWith = True
+        return self
+
 # ------------------------------------------------------------------------
 
 class IterationControllerTableAppend (IterationControllerNoTableDrop):

@@ -156,7 +156,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     optimizer           VARCHAR,
     optimizer_params    VARCHAR[]
 ) RETURNS VOID AS $$
-PythonFunction(convex, elastic_net, elastic_net_train)
+PythonFunction(elastic_net, elastic_net, elastic_net_train)
 $$ LANGUAGE plpythonu;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
@@ -184,7 +184,10 @@ RETURNS VARCHAR AS $$
 DECLARE
     str     VARCHAR;
 BEGIN
-    str := 'Right now, gaussian (linear) family is supported!';
+    str := '
+    Right now, gaussian (linear) family is supported!  
+    SELECT madlib.elastic_net_train(''gaussian'');   
+    to see more.';
     return str;
 END;
 $$ LANGUAGE plpgsql STRICT;
@@ -201,7 +204,7 @@ $$ LANGUAGE plpgsql STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     family_or_optimizer  VARCHAR
 ) RETURNS VARCHAR AS $$
-PythonFunction(convex, elastic_net, elastic_net_help)
+PythonFunction(elastic_net, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
@@ -220,7 +223,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
     intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS $$
-PythonFunction(convex, elastic_net, elastic_net_predict)
+PythonFunction(elastic_net, elastic_net, elastic_net_predict)
 $$ LANGUAGE plpythonu STRICT;
 
 ------------------------------------------------------------------------
@@ -309,7 +312,7 @@ LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
 
-CREATE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_transition (
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_cd_transition (
     state               DOUBLE PRECISION[],
     ind_var             DOUBLE PRECISION[],
     dep_var             DOUBLE PRECISION,
@@ -321,31 +324,31 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_transition (
     sq                  DOUBLE PRECISION[],
     total_rows          INTEGER
 ) RETURNS DOUBLE PRECISION[]
-AS 'MODULE_PATHNAME', 'gaussian_bcd_transition'
+AS 'MODULE_PATHNAME', 'gaussian_cd_transition'
 LANGUAGE C IMMUTABLE;
 
 --
 
-CREATE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_merge (
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_cd_merge (
     state1              DOUBLE PRECISION[],
     state2              DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION[] AS
-'MODULE_PATHNAME', 'gaussian_bcd_merge'
+'MODULE_PATHNAME', 'gaussian_cd_merge'
 LANGUAGE C IMMUTABLE STRICT;
 
 --
 
-CREATE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_final (
+CREATE FUNCTION MADLIB_SCHEMA.__gaussian_cd_final (
     state               DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION[] AS
-'MODULE_PATHNAME', 'gaussian_bcd_final'
+'MODULE_PATHNAME', 'gaussian_cd_final'
 LANGUAGE C IMMUTABLE STRICT;
 
 /**
  * @internal
- * @brief Perform one iteration step of BCD for linear models
+ * @brief Perform one iteration step of CD for linear models
  */
-CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_bcd_step(
+CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_cd_step(
     /* ind_var */           DOUBLE PRECISION[],
     /* dep_var */           DOUBLE PRECISION,
     /* pre_state */         DOUBLE PRECISION[],
@@ -357,27 +360,27 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_bcd_step(
     /* total_rows */        INTEGER
 ) (
     SType = DOUBLE PRECISION[],
-    SFunc = MADLIB_SCHEMA.__gaussian_bcd_transition,
-    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_bcd_merge,')
-    FinalFunc = MADLIB_SCHEMA.__gaussian_bcd_final,
+    SFunc = MADLIB_SCHEMA.__gaussian_cd_transition,
+    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_cd_merge,')
+    FinalFunc = MADLIB_SCHEMA.__gaussian_cd_final,
     InitCond = '{0,0,0,0,0,0,0,0}'
 );
 
 --
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_state_diff (
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_cd_state_diff (
     state1          DOUBLE PRECISION[],
     state2          DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
-'MODULE_PATHNAME', '__gaussian_bcd_state_diff'
+'MODULE_PATHNAME', '__gaussian_cd_state_diff'
 LANGUAGE C IMMUTABLE STRICT;
 
 --
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_bcd_result (
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_cd_result (
     in_state        DOUBLE PRECISION[]
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
-'MODULE_PATHNAME', '__gaussian_bcd_result'
+'MODULE_PATHNAME', '__gaussian_cd_result'
 LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------

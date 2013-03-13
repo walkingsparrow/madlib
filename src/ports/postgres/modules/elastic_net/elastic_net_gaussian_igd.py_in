@@ -1,16 +1,16 @@
 
 import plpy
-from validation.cv_utils import __cv_unique_string
+from utilities.utilities import __unique_string
 from utilities.control import IterationController
-from convex.lasso_igd import IterationControllerNoTableDrop
-from convex.ridge import __ridge_restore_linear_coef_scales
-from convex.validate_args import __is_tbl_exists
-from convex.validate_args import __is_tbl_has_rows
-from convex.validate_args import __is_col_exists
-from convex.validate_args import __is_tbl_exists_in_schema
-from convex.validate_args import __is_scalar_col_no_null
-from convex.validate_args import __is_array_col_same_dimension
-from convex.validate_args import __is_array_col_no_null
+from elastic_net_utils import IterationControllerNoTableDrop
+from convex.utils_regularization import __utils_restore_linear_coef_scales
+from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_tbl_has_rows
+from utilities.validate_args import __is_col_exists
+from utilities.validate_args import __is_tbl_exists_in_schema
+from utilities.validate_args import __is_scalar_col_no_null
+from utilities.validate_args import __is_array_col_same_dimension
+from utilities.validate_args import __is_array_col_no_null
 from elastic_net_utils import __normalize_data
 from elastic_net_utils import __tbl_dimension_rownum
 
@@ -314,7 +314,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     #              """.format(tbl_used = tbl_used, **args))
     
     if normalization:
-        __ridge_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
+        __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
                                            col_coef = "coefficients",
                                            col_others = ["log_likelihood", "normalization", "iteration_run"],
                                            tbl_origin_coef = tbl_result,

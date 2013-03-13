@@ -1,23 +1,23 @@
 
 import plpy
 import math
-from validation.cv_utils import __cv_unique_string
-from convex.ridge import __ridge_restore_linear_coef_scales
-from convex.validate_args import __is_tbl_exists
-from convex.validate_args import __is_tbl_has_rows
-from convex.validate_args import __is_col_exists
-from convex.validate_args import __is_tbl_exists_in_schema
-from convex.validate_args import __is_scalar_col_no_null
-from convex.validate_args import __is_array_col_same_dimension
-from convex.validate_args import __is_array_col_no_null
-from convex.elastic_net_gaussian_igd import __tbl_dimension_rownum
-from elastic_net.elastic_net_utils import __normalize_data
+from utilities.utilities import __unique_string
+from convex.utils_regularization import __utils_restore_linear_coef_scales
+from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_tbl_has_rows
+from utilities.validate_args import __is_col_exists
+from utilities.validate_args import __is_tbl_exists_in_schema
+from utilities.validate_args import __is_scalar_col_no_null
+from utilities.validate_args import __is_array_col_same_dimension
+from utilities.validate_args import __is_array_col_no_null
+from elastic_net_utils import __tbl_dimension_rownum
+from elastic_net_utils import __normalize_data
 
 ## ========================================================================
 
-def __bcd_params_parser(optimizer_params):
+def __cd_params_parser(optimizer_params):
     """
-    Parse BCD parameters.
+    Parse CD parameters.
     """
     allowed_params = set(["num_steps", "max_iter", "tolerance"])
     name_value = dict()
@@ -34,7 +34,7 @@ def __bcd_params_parser(optimizer_params):
         param_value = items[1].strip()
 
         if param_name not in allowed_params:
-            plpy.error("{0} is not a valid parameter name for the BCD optimizer.".format(param_name))
+            plpy.error("{0} is not a valid parameter name for the CD optimizer.".format(param_name))
 
         if param_name == "num_steps":
             name_value["num_steps"] = int(param_value)
@@ -59,9 +59,9 @@ def __bcd_params_parser(optimizer_params):
 
 ## ========================================================================
 
-def __bcd_create_tbl_args(args):
+def __cd_create_tbl_args(args):
     """
-    create the temporary schema and argument table used in BCD iterations
+    create the temporary schema and argument table used in CD iterations
     """
     if args["normalization"]:
         mean = [0] * args["dimension"]
@@ -101,9 +101,9 @@ def __bcd_create_tbl_args(args):
 
     effective_lambda = args["lambda_value"] * args["row_num"]
     plpy.execute("""
-                 drop table if exists {tbl_bcd_args};
+                 drop table if exists {tbl_cd_args};
                  
-                 create temp table {tbl_bcd_args} (
+                 create temp table {tbl_cd_args} (
                     dimension       integer,
                     means           double precision[],
                     sq              double precision[],
@@ -114,7 +114,7 @@ def __bcd_create_tbl_args(args):
                     tolerance       double precision);
                  """.format(**args))
     plpy.execute("""
-                 insert into {tbl_bcd_args} values
+                 insert into {tbl_cd_args} values
                     ({dimension}, {avg}, {sqstr}, {effective_lambda}, {alpha},
                      {row_num}, {max_iter}, {tolerance})
                  """.format(effective_lambda = effective_lambda, avg = avg,
@@ -125,11 +125,11 @@ def __bcd_create_tbl_args(args):
     
 ## ========================================================================
 
-def __bcd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+def __cd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                          tbl_result, dimension, row_num, lambda_value, alpha,
                          normalization, optimizer_params_dict):
     """
-    Construct the dict used by a series of SQL queries in BCD optimizer.
+    Construct the dict used by a series of SQL queries in CD optimizer.
     """
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_data = tbl_source, # argument name used in normalization
@@ -148,43 +148,43 @@ def __bcd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     # actually have the same value. This is a price that one has to pay
     # if he wants to save typing argument names by using **args as the
     # function argument.
-    tbl_ind_scales = __cv_unique_string()
-    tbl_dep_scale = __cv_unique_string()
-    tbl_data_scaled = __cv_unique_string()
+    tbl_ind_scales = __unique_string()
+    tbl_dep_scale = __unique_string()
+    tbl_data_scaled = __unique_string()
     args.update(tbl_scale = tbl_dep_scale, tbl_dep_scale = tbl_dep_scale,
                 tbl_scales = tbl_ind_scales, tbl_ind_scales = tbl_ind_scales,
                 tbl_data_scaled = tbl_data_scaled)
 
-    # Table names used in BCD iterations
-    args.update(tbl_bcd_state = __cv_unique_string(),
-                tbl_bcd_args = __cv_unique_string())
+    # Table names used in CD iterations
+    args.update(tbl_cd_state = __unique_string(),
+                tbl_cd_args = __unique_string())
 
     # Table name used as the intermediate storage before scale restores
-    args.update(tbl_inter_result = __cv_unique_string())
+    args.update(tbl_inter_result = __unique_string())
    
     return args
 
 ## ========================================================================
 
-def __bcd_cleanup_temp_tbls(**args):
+def __cd_cleanup_temp_tbls(**args):
     """
-    Drop all temporary tables used by BCD optimizer,
+    Drop all temporary tables used by CD optimizer,
     including tables used in the possible normalization
-    and BCD iterations.
+    and CD iterations.
     """
     plpy.execute("""
                  drop table if exists {tbl_ind_scales};
                  drop table if exists {tbl_dep_scale};
                  drop table if exists {tbl_data_scaled};
                  
-                 drop table if exists pg_temp.{tbl_bcd_state};
+                 drop table if exists pg_temp.{tbl_cd_state};
                  """.format(**args))
-    # drop table if exists pg_temp.{tbl_bcd_args};
+    # drop table if exists pg_temp.{tbl_cd_args};
     return None
 
 ## ========================================================================
 
-def __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
+def __elastic_net_gaussian_cd_train(schema_madlib, tbl_source, col_ind_var,
                                      col_dep_var, tbl_result, lambda_value, alpha,
                                      normalization, optimizer_params, **kwargs):
     (tbl_source,
@@ -192,7 +192,7 @@ def __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
      col_dep_var,
      tbl_result,
      lambda_value,
-     alpha) = __elastic_net_gaussian_bcd_validate_args(tbl_source,
+     alpha) = __elastic_net_gaussian_cd_validate_args(tbl_source,
                                                        col_ind_var,
                                                        col_dep_var,
                                                        tbl_result,
@@ -200,13 +200,13 @@ def __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
                                                        alpha,
                                                        normalization)
     
-    return __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_var,
+    return __elastic_net_gaussian_cd_train_compute(schema_madlib, tbl_source, col_ind_var,
                                                     col_dep_var, tbl_result, lambda_value, alpha,
                                                     normalization, optimizer_params, **kwargs)
     
 ## ========================================================================
 
-def __elastic_net_gaussian_bcd_validate_args(tbl_source, col_ind_var, col_dep_var,
+def __elastic_net_gaussian_cd_validate_args(tbl_source, col_ind_var, col_dep_var,
                                              tbl_result, lambda_value, alpha,
                                              normalization):
     if (tbl_source is None or col_ind_var is None or col_dep_var is None
@@ -245,11 +245,11 @@ def __elastic_net_gaussian_bcd_validate_args(tbl_source, col_ind_var, col_dep_va
 
 ## ========================================================================
     
-def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_var,
+def __elastic_net_gaussian_cd_train_compute(schema_madlib, tbl_source, col_ind_var,
                                              col_dep_var, tbl_result, lambda_value, alpha,
                                              normalization, optimizer_params, **kwargs):
     """
-    Fit linear model with elastic net regularization using BCD optimization.
+    Fit linear model with elastic net regularization using CD optimization.
 
     @param tbl_source        Name of data source table
     @param col_ind_var       Name of independent variable column,
@@ -274,9 +274,9 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
 
     # generate a full dict to ease the following string format
     # including several temporary table names
-    args = __bcd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
+    args = __cd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
                                 dimension, row_num, lambda_value, alpha, normalization,
-                                __bcd_params_parser(optimizer_params))
+                                __cd_params_parser(optimizer_params))
 
     # use normalized data or not
     if normalization:
@@ -285,11 +285,11 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
     else:
         tbl_used = tbl_source
 
-    # create the temp table that passes parameter values to BCD optimizer
-    __bcd_create_tbl_args(args)
+    # create the temp table that passes parameter values to CD optimizer
+    __cd_create_tbl_args(args)
 
     # compute lambda sequence
-    lambda_seq = __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var, dimension,
+    lambda_seq = __cd_lambda_sequence(tbl_used, col_ind_var, col_dep_var, dimension,
                                        row_num, lambda_value, alpha, args["num_steps"],
                                        args["sq"])
     
@@ -298,14 +298,14 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
     for i in range(len(lambda_seq)):
         lv = lambda_seq[i] * row_num
         plpy.execute("""
-                     update {tbl_bcd_args} set lambda = {lv}
+                     update {tbl_cd_args} set lambda = {lv}
                      """.format(lv = lv, **args))
         if i == len(lambda_seq) - 1:
             plpy.execute("""
-                         update {tbl_bcd_args} set tolerance = {tolerance}
+                         update {tbl_cd_args} set tolerance = {tolerance}
                          """.format(**args))
-        iteration_run = __compute_gaussian_bcd(schema_madlib, args["tbl_bcd_args"],
-                                               args["tbl_bcd_state"], tbl_used,
+        iteration_run = __compute_gaussian_cd(schema_madlib, args["tbl_cd_args"],
+                                               args["tbl_cd_state"], tbl_used,
                                                col_ind_var, col_dep_var, iteration_run)
         if iteration_run >= args["max_iter"]:
             break
@@ -334,8 +334,8 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
                         -(result).likelihood / {row_num},
                         False, {iteration_run}
                     from (
-                        select {schema_madlib}.__gaussian_bcd_result(_state) as result
-                        from {tbl_bcd_state}
+                        select {schema_madlib}.__gaussian_cd_result(_state) as result
+                        from {tbl_cd_state}
                         where _iteration = {iteration_run}
                     ) t
                  """.format(iteration_run = iteration_run, **args))
@@ -363,7 +363,7 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
                  """.format(tbl_used = tbl_used, **args))
     
     if normalization:
-        __ridge_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
+        __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
                                            col_coef = "coefficients",
                                            col_others = ["log_likelihood", "normalization", "iteration_run"],
                                            tbl_origin_coef = tbl_result,
@@ -371,7 +371,7 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
         plpy.execute("update {tbl_result} set normalization = True".format(**args))
 
     # cleanup    
-    __bcd_cleanup_temp_tbls(**args)
+    __cd_cleanup_temp_tbls(**args)
     if normalization:
         plpy.execute("drop table if exists {tbl_inter_result}".format(**args))
     plpy.execute("set client_min_messages to " + old_msg_level)
@@ -379,7 +379,7 @@ def __elastic_net_gaussian_bcd_train_compute(schema_madlib, tbl_source, col_ind_
 
 ## ========================================================================
 
-def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
+def __cd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
                           dimension, row_num, lambda_value, alpha,
                           num_steps, sq):
     """
@@ -419,10 +419,10 @@ def __bcd_lambda_sequence(tbl_used, col_ind_var, col_dep_var,
     
 ## ========================================================================
 
-def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
+def __compute_gaussian_cd(schema_madlib, tbl_args, tbl_state, tbl_source,
                            col_ind_var, col_dep_var, start_iter):
     """
-    Driver function for elastic net with Gaussian response using BCD
+    Driver function for elastic net with Gaussian response using CD
 
     @param schema_madlib Name of the MADlib schema, properly escaped/quoted
     @param tbl_args Name of the (temporary) table containing all non-template
@@ -458,7 +458,7 @@ def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
             # manually add the intercept term
             it.update("""
                       select
-                        {schema_madlib}.__gaussian_bcd_step(
+                        {schema_madlib}.__gaussian_cd_step(
                             array_append((_src.{col_ind_var})::double precision[], 1::double precision),
                             (_src.{col_dep_var})::double precision,
                             (select _state from {rel_state}
@@ -474,7 +474,7 @@ def __compute_gaussian_bcd(schema_madlib, tbl_args, tbl_state, tbl_source,
          
             if it.test("""
                        {iteration} >= _args.max_iter or
-                       {schema_madlib}.__gaussian_bcd_state_diff(
+                       {schema_madlib}.__gaussian_cd_state_diff(
                             (select _state from {rel_state}
                                 where _iteration = {iteration} - 1),
                             (select _state from {rel_state}

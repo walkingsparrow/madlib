@@ -1,7 +1,7 @@
 
 import plpy
-from convex.elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
-from convex.elastic_net_gaussian_bcd import __elastic_net_gaussian_bcd_train
+from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
+from elastic_net_gaussian_cd import __elastic_net_gaussian_cd_train
 
 ## ========================================================================
 
@@ -20,19 +20,27 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         return """
         Supported optimizer:
         (1) Incremental gradient descent method ('igd')
-        (2) Batch coordinate descent method ('bcd')
+        (2) Batch coordinate descent method ('cd')
 
-        For alpha = 0, Newton method ('newton') is also supported.
+        For alpha = 0, Newton method ('newton') is also supported.    
         """
 
     if family_or_optimizer.lower() == "igd":
         return """
-        Incremental gradient descent method
+        Incremental gradient descent (IGD) method
+
+        In order to obtain sparse coefficients, a
+        modified version of IGD is actually used.
 
         Parameters:
         stepsize         - default 0.01
         max_iter         - default 100
         tolenrance       - default 0.000001
+
+        Reference:
+        [1] Shai Shalev-Shwartz and Ambuj Tewari, Stochastic Methods for l1    
+            Regularized Loss Minimization. Proceedings of the 26th Interna-   
+            tional Conference on Machine Learning, Montreal, Canada, 2009.   
         """
 
     if family_or_optimizer.lower() == "cd":
@@ -44,8 +52,8 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         tolenrance       - default 0.000001
 
         Reference:
-        [1] A. Van der Kooij. Prediction accuracy and stability of regrsssion
-            with optimal sclaing transformations. Technical report, Dept. of
+        [1] A. Van der Kooij, Prediction accuracy and stability of regrsssion   
+            with optimal sclaing transformations. Technical report, Dept. of   
             Data Theory, Leiden University, 2007.
         """
 
@@ -58,16 +66,16 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         tolenrance       - default 0.000001
                 
         Reference:
-        [1] Beck, A. and M. Teboulle (2009). A fast iterative
-            shrinkage-thresholding algorothm for linear inverse
-            problems. SIAM J. on Imaging Sciences 2(1), 183-202.
+        [1] Beck, A. and M. Teboulle (2009), A fast iterative   
+            shrinkage-thresholding algorothm for linear inverse   
+            problems. SIAM J. on Imaging Sciences 2(1), 183-202.   
         """
         
     if family_or_optimizer.lower() == "newton":
-        return "Newton method"
+        return "Newton method  "
         
     return """
-    Not a supported response family or optimizer
+    Not a supported response family or optimizer  
     """
         
 
@@ -120,10 +128,10 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
         return None
 
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
-        optimizer.lower() == "bcd"):
-        __elastic_net_gaussian_bcd_train(schema_madlib, tbl_source, col_ind_var,
-                                         col_dep_var, tbl_result, lambda_value, alpha,
-                                         normalization, optimizer_params, **kwargs)
+        optimizer.lower() == "cd"):
+        __elastic_net_gaussian_cd_train(schema_madlib, tbl_source, col_ind_var,
+                                        col_dep_var, tbl_result, lambda_value, alpha,
+                                        normalization, optimizer_params, **kwargs)
         return None
         
     # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
