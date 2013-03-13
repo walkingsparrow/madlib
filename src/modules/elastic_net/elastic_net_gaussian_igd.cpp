@@ -8,9 +8,30 @@ namespace madlib {
 namespace modules {
 namespace elastic_net {
 
+// sign of a number
 static double sign(const double & x) {
     if (x == 0.) { return 0.; }
     else { return x > 0. ? 1. : -1.; }
+}
+
+static ColumnVector p_abs (ColumnVector v, double r)
+{
+    double sum = 0;
+    for (int i = 0; i < v.size(); i++)
+        sum += pow(abs(v(i)), r);
+    return pow(sum, 1./r);
+}
+
+// p-form link function, q = p/(p-1)
+static ColumnVector link_fn (ColumnVector w, double q)
+{
+    
+}
+
+// inverse of p-form link function
+static ColumnVector inverse_link_fn (ColumnVector theta, uint32_t size, double p)
+{
+
 }
 
 // ------------------------------------------------------------------------
