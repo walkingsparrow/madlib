@@ -4,7 +4,9 @@
 
 import plpy
 import math
-from elastic_net.elastic_net_utils import __normalize_data
+from elastic_net_utils import __normalize_data
+from elastic_net_utils import __compute_means
+from elastic_net_utils import __tbl_dimension_rownum
 from utilities.utilities import __unique_string
 from convex.utils_regularization import __utils_restore_linear_coef_scales
 from utilities.validate_args import __is_tbl_exists
@@ -14,8 +16,7 @@ from utilities.validate_args import __is_tbl_exists_in_schema
 from utilities.validate_args import __is_scalar_col_no_null
 from utilities.validate_args import __is_array_col_same_dimension
 from utilities.validate_args import __is_array_col_no_null
-from elastic_net.elastic_net_gaussian_igd import __tbl_dimension_rownum
-from elastic_net.elastic_net_gaussian_igd import __normalize_data
+from elastic_net_gaussian_igd import __tbl_dimension_rownum
 from utilities.control import IterationController
 from convex.lasso_igd import IterationControllerNoTableDrop
 
@@ -98,35 +99,9 @@ def __fista_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in FISTA iterations
     """
-    if normalization:
-        xmean = [0] * dimension;
-        ymean = 0
-    else:
-        xmean = plpy.execute("""
-                             select
-                                 array_agg(mean order by idx) as mean
-                             from (
-                                 select idx, avg(x) as mean
-                                 from (
-                                     select
-                                         generate_series(1, {dimension}) as idx,
-                                         unnest({col_ind_var}) as x
-                                     from {tbl_source}
-                                 ) t
-                                 group by idx
-                             ) s
-                             """.format(**args))[0]["mean"]
-        ymean = plpy.execute("""
-                             select avg({col_dep_var}) as mean
-                             from {tbl_source}
-                             """.format(**args))[0]["mean"]
-    xmean_str = "array["
-    for i in range(dimension):
-        xmean_str += str(mean[i])
-        if i != dimension - 1:
-            xmean_str += ", "
-        else:
-            xmean_str += "]"
+    (xmean_str, ymean) = __compute_means(args["tbl_source"], args["col_ind_var"],
+                                         args["col_dep_var"], args["dimension"],
+                                         args["normalization"])
     
     effective_lambda = lambda_value # * row_num
     tbl_fista_state = __unique_string()
@@ -144,19 +119,17 @@ def __fista_create_tbl_args(**args):
                      {xmean_name}           double precision[],
                      {ymean_name}           double precision
                  );
-                 """.format(tbl_fista_args = tbl_fista_args))
+                 """.format(**args))
     plpy.execute("""
                  insert into {tbl_fista_args} values
                      ({dimension}, {stepsize}, {effective_lambda},
                      {alpha}, {row_num}, {max_iter}, {tolerance},
                      {xmean_str}, {ymean});
                  """.format(effective_lambda = effective_lambda,
-                            tbl_fista_args = tbl_fista_args,
                             xmean_str = xmean_str, ymean = ymean,
                             **args))
 
-    return dict(tbl_fista_args = tbl_fista_args,
-                tbl_fista_state = tbl_fista_state)
+    return None
     
 ## ========================================================================
 
@@ -191,6 +164,10 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 tbl_scales = tbl_ind_scales, tbl_ind_scales = tbl_ind_scales,
                 tbl_data_scaled = tbl_data_scaled)
 
+    # Table names used in IGD iterations
+    args.update(tbl_fista_state = __unique_string(),
+                tbl_fista_args = __unique_string())
+    
     # Table name used as the intermediate storage before scale restores
     args.update(tbl_inter_result = __unique_string())
 
@@ -334,8 +311,7 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
     args.update(stepsize = 1./lipschitz)
         
     # create the temp table that passes parameter values to FISTA optimizer
-    # also create the name of tbl_fista_state
-    args.update(__fista_create_tbl_args(**args))
+    __fista_create_tbl_args(**args)
     
     # perform the actual calculation
     iteration_run = __compute_gaussian_fista(schema_madlib, args["tbl_fista_args"],
@@ -463,8 +439,9 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               (_args.{stepsize_name})::double precision,
                               (_args.{dimension_name})::integer,
                               (_args.{xmeans_name})::double precision[],
-                              (_args.sq)::double precision[],
-                              (_args.total_rows)::integer)
+                              (_args.{ymean_name})::double precision,
+                              (_args.{sq_name})::double precision[],
+                              (_args.{total_rows_name})::integer)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
          

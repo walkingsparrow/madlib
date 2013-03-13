@@ -50,8 +50,8 @@ class IgdState
                                              dbal::ThrowBadAlloc>(
                                                  arraySize(inDimension));
 
-        task.dimension.rebind(&mStorage[0]);
-        task.dimension = inDimension;
+        dimension.rebind(&mStorage[0]);
+        dimension = inDimension;
         rebind();
     }
 
@@ -77,23 +77,23 @@ class IgdState
   protected:
     void rebind ()
     {
-        task.dimension.rebind(&mStorage[0]);
-        task.stepsize.rebind(&mStorage[1]);
-        task.lambda.rebind(&mStorage[2]);
-        task.alpha.rebind(&mStorage[3]);
-        task.totalRows.rebind(&mStorage[4]);
-        task.intercept.rebind(&mStorage[5]);
-        task.ymean.rebind(&mStorage[6]);
-        task.xmean.rbind(&mStorage[7], task.dimension);
-        task.coef.rebind(&mStorage[7 + task.dimension], task.dimension);
+        dimension.rebind(&mStorage[0]);
+        stepsize.rebind(&mStorage[1]);
+        lambda.rebind(&mStorage[2]);
+        alpha.rebind(&mStorage[3]);
+        totalRows.rebind(&mStorage[4]);
+        intercept.rebind(&mStorage[5]);
+        ymean.rebind(&mStorage[6]);
+        xmean.rebind(&mStorage[7], dimension);
+        coef.rebind(&mStorage[7 + dimension], dimension);
 
-        algo.numRows.rebind(&mStorage[7 + 2 * task.dimension]);
-        algo.loss.rebind(&mStorage[8 + 2 * task.dimension]);
-        algo.p.rebind(&mStorage[9 + 2 * task.dimension]);
-        algo.q.rebind(&mStorage[10 + 2 * task.dimension]);
-        algo.incrIntercept.rebind(&mStorage[11 + 2 * task.dimension]);
-        algo.incrCoef.rebind(&mStorage[12 + 2 * task.dimension], task.dimension);
-        algo.theta.rebind(&mStorage[12 + 3 * task.dimension], task.dimension);
+        numRows.rebind(&mStorage[7 + 2 * dimension]);
+        loss.rebind(&mStorage[8 + 2 * dimension]);
+        p.rebind(&mStorage[9 + 2 * dimension]);
+        q.rebind(&mStorage[10 + 2 * dimension]);
+        incrIntercept.rebind(&mStorage[11 + 2 * dimension]);
+        incrCoef.rebind(&mStorage[12 + 2 * dimension], dimension);
+        theta.rebind(&mStorage[12 + 3 * dimension], dimension);
     }
 
     Handle mStorage;
@@ -110,29 +110,23 @@ class IgdState
 
       xmean and ymean are used to compute the intercept
      */
-    struct TaskState
-    {
-        typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
-        typename HandleTraits<Handle>::ReferenceToDouble stepsize;
-        typename HandleTraits<Handle>::ReferenceToDouble lambda; // regularization control
-        typename HandleTraits<Handle>::ReferenceToDouble alpha; // elastic net control
-        typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
-        typename HandleTraits<Handle>::ReferenceToDouble intercept;
-        typename HandleTraits<Handle>::ReferenceToDouble ymean;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
-    } task;
-
-    struct AlgoState
-    {
-        typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
-        typename HandleTraits<Handle>::ReferenceToDouble loss;
-        typename HandleTraits<Handle>::ReferenceToDoubl p; // used for mirror truncation
-        typename HandleTraits<Handle>::ReferenceToDoubl q; // used for mirror truncation
-        typename HandleTraits<Handle>::ReferenceToDouble incrIntercept; 
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrCoef;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap theta; // used for mirror truncation
-    } algo;
+    typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
+    typename HandleTraits<Handle>::ReferenceToDouble stepsize;
+    typename HandleTraits<Handle>::ReferenceToDouble lambda; // regularization control
+    typename HandleTraits<Handle>::ReferenceToDouble alpha; // elastic net control
+    typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
+    typename HandleTraits<Handle>::ReferenceToDouble intercept;
+    typename HandleTraits<Handle>::ReferenceToDouble ymean;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
+     
+    typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
+    typename HandleTraits<Handle>::ReferenceToDouble loss;
+    typename HandleTraits<Handle>::ReferenceToDouble p; // used for mirror truncation
+    typename HandleTraits<Handle>::ReferenceToDouble q; // used for mirror truncation
+    typename HandleTraits<Handle>::ReferenceToDouble incrIntercept; 
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrCoef;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap theta; // used for mirror truncation
 };
 
 }

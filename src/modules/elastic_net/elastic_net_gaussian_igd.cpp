@@ -66,12 +66,12 @@ gaussian_igd_transition::run (AnyType& args)
     IgdState<MutableArrayHandle<double> > state = args[0];
     
     // initialize the state if working on the first tuple
-    if (state.algo.numRows == 0)
+    if (state.numRows == 0)
     {
         if (!args[3].isNull())
         {
             IgdState<ArrayHandle<double> > pre_state = args[3];
-            state.allocate(*this, pre_state.task.dimension);
+            state.allocate(*this, pre_state.dimension);
             state = pre_state;
         }
         else
@@ -83,19 +83,21 @@ gaussian_igd_transition::run (AnyType& args)
             int total_rows = args[8].getAs<int>();
 
             state.allocate(*this, dimension);
-            state.task.stepsize = stepsize;
-            state.task.lambda = lambda;
-            state.task.alpha = alpha;
-            state.task.totalRows = total_rows;
+            state.stepsize = stepsize;
+            state.lambda = lambda;
+            state.alpha = alpha;
+            state.totalRows = total_rows;
+            state.xmean = args[9].getAs<MappedColumnVector>();
+            state.ymean = args[10].getAs<double>();
             // dual vector theta
-            state.algo.theta.setzeros();
-            state.algo.p = 2 * log(state.task.dimension);
-            state.algo.q = p / (p - 1);
+            state.theta.setZero();
+            state.p = 2 * log(state.dimension);
+            state.q = state.p / (state.p - 1);
         }
       
-        state.algo.loss = 0.;
-        state.algo.incrCoef = state.task.coef;
-        state.algo.incrIntercept = state.task.intercept;
+        state.loss = 0.;
+        state.incrCoef = state.coef;
+        state.incrIntercept = state.intercept;
     }
 
     // tuple
@@ -105,36 +107,36 @@ gaussian_igd_transition::run (AnyType& args)
     double y = args[2].getAs<double>();
 
     // Now do the transition step
-    double wx = dot(state.algo.incrCoef, x) + state.algo.incrIntercept;
+    double wx = dot(state.incrCoef, x) + state.incrIntercept;
     double r = wx - y;
 
-    ColumnVector gradient(state.task.dimension);
-    state.algo.gradient = r * x;
+    ColumnVector gradient(state.dimension);
+    gradient = r * x;
     
-    for (uint32_t i = 0; i < state.task.dimension; i++)
+    for (uint32_t i = 0; i < state.dimension; i++)
     {
-        gradient(i) += (1 - state.task.alpha) * state.task.lambda
-            * state.task.coef(i);
+        gradient(i) += (1 - state.alpha) * state.lambda
+            * state.coef(i);
         // step 1
-        state.algo.theta(i) -= state.task.stepsize * gradient(i)
-            / state.task.totalRows;
-        double step1_sign = sign(state.algo.theta(i));
+        state.theta(i) -= state.stepsize * gradient(i)
+            / state.totalRows;
+        double step1_sign = sign(state.theta(i));
         // step 2
-        state.algo.theta(i) -= state.task.stepsize * state.task.alpha
-            * state.task.lambda * sign(state.task.coef(i))
-            / state.task.totalRows;
+        state.theta(i) -= state.stepsize * state.alpha
+            * state.lambda * sign(state.coef(i))
+            / state.totalRows;
         // set to 0 if the value crossed zero during the two steps
-        if (step1_sign != sign(state.algo.theta(i))) state.algo.theta(i);
+        if (step1_sign != sign(state.theta(i))) state.theta(i);
     }
     
-    stata.algo.incrCoef = link_fn(state.algo.theta, state.algo.p);
+    state.incrCoef = link_fn(state.theta, state.p);
 
-    state.algo.incrIntercept = ymean - dot(state.algo.incrCoef, xmean);
+    state.incrIntercept = state.ymean - dot(state.incrCoef, state.xmean);
     
     // OLSENRegularizedIGDAlgorithm::transition(state, tuple);
-    state.algo.loss += r * r / 2.;
+    state.loss += r * r / 2.;
     // OLSLossAlgorithm::transition(state, tuple);
-    state.algo.numRows ++;
+    state.numRows ++;
 
     return state;
 }
@@ -152,28 +154,28 @@ gaussian_igd_merge::run (AnyType& args)
 
     // We first handle the trivial case where this function is called with one
     // of the states being the initial state
-    if (state1.algo.numRows == 0) { return state2; }
-    else if (state2.algo.numRows == 0) { return state1; }
+    if (state1.numRows == 0) { return state2; }
+    else if (state2.numRows == 0) { return state1; }
 
     // Merge states together
-    double totalNumRows = static_cast<double>(state1.algo.numRows + state2.algo.numRows);
-    state1.algo.theta *= static_cast<double>(state1.algo.numRows) /
-        static_cast<double>(state2.algo.numRows);
-    state1.algo.theta += state2.algo.incrCoef;
-    state1.algo.theta *= static_cast<double>(state2.algo.numRows) /
+    double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
+    state1.theta *= static_cast<double>(state1.numRows) /
+        static_cast<double>(state2.numRows);
+    state1.theta += state2.incrCoef;
+    state1.theta *= static_cast<double>(state2.numRows) /
         static_cast<double>(totalNumRows);
 
     // the following two lines might not be necessary, since incrCoef is
     // not used in merge, only in final function
     // this can be put into final
-    stata1.algo.incrCoef = link_fn(state1.algo.theta, state1.algo.p);
-    state1.algo.incrIntercept = ymean - dot(state1.algo.incrCoef, xmean);
+    state1.incrCoef = link_fn(state1.theta, state1.p);
+    state1.incrIntercept = state1.ymean - dot(state1.incrCoef, state1.xmean);
     
-    state1.algo.loss += state2.algo.loss;
+    state1.loss += state2.loss;
     
     // The following numRows update, cannot be put above, because the coef
     // averaging depends on their original values
-    state1.algo.numRows += state2.algo.numRows;
+    state1.numRows += state2.numRows;
 
     return state1;
 }
@@ -191,11 +193,11 @@ gaussian_igd_final::run (AnyType& args)
     IgdState<MutableArrayHandle<double> > state = args[0];
 
     // Aggregates that haven't seen any data just return Null.
-    if (state.algo.numRows == 0) return Null(); 
+    if (state.numRows == 0) return Null(); 
 
     // finalizing
-    state.task.coef = state.algo.incrCoef;
-    state.task.intercept = state.algo.incrIntercept;
+    state.coef = state.incrCoef;
+    state.intercept = state.incrIntercept;
 
     return state;
 }
@@ -213,15 +215,15 @@ __gaussian_igd_state_diff::run (AnyType& args)
 
     // double diff = 0;    
     // Index i;
-    // int n = state1.task.coef.rows();
+    // int n = state1.coef.rows();
     // for (i = 0; i < n; i++)
     // {
-    //     diff += std::abs(state1.task.coef(i) - state2.task.coef(i));
+    //     diff += std::abs(state1.coef(i) - state2.coef(i));
     // }
 
     // return diff / n;
 
-    return std::abs((state1.algo.loss - state2.algo.loss) / state2.algo.loss);
+    return std::abs((state1.loss - state2.loss) / state2.loss);
 }
 
 // ------------------------------------------------------------------------
@@ -235,19 +237,19 @@ __gaussian_igd_result::run (AnyType& args)
     IgdState<ArrayHandle<double> > state = args[0];
     double norm = 0;
 
-    for (Index i = 0; i < state.task.coef.rows() - 1; i ++) {
-        double m = state.task.coef(i);
-        norm += state.task.alpha * std::abs(m) + (1 - state.task.alpha) * m * m * 0.5;
+    for (Index i = 0; i < state.coef.rows() - 1; i ++) {
+        double m = state.coef(i);
+        norm += state.alpha * std::abs(m) + (1 - state.alpha) * m * m * 0.5;
     }
-    norm *= state.task.lambda;
+    norm *= state.lambda;
         
     AnyType tuple;
-    tuple << static_cast<double>(state.task.intercept)
-          << state.task.coef 
-          << static_cast<double>(state.algo.loss) + norm;// +
-        // (double)(GLMENRegularizer::loss(state.task.coef,
-        //                                 state.task.lambda,
-        //                                 state.task.alpha));
+    tuple << static_cast<double>(state.intercept)
+          << state.coef 
+          << static_cast<double>(state.loss) + norm;// +
+        // (double)(GLMENRegularizer::loss(state.coef,
+        //                                 state.lambda,
+        //                                 state.alpha));
 
     return tuple;
 }

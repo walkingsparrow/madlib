@@ -206,7 +206,6 @@ $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
 
---
 /**
  * @brief Prediction use learned coefficients for a given example
  *
@@ -244,7 +243,9 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
     alpha               DOUBLE PRECISION,
     dimension           INTEGER,
     stepsize            DOUBLE PRECISION,
-    total_rows          INTEGER
+    total_rows          INTEGER,
+    xmean               DOUBLE PRECISION[],
+    ymean               DOUBLE PRECISION
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'gaussian_igd_transition'
 LANGUAGE C IMMUTABLE;
@@ -278,7 +279,9 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step(
     /* alpha */             DOUBLE PRECISION,
     /* dimension */         INTEGER,
     /* stepsize */          DOUBLE PRECISION,
-    /* total_rows */        INTEGER
+    /* total_rows */        INTEGER,
+    /* xmeans */            DOUBLE PRECISION[],
+    /* ymean */             DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,

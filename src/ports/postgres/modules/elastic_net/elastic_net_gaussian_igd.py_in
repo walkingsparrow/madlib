@@ -11,7 +11,8 @@ from convex.validate_args import __is_tbl_exists_in_schema
 from convex.validate_args import __is_scalar_col_no_null
 from convex.validate_args import __is_array_col_same_dimension
 from convex.validate_args import __is_array_col_no_null
-from elastic_net.elastic_net_utils import __normalize_data
+from elastic_net_utils import __normalize_data
+from elastic_net_utils import __tbl_dimension_rownum
 
 ## ========================================================================
 
@@ -59,49 +60,35 @@ def __igd_params_parser(optimizer_params):
 
 ## ========================================================================
 
-def __tbl_dimension_rownum(tbl_source, col_ind_var):
-    """
-    Measure the dimension and row number of source data table
-    """
-        # independent variable array length
-    dimension = plpy.execute("""
-                             select max(array_upper({col_ind_var},1)) as dimension
-                             from {tbl_source}
-                             """.format(tbl_source = tbl_source,
-                                        col_ind_var = col_ind_var))[0]["dimension"]
-    # total row number of data source table
-    row_num = plpy.execute("""
-                           select count(*) from {tbl_source}
-                           """.format(tbl_source = tbl_source))[0]["count"]
-
-    return (dimension, row_num)
-
-## ========================================================================
-
 def __igd_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in IGD iterations
     """
-    plpy.execute("select {schema_madlib}.create_schema_pg_temp()".format(**args))
+    (xmean_str, ymean) = __compute_means(args["tbl_source"], args["col_ind_var"],
+                                         args["col_dep_var"], args["dimension"],
+                                         args["normalization"])
 
     effective_lambda = args["lambda_value"] * args["row_num"]
     plpy.execute("""
-                 drop table if exists pg_temp.{tbl_igd_args};
-                 
-                 create table pg_temp.{tbl_igd_args} (
-                    dimension       integer,
-                    stepsize        double precision,
-                    lambda          double precision,
-                    alpha           double precision,
-                    total_rows      integer,
-                    max_iter  integer,
-                    tolerance       double precision);
+                 drop table if exists {tbl_igd_args};
+                 create temp table {tbl_igd_args} (
+                    {dimension_name}       integer,
+                    {stepsize_name}        double precision,
+                    {lambda_name}          double precision,
+                    {alpha_name}           double precision,
+                    {total_rows_name}      integer,
+                    {max_iter_name}        integer,
+                    {tolerance_name}       double precision,
+                    {xmean_name}           double precision[],
+                    {ymean_name}           double precision
+                 );
                  """.format(**args))
     plpy.execute("""
-                 insert into pg_temp.{tbl_igd_args} values
+                 insert into {tbl_igd_args} values
                     ({dimension}, {stepsize}, {effective_lambda}, {alpha},
-                     {row_num}, {max_iter}, {tolerance})
+                     {row_num}, {max_iter}, {tolerance}, {xmean_str}, {ymean})
                  """.format(effective_lambda = effective_lambda,
+                            xmean_str = xmean_str, ymean = ymean,
                             **args))
 
     return None
@@ -131,19 +118,19 @@ def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     # actually have the same value. This is a price that one has to pay
     # if he wants to save typing argument names by using **args as the
     # function argument.
-    tbl_ind_scales = __cv_unique_string()
-    tbl_dep_scale = __cv_unique_string()
-    tbl_data_scaled = __cv_unique_string()
+    tbl_ind_scales = __unique_string()
+    tbl_dep_scale = __unique_string()
+    tbl_data_scaled = __unique_string()
     args.update(tbl_scale = tbl_dep_scale, tbl_dep_scale = tbl_dep_scale,
                 tbl_scales = tbl_ind_scales, tbl_ind_scales = tbl_ind_scales,
                 tbl_data_scaled = tbl_data_scaled)
 
     # Table names used in IGD iterations
-    args.update(tbl_igd_state = __cv_unique_string(),
-                tbl_igd_args = __cv_unique_string())
+    args.update(tbl_igd_state = __unique_string(),
+                tbl_igd_args = __unique_string())
 
     # Table name used as the intermediate storage before scale restores
-    args.update(tbl_inter_result = __cv_unique_string())
+    args.update(tbl_inter_result = __unique_string())
    
     return args
 
@@ -394,15 +381,18 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
             it.update("""
                       select
                         {schema_madlib}.__gaussian_igd_step(
-                            array_append((_src.{col_ind_var})::double precision[], 1::double precision),
-                            (_src.{col_dep_var})::double precision,
+                            {col_ind_var}::double precision[],
+                            {col_dep_var}::double precision,
                             (select _state from {rel_state}
                                 where _iteration = {iteration}),
-                            (_args.lambda)::double precision,
-                            (_args.alpha)::double precision,
-                            ((_args.dimension) + 1)::integer,
-                            (_args.stepsize)::double precision,
-                            (_args.total_rows)::integer)
+                            (_args.{lambda_name})::double precision,
+                            (_args.{alpha_name})::double precision,
+                            ((_args.{dimension_name}) + 1)::integer,
+                            (_args.{stepsize_name})::double precision,
+                            (_args.{total_rows_name})::integer,
+                            (_args.{xmeans_name})::double precision[],
+                            (_args.{ymean_name})::double precision
+                      )
                       from {rel_source} as _src, {rel_args} as _args
                       """)
 

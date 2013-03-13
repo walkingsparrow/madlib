@@ -21,6 +21,73 @@ def __normalize_data(**args):
 
     return None
 
+## ========================================================================
+
+def __tbl_dimension_rownum(tbl_source, col_ind_var):
+    """
+    Measure the dimension and row number of source data table
+    """
+        # independent variable array length
+    dimension = plpy.execute("""
+                             select max(array_upper({col_ind_var},1)) as dimension
+                             from {tbl_source}
+                             """.format(tbl_source = tbl_source,
+                                        col_ind_var = col_ind_var))[0]["dimension"]
+    # total row number of data source table
+    row_num = plpy.execute("""
+                           select count(*) from {tbl_source}
+                           """.format(tbl_source = tbl_source))[0]["count"]
+
+    return (dimension, row_num)
+
+# ========================================================================
+
+def __compute_means (tbl_source, col_ind_var, col_dep_var,
+                     dimension, normalization):
+    """
+    Compute the averages of dependent (y) and independent (x) variables
+    """
+    if normalization:
+        xmean = [0] * dimension;
+        ymean = 0
+    else:
+        xmean = plpy.execute(
+            """
+             select
+                 array_agg(mean order by idx) as mean
+             from (
+                 select idx, avg(x) as mean
+                 from (
+                     select
+                         generate_series(1, {dimension}) as idx,
+                         unnest({col_ind_var}) as x
+                     from {tbl_source}
+                 ) t
+                 group by idx
+             ) s
+            """.format(
+                dimension = dimension,
+                col_ind_var = col_ind_var,
+                tbl_source = tbl_source))[0]["mean"]
+        
+        ymean = plpy.execute(
+            """
+            select avg({col_dep_var}) as mean
+            from {tbl_source}
+            """.format(
+                col_dep_var = col_dep_var,
+                tbl_source = tbl_source))[0]["mean"]
+        
+    xmean_str = "array["
+    for i in range(dimension):
+        xmean_str += str(mean[i])
+        if i != dimension - 1:
+            xmean_str += ", "
+        else:
+            xmean_str += "]"
+
+    return (xmean_str, ymean)
+    
 # ========================================================================
 # ------------------------------------------------------------------------
 
