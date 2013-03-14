@@ -26,9 +26,10 @@ def __fista_params_parser(optimizer_params):
     """
     Parse fista parameters.
     """
-    allowed_params = set(["max_iter", "tolerance"])
+    allowed_params = set(["max_iter", "tolerance", "stepsize"])
     name_value = dict()
     # default values
+    name_value["stepsize"] = None
     name_value["max_iter"] = 100 
     name_value["tolerance"] = 0.000001
     
@@ -42,6 +43,9 @@ def __fista_params_parser(optimizer_params):
         if param_name not in allowed_params:
             plpy.error("{0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
 
+        if param_name == "stepsize":
+            name_value["stepsize"] = float(param_value)
+            
         if param_name == "max_iter":
             name_value["max_iter"] = int(param_value)
 
@@ -49,6 +53,9 @@ def __fista_params_parser(optimizer_params):
             name_value["tolerance"] = float(param_value)
             
     # validate the parameters
+    if name_value["stepsize"] is not None and name_value["stepsize"] <= 0:
+        plpy.error("Elastic Net error: stepsize must be positive!")
+            
     if name_value["max_iter"] <= 0:
         plpy.error("Elastic Net error: max_iter must be positive!")
 
@@ -74,24 +81,18 @@ def __gaussian_fista_lipschitz_const (**args):
     @param col_ind_var -- Name of the independent variable array
     @param dimension -- Length of the independent variable array
     """
-    squaredx = plpy.execute("""
-                            select array_agg(x2 order by idx) as x2
-                            from (
-                                select
-                                    idx,
-                                    avg(x^2) as x2
-                                from (
-                                    select
-                                        generate_series(1, {dimension}) as idx,
-                                        unnest({col_ind_var_new}) as x
-                                    from
-                                        {tbl_used}
-                                ) t
-                                group by idx
-                            ) s
-                            """.format(**args))[0]["x2"]
-    return max(squaredx)
-    
+    squaredx = plpy.execute(
+        """
+        select
+            avg(x^2) * {dimension} as x2
+        from (
+            select
+                unnest({col_ind_var_new}) as x
+            from
+                {tbl_used}
+        ) t
+        """.format(**args))[0]["x2"]
+    return squaredx + args["lambda_value"] * (1 - args["alpha"])
     
 ## ========================================================================
 
@@ -198,10 +199,10 @@ def __fista_cleanup_temp_tbls(**args):
                  drop table if exists {tbl_ind_scales};
                  drop table if exists {tbl_dep_scale};
                  drop table if exists {tbl_data_scaled};
-                 
+                 drop table if exists {tbl_fista_args};
                  drop table if exists pg_temp.{tbl_fista_state};
                  """.format(**args))
-    # drop table if exists pg_temp.{tbl_fista_args};
+  
     return None
 
 ## ========================================================================
@@ -308,14 +309,16 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
     else:
         tbl_used = tbl_source
+        args["tbl_inter_result"] = tbl_result
         use_temp = ""
         args["col_ind_var_new"] = col_ind_var
 
     args["tbl_used"] = tbl_used
-    # calculate Lipschitz constant for this particular data set
-    lipschitz = __gaussian_fista_lipschitz_const(**args)
-    args.update(stepsize = 1./lipschitz)
-        
+    if args["stepsize"] is None:
+        # calculate Lipschitz constant for this particular data set
+        lipschitz = __gaussian_fista_lipschitz_const(**args)
+        args.update(stepsize = 1./lipschitz)
+
     # create the temp table that passes parameter values to FISTA optimizer
     __fista_create_tbl_args(**args)
     

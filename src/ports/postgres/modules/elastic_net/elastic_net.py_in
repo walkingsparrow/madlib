@@ -49,6 +49,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         Coordinate descent method:
 
         Parameters:
+        stepsize         - default is an estimate of Lipschitz constant
         max_iter         - default 100
         tolenrance       - default 1e-5
 

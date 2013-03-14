@@ -160,7 +160,7 @@ def __igd_cleanup_temp_tbls(**args):
                  drop table if exists {tbl_ind_scales};
                  drop table if exists {tbl_dep_scale};
                  drop table if exists {tbl_data_scaled};
-                 drop table if exists pg_temp.{tbl_igd_args};
+                 drop table if exists {tbl_igd_args};
                  drop table if exists pg_temp.{tbl_igd_state};
                  """.format(**args))
     return None
