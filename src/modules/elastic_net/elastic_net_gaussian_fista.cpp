@@ -7,6 +7,26 @@ namespace madlib {
 namespace modules {
 namespace elastic_net {
 
+/*
+  The proxy function, in this case it is just the soft thresholding
+ */
+static ColumnVector proxy (ColumnVector y, ColumnVector gradient_y,
+                           double stepsize, double lambda)
+{
+    ColumnVector x(y.size());
+    ColumnVector u = y - stepsize * gradient_y;
+    for (uint32_t i = 0; i < y.size(); i++)
+    {
+        if (u(i) > lambda)
+            x(i) = u(i) - lambda;
+        else if (u(i) < - lambda)
+            x(i) = u(i) + lambda;
+        else
+            x(i) = 0;
+    }
+    return x;
+}
+
 /**
    @brief Perform FISTA transition step
 

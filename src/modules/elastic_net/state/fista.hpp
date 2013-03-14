@@ -74,7 +74,7 @@ class FistaState
     */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 10 + 4 * inDimension;
+        return 12 + 4 * inDimension;
     }
 
   protected:
@@ -83,7 +83,8 @@ class FistaState
         dimension.rebind(&mStorage[0]);
         lambda.rebind(&mStorage[1]);
         alpha.rebind(&mStorage[2]);
-        stepsize.rebind(&mStorage[3]);
+        // stepsize.rebind(&mStorage[3]);
+        backtracking.rebind(&mStorage[3]);
         totalRows.rebind(&mStorage[4]);
         intercept.rebind(&mStorage[5]);
         intercept_y.rebind(&mStorage[6]);
@@ -92,9 +93,10 @@ class FistaState
         xmean.rebind(&mStorage[7 + 2 * dimension], dimension);
         ymean.rebind(&mStorage[7 + 3 * dimension]);
         tk.rebind(&mStorage[8 + 3 * dimension]);
-
         numRows.rebind(&mStorage[9 + 3 * dimension]);
         gradient.rebind(&mStorage[10 + 3 * dimension], dimension);
+        L0.rebind(&mStorage[11 + 4 * dimension]);
+        eta.rebind(&mStorage[12 + 4 * dimension]);
     }
 
     Handle mStorage;
@@ -103,7 +105,7 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
     typename HandleTraits<Handle>::ReferenceToDouble lambda;
     typename HandleTraits<Handle>::ReferenceToDouble alpha;
-    typename HandleTraits<Handle>::ReferenceToDouble stepsize;
+    // typename HandleTraits<Handle>::ReferenceToDouble stepsize;
     typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
     typename HandleTraits<Handle>::ReferenceToDouble intercept;
     typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
@@ -114,6 +116,9 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToDouble tk;
     typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
+    typename HandleTraits<Handle>::ReferenceToUInt32 backtracking; // is backtracking now?
+    typename HandleTraits<Handle>::ReferenceToDouble L0;
+    typename HandleTraits<Handle>::ReferenceToDouble eta;
 };
 
 }

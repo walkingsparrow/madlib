@@ -61,11 +61,11 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     if family_or_optimizer.lower() == "fista":
         return """
         Fast iterative shrinkage thesholding algorithm
+        with backtracking for stepsizes
 
         Parameters:
-        stepsize         - default is a crude estimate of Lipschitz constant,
-                           which is computed as the average of x_i^2 where
-                           x_i is the i-th data point
+        L0               - default is the average of |x_i^2|
+        eta              - default 2
         max_iter         - default 100
         tolenrance       - default 1e-5
                 
