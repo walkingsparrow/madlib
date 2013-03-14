@@ -17,15 +17,14 @@ m4_include(`SQLCommon.m4') --'
 
 @about
 
-This module implements the elastic net regularization for regressions.
+This module implements the elastic net regularization for regression problems.
 
 This method seeks to find a weight vector that, for any given training example set, minimizes:
 \f[\min_{w \in R^N} L(w) + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 where \f$L\f$ is the metric function that the user wants to minimize. Here \f$ \alpha \in [0,1] \f$
-and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the Ridge regularization. And if \f$\alpha = 1\f$,
-we have the LASSO regularization.
+and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the ridge regularization (known also as Tikhonov regularization), and if \f$\alpha = 1\f$, we have the LASSO regularization.
 
-For Gaussian response family (or linear model), we have
+For the Gaussian response family (or linear model), we have
 \f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right]
 + \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 
@@ -134,46 +133,132 @@ mydb-# from en_data, en_model;
  * @brief Interface for elastic net
  *
  * @param tbl_source        Name of data source table
+ * @param tbl_result        Name of the table to store the results
  * @param col_ind_var       Name of independent variable column, independent variable is an array
  * @param col_dep_var       Name of dependent variable column
- * @param tbl_result        Name of the table to store the results, will return fitting coefficients and likelihood
- * @param lambda            The regularization parameter
+ * @param regress_family    Response type (gaussian or binomial)
  * @param alpha             The elastic net parameter, [0, 1]
- * @param normalization     Whether to normalize the variables
- * @param regress_family    Response type, 'gaussian' or 'binomial'
+ * @param lambda            The regularization parameter
+ * @param standardization   Whether to normalize the variables
+ * @param grouping_col      List of columns on which to apply grouping 
+ *                               (currently only a placeholder)
  * @param optimizer         The optimization algorithm, for example 'igd'
- * @param optimizer_params  Parameters of the above optimizer, the format is '{arg = value, ...}'::varchar[]
+ * @param optimizer_params  Parameters of the above optimizer, 
+ *                                the format is '{arg = value, ...}'::varchar[]
+ * @param exclude           Which columns to exclude?
+ *                                 (applicable only if col_ind_var is set as *)
+ * @param num_of_iteration  Maximum number of iterations to run the algorithm
+                                (default value of 100)
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
     col_ind_var         VARCHAR,
     col_dep_var         VARCHAR,
-    tbl_result          VARCHAR,
-    lambda_value        DOUBLE PRECISION,
-    alpha               DOUBLE PRECISION,
-    normalization       BOOLEAN,
     regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_col        VARCHAR,
     optimizer           VARCHAR,
-    optimizer_params    VARCHAR[]
+    optimizer_params    VARCHAR[],
+    exclude             VARCHAR, 
+    num_of_iteration    INTEGER
 ) RETURNS VOID AS $$
 PythonFunction(elastic_net, elastic_net, elastic_net_train)
 $$ LANGUAGE plpythonu;
 
+------------------------------------------------------------------------
+-- Overloaded functions
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
     col_ind_var         VARCHAR,
     col_dep_var         VARCHAR,
-    tbl_result          VARCHAR,
-    lambda_value        DOUBLE PRECISION,
+    regress_family      VARCHAR,
     alpha               DOUBLE PRECISION,
-    normalization       BOOLEAN,
-    regress_family      VARCHAR
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_columns    VARCHAR,
+    optimizer           VARCHAR,
+    optimizer_params    VARCHAR[],
+    exclude             VARCHAR
 ) RETURNS VOID AS $$
 BEGIN
-    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 'newton', '{NULL}'::VARCHAR[]);
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        $9, $10, $11, $12, 100);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_columns    VARCHAR,
+    optimizer           VARCHAR,
+    optimizer_params    VARCHAR[]
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        $9, $10, $11, NULL, 100);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_columns    VARCHAR,
+    optimizer           VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        $9, $10, '{NULL}'::VARCHAR[] ,NULL, 100);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_columns    VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        $9, 'FISTA', '{NULL}'::VARCHAR[] ,NULL, 100);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        NULL, 'FISTA', '{NULL}'::VARCHAR[] ,NULL, 100);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
 ------------------------------------------------------------------------
 
 /**
@@ -185,7 +270,7 @@ DECLARE
     str     VARCHAR;
 BEGIN
     str := '
-    Right now, gaussian (linear) family is supported!  
+    Right now, only gaussian (linear) family is supported!  
     SELECT madlib.elastic_net_train(''gaussian'');   
     to see more.';
     return str;
