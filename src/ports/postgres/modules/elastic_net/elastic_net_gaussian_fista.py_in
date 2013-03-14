@@ -83,7 +83,7 @@ def __gaussian_fista_lipschitz_const (**args):
                                 from (
                                     select
                                         generate_series(1, {dimension}) as idx,
-                                        unnest({col_ind_var}) as x
+                                        unnest({col_ind_var_new}) as x
                                     from
                                         {tbl_used}
                                 ) t
@@ -99,11 +99,11 @@ def __fista_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in FISTA iterations
     """
-    (xmean_str, ymean) = __compute_means(args["tbl_source"], args["col_ind_var"],
+    (xmean_str, ymean) = __compute_means(args["tbl_used"], args["col_ind_var_new"],
                                          args["col_dep_var"], args["dimension"],
                                          args["normalization"])
     
-    effective_lambda = lambda_value # * row_num
+    effective_lambda = args["lambda_value"] # * row_num
     tbl_fista_state = __unique_string()
     tbl_fista_args = __unique_string()
     plpy.execute("""
@@ -142,6 +142,8 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
                 tbl_data = tbl_source, # argument name used in normalization
                 col_ind_var = col_ind_var, col_dep_var = col_dep_var,
+                col_ind_var_norm_new = __unique_string(), # for normalization usage
+                col_ind_var_tmp = __unique_string(),
                 tbl_result = tbl_result,
                 lambda_value = lambda_value, alpha = alpha,
                 dimension = dimension, row_num = row_num,
@@ -302,8 +304,12 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
     if normalization:
         __normalize_data(**args)
         tbl_used = args["tbl_data_scaled"]
+        use_temp = "temp"
+        args["col_ind_var_new"] = args["col_ind_var_norm_new"]
     else:
         tbl_used = tbl_source
+        use_temp = ""
+        args["col_ind_var_new"] = col_ind_var
 
     args["tbl_used"] = tbl_used
     # calculate Lipschitz constant for this particular data set
@@ -316,13 +322,18 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
     # perform the actual calculation
     iteration_run = __compute_gaussian_fista(schema_madlib, args["tbl_fista_args"],
                                              args["tbl_fista_state"], tbl_used,
-                                             col_ind_var, col_dep_var, iteration_run)
+                                             args["col_ind_var_new"],
+                                             col_dep_var, start_iter = 0,
+                                             dimension_name = args["dimension_name"],
+                                             stepsize_name = args["stepsize_name"],
+                                             lambda_name = args["lambda_name"],
+                                             alpha_name = args["alpha_name"],
+                                             total_rows_name = args["total_rows_name"],
+                                             max_iter_name = args["max_iter_name"],
+                                             tolerance_name = args["tolerance_name"],
+                                             xmean_name = args["xmean_name"],
+                                             ymean_name = args["ymean_name"])
 
-    if normalization:
-        use_temp = "temp"
-    else:
-        args["tbl_inter_result"] = tbl_result
-        use_temp = ""
     plpy.execute("""
                  drop table if exists {tbl_inter_result};
                  create {use_temp} table {tbl_inter_result} (
@@ -336,8 +347,8 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
     plpy.execute("""
                  insert into {tbl_inter_result}
                     select
-                        (result).coefficients[1:{dimension}],
-                        (result).coefficients[{dimension}+1],
+                        (result).coefficients,
+                        (result).intercept,
                         0, 
                         False, {iteration_run}
                     from (
@@ -357,7 +368,7 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
                             avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian',
                                                                                     coefficients,
                                                                                     intercept,
-                                                                                    {col_ind_var}))^2) / 2.
+                                                                                    {col_ind_var_new}))^2) / 2.
                                                                                     as loss
                         from
                             {tbl_inter_result},
@@ -371,7 +382,7 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
                             ) s
                         ) t2
                  ) u
-                 """.format(tbl_used = tbl_used, **args))
+                 """.format(**args))
     
     if normalization:
         __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
@@ -391,7 +402,7 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
 ## ========================================================================
 
 def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
-                           col_ind_var, col_dep_var, start_iter):
+                           col_ind_var, col_dep_var, start_iter, **kwargs):
     """
     Driver function for elastic net with Gaussian response using FISTA
 
@@ -421,7 +432,8 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
         schema_madlib = schema_madlib, # Identifiers start here
         rel_source = tbl_source,
         col_ind_var = col_ind_var,
-        col_dep_var = col_dep_var)
+        col_dep_var = col_dep_var,
+        **kwargs)
     
     with iterationCtrl as it:
         it.iteration = start_iter
@@ -440,18 +452,18 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               (_args.{dimension_name})::integer,
                               (_args.{xmean_name})::double precision[],
                               (_args.{ymean_name})::double precision,
-                              (_args.{sq_name})::double precision[],
+                              1::double precision,
                               (_args.{total_rows_name})::integer)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
          
             if it.test("""
-                       {iteration} >= _args.max_iter or
+                       {iteration} >= _args.{max_iter_name} or
                        {schema_madlib}.__gaussian_fista_state_diff(
                            (select _state from {rel_state}
                                where _iteration = {iteration} - 1),
                            (select _state from {rel_state}
-                               where _iteration = {iteration})) < _args.tolerance
+                               where _iteration = {iteration})) < _args.{tolerance_name}
                        """):
                 break
     return iterationCtrl.iteration

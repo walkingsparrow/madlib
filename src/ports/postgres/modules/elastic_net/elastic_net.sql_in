@@ -441,7 +441,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
     SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_fista_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_fista_final,
-    InitCond = '{0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --

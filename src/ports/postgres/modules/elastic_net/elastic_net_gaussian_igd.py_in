@@ -266,7 +266,6 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
         __normalize_data(**args)
         args["tbl_used"] = args["tbl_data_scaled"]
         use_temp = "temp"
-        tbl_inter_result = __unique_string()
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
     else:
         args["tbl_used"] = tbl_source
@@ -279,7 +278,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
 
     # perform the actual calculation
     iteration_run = __compute_gaussian_igd(schema_madlib, args["tbl_igd_args"],
-                                           args["tbl_igd_state"], tbl_used,
+                                           args["tbl_igd_state"], args["tbl_used"],
                                            args["col_ind_var_new"], col_dep_var, True,
                                            col_ind_var_new = args["col_ind_var_new"],
                                            dimension_name = args["dimension_name"],

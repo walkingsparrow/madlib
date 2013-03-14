@@ -53,8 +53,8 @@ class FistaState
                                              dbal::DoZero,
                                              dbal::ThrowBadAlloc>(
                                                  arraySize(inDimension));
-        task.dimension.rebind(&mStorage[0]);
-        task.dimension = inDimension;
+        dimension.rebind(&mStorage[0]);
+        dimension = inDimension;
         rebind();
     }
 
@@ -80,47 +80,40 @@ class FistaState
   protected:
     void rebind ()
     {
-        task.dimension.rebind(&mStorage[0]);
-        task.lambda.rebind(&mStorage[1]);
-        task.alpha.rebind(&mStorage[2]);
-        task.stepsize.rebind(&mStorage[3]);
-        task.totalRows.rebind(&mStorage[4]);
-        task.intercept.rebind(&mStorage[5]);
-        task.intercept_y.rebind(&mStorage[6]);
-        task.coef.rebind(&mStorage[7], task.dimension);
-        task.coef_y.rebind(&mStorage[7 + task.dimension], task.dimension);
-        task.xmean.rebind(&mStorage[7 + 2 * task.dimension], task.dimension);
-        task.ymean.rebind(&mStorage[7 + 3 * task.dimension]);
-        task.tk.rebind(&mStorage[8 + 3 * task.dimension]);
+        dimension.rebind(&mStorage[0]);
+        lambda.rebind(&mStorage[1]);
+        alpha.rebind(&mStorage[2]);
+        stepsize.rebind(&mStorage[3]);
+        totalRows.rebind(&mStorage[4]);
+        intercept.rebind(&mStorage[5]);
+        intercept_y.rebind(&mStorage[6]);
+        coef.rebind(&mStorage[7], dimension);
+        coef_y.rebind(&mStorage[7 + dimension], dimension);
+        xmean.rebind(&mStorage[7 + 2 * dimension], dimension);
+        ymean.rebind(&mStorage[7 + 3 * dimension]);
+        tk.rebind(&mStorage[8 + 3 * dimension]);
 
-        algo.numRows.rebind(&mStorage[9 + 3 * task.dimension]);
-        algo.gradient.rebind(&mStorage[10 + 3 * task.dimension], task.dimension);
+        numRows.rebind(&mStorage[9 + 3 * dimension]);
+        gradient.rebind(&mStorage[10 + 3 * dimension], dimension);
     }
 
     Handle mStorage;
 
   public:
-struct TaskState
-    {
-        typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
-        typename HandleTraits<Handle>::ReferenceToDouble lambda;
-        typename HandleTraits<Handle>::ReferenceToDouble alpha;
-        typename HandleTraits<Handle>::ReferenceToDouble stepsize;
-        typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
-        typename HandleTraits<Handle>::ReferenceToDouble intercept;
-        typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef_y;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
-        typename HandleTraits<Handle>::ReferenceToDouble ymean;
-        typename HandleTraits<Handle>::ReferenceToDouble tk;
-    } task;
-
-    struct AlgoState
-    {
-        typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
-        typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
-    } algo;
+    typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
+    typename HandleTraits<Handle>::ReferenceToDouble lambda;
+    typename HandleTraits<Handle>::ReferenceToDouble alpha;
+    typename HandleTraits<Handle>::ReferenceToDouble stepsize;
+    typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
+    typename HandleTraits<Handle>::ReferenceToDouble intercept;
+    typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef_y;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
+    typename HandleTraits<Handle>::ReferenceToDouble ymean;
+    typename HandleTraits<Handle>::ReferenceToDouble tk;
+    typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
 };
 
 }
