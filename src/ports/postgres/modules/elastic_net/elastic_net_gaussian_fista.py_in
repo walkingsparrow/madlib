@@ -26,10 +26,11 @@ def __fista_params_parser(optimizer_params):
     """
     Parse fista parameters.
     """
-    allowed_params = set(["max_iter", "tolerance", "stepsize"])
+    allowed_params = set(["max_iter", "tolerance", "l0", "eta"])
     name_value = dict()
     # default values
-    name_value["stepsize"] = None
+    name_value["L0"] = 0.01
+    name_value["eta"] = 2
     name_value["max_iter"] = 100 
     name_value["tolerance"] = 0.000001
     
@@ -43,8 +44,11 @@ def __fista_params_parser(optimizer_params):
         if param_name not in allowed_params:
             plpy.error("{0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
 
-        if param_name == "stepsize":
-            name_value["stepsize"] = float(param_value)
+        if param_name == "l0":
+            name_value["L0"] = float(param_value)
+
+        if param_name == "eta":
+            name_value["eta"] = float(param_value)
             
         if param_name == "max_iter":
             name_value["max_iter"] = int(param_value)
@@ -53,8 +57,11 @@ def __fista_params_parser(optimizer_params):
             name_value["tolerance"] = float(param_value)
             
     # validate the parameters
-    if name_value["stepsize"] is not None and name_value["stepsize"] <= 0:
-        plpy.error("Elastic Net error: stepsize must be positive!")
+    if name_value["L0"] <= 0:
+        plpy.error("Elastic Net error: backtracking parameter L0 must be positive!")
+
+    if name_value["eta"] < 1:
+        plpy.error("Elastic Net error: backtracking parameter eta must be larger than 1!")
             
     if name_value["max_iter"] <= 0:
         plpy.error("Elastic Net error: max_iter must be positive!")
@@ -63,36 +70,6 @@ def __fista_params_parser(optimizer_params):
         plpy.error("Elastic Net error: tolerance must be positive!")
 
     return name_value
-
-## ========================================================================
-
-def __gaussian_fista_lipschitz_const (**args):
-    """
-    Calculate the Lipschitz constant for this particular data set
-
-    For Gaussian response case (linear model), the Lipschitz constant
-    is actually $max_i <x_i^2>$ for mean squared error.
-
-    So this function computes all the mean squared values for the array
-    elements in one scan of the data table, and pick out the largest one.
-
-    @param tbl_used -- Table (may or may not be normalized) to be used for all
-    the following computation
-    @param col_ind_var -- Name of the independent variable array
-    @param dimension -- Length of the independent variable array
-    """
-    squaredx = plpy.execute(
-        """
-        select
-            avg(x^2) * {dimension} as x2
-        from (
-            select
-                unnest({col_ind_var_new}) as x
-            from
-                {tbl_used}
-        ) t
-        """.format(**args))[0]["x2"]
-    return squaredx + args["lambda_value"] * (1 - args["alpha"])
     
 ## ========================================================================
 
@@ -111,21 +88,22 @@ def __fista_create_tbl_args(**args):
                  drop table if exists {tbl_fista_args};       
                  create temp table {tbl_fista_args} (
                      {dimension_name}       integer,
-                     {stepsize_name}        double precision,
                      {lambda_name}          double precision,
                      {alpha_name}           double precision,
                      {total_rows_name}      integer,
                      {max_iter_name}        integer,
                      {tolerance_name}       double precision,
                      {xmean_name}           double precision[],
-                     {ymean_name}           double precision
+                     {ymean_name}           double precision,
+                     {L0_name}              double precision,
+                     {eta_name}             double precision
                  );
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_fista_args} values
-                     ({dimension}, {stepsize}, {effective_lambda},
+                     ({dimension}, {effective_lambda},
                      {alpha}, {row_num}, {max_iter}, {tolerance},
-                     {xmean_str}, {ymean});
+                     {xmean_str}, {ymean}, {L0}, {eta});
                  """.format(effective_lambda = effective_lambda,
                             xmean_str = xmean_str, ymean = ymean,
                             **args))
@@ -176,7 +154,6 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
 
     # more, for args table
     args["dimension_name"] = __unique_string()
-    args["stepsize_name"] = __unique_string()
     args["lambda_name"] = __unique_string()
     args["alpha_name"] = __unique_string()
     args["total_rows_name"] = __unique_string()
@@ -184,6 +161,8 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     args["tolerance_name"] = __unique_string()
     args["xmean_name"] = __unique_string()
     args["ymean_name"] = __unique_string()
+    args["L0_name"] = __unique_string()
+    args["eta_name"] = __unique_string()
    
     return args
 
@@ -314,10 +293,6 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
         args["col_ind_var_new"] = col_ind_var
 
     args["tbl_used"] = tbl_used
-    if args["stepsize"] is None:
-        # calculate Lipschitz constant for this particular data set
-        lipschitz = __gaussian_fista_lipschitz_const(**args)
-        args.update(stepsize = 1./lipschitz)
 
     # create the temp table that passes parameter values to FISTA optimizer
     __fista_create_tbl_args(**args)
@@ -328,14 +303,15 @@ def __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_in
                                              args["col_ind_var_new"],
                                              col_dep_var, start_iter = 0,
                                              dimension_name = args["dimension_name"],
-                                             stepsize_name = args["stepsize_name"],
                                              lambda_name = args["lambda_name"],
                                              alpha_name = args["alpha_name"],
                                              total_rows_name = args["total_rows_name"],
                                              max_iter_name = args["max_iter_name"],
                                              tolerance_name = args["tolerance_name"],
                                              xmean_name = args["xmean_name"],
-                                             ymean_name = args["ymean_name"])
+                                             ymean_name = args["ymean_name"],
+                                             L0_name = args["L0_name"],
+                                             eta_name = args["eta_name"])
 
     plpy.execute("""
                  drop table if exists {tbl_inter_result};
@@ -451,12 +427,13 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                                   where _iteration = {iteration}),
                               (_args.{lambda_name})::double precision,
                               (_args.{alpha_name})::double precision,
-                              (_args.{stepsize_name})::double precision,
                               (_args.{dimension_name})::integer,
                               (_args.{xmean_name})::double precision[],
                               (_args.{ymean_name})::double precision,
                               1::double precision,
-                              (_args.{total_rows_name})::integer)
+                              (_args.{total_rows_name})::integer,
+                              (_args.{L0_name})::double precision,
+                              (_args.{eta_name})::double precision)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
          

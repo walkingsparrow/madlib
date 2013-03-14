@@ -74,7 +74,7 @@ class FistaState
     */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 12 + 4 * inDimension;
+        return 16 + 5 * inDimension;
     }
 
   protected:
@@ -83,7 +83,6 @@ class FistaState
         dimension.rebind(&mStorage[0]);
         lambda.rebind(&mStorage[1]);
         alpha.rebind(&mStorage[2]);
-        // stepsize.rebind(&mStorage[3]);
         backtracking.rebind(&mStorage[3]);
         totalRows.rebind(&mStorage[4]);
         intercept.rebind(&mStorage[5]);
@@ -95,8 +94,13 @@ class FistaState
         tk.rebind(&mStorage[8 + 3 * dimension]);
         numRows.rebind(&mStorage[9 + 3 * dimension]);
         gradient.rebind(&mStorage[10 + 3 * dimension], dimension);
-        L0.rebind(&mStorage[11 + 4 * dimension]);
-        eta.rebind(&mStorage[12 + 4 * dimension]);
+        L0.rebind(&mStorage[10 + 4 * dimension]);
+        eta.rebind(&mStorage[11 + 4 * dimension]);
+        fn.rebind(&mStorage[12 + 4 * dimension]);
+        Qfn.rebind(&mStorage[13 + 4 * dimension]);
+        stepsize.rebind(&mStorage[14 + 4 * dimension]);
+        b_coef.rebind(&mStorage[15 + 4 * dimension], dimension);
+        b_intercept.rebind(&mStorage[15 + 5 * dimension]);
     }
 
     Handle mStorage;
@@ -105,7 +109,7 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToUInt32 dimension;
     typename HandleTraits<Handle>::ReferenceToDouble lambda;
     typename HandleTraits<Handle>::ReferenceToDouble alpha;
-    // typename HandleTraits<Handle>::ReferenceToDouble stepsize;
+    typename HandleTraits<Handle>::ReferenceToDouble stepsize;
     typename HandleTraits<Handle>::ReferenceToUInt64 totalRows;
     typename HandleTraits<Handle>::ReferenceToDouble intercept;
     typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
@@ -119,6 +123,10 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToUInt32 backtracking; // is backtracking now?
     typename HandleTraits<Handle>::ReferenceToDouble L0;
     typename HandleTraits<Handle>::ReferenceToDouble eta;
+    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap b_coef; // backtracking coef
+    typename HandleTraits<Handle>::ReferenceToDouble b_intercept; // backtracking intercept
+    typename HandleTraits<Handle>::ReferenceToDouble fn; // store the function value in backtracking
+    typename HandleTraits<Handle>::ReferenceToDouble Qfn; // the Q function value in backtracking
 };
 
 }

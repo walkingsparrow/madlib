@@ -478,12 +478,13 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
     pre_state           DOUBLE PRECISION[],
     lambda              DOUBLE PRECISION,
     alpha               DOUBLE PRECISION,
-    stepsize            DOUBLE PRECISION,
     dimension           INTEGER,
     xmean               DOUBLE PRECISION[],
     ymean               DOUBLE PRECISION,
     tk                  DOUBLE PRECISION,
-    total_rows          INTEGER
+    total_rows          INTEGER,
+    L0                  DOUBLE PRECISION,
+    eta                 DOUBLE PRECISION
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'gaussian_fista_transition'
 LANGUAGE C IMMUTABLE;
@@ -510,23 +511,24 @@ LANGUAGE C IMMUTABLE STRICT;
  * @brief Perform one iteration step of FISTA for linear models
  */
 CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
-    /* ind_var */           DOUBLE PRECISION[],
-    /* dep_var */           DOUBLE PRECISION,
-    /* pre_state */         DOUBLE PRECISION[],
-    /* lambda  */           DOUBLE PRECISION,
-    /* alpha */             DOUBLE PRECISION,
-    /* Lipschitz */         DOUBLE PRECISION,
-    /* dimension */         INTEGER,
-    /* mean x */            DOUBLE PRECISION[],
-    /* mean y */            DOUBLE PRECISION,
-    /* tk */                DOUBLE PRECISION,
-    /* total_rows */        INTEGER
+    /* ind_var      */  DOUBLE PRECISION[],
+    /* dep_var      */  DOUBLE PRECISION,
+    /* pre_state    */  DOUBLE PRECISION[],
+    /* lambda       */  DOUBLE PRECISION,
+    /* alpha        */  DOUBLE PRECISION,
+    /* dimension    */  INTEGER,
+    /* mean x       */  DOUBLE PRECISION[],
+    /* mean y       */  DOUBLE PRECISION,
+    /* tk           */  DOUBLE PRECISION,
+    /* total_rows   */  INTEGER,
+    /* L0           */  DOUBLE PRECISION,
+    /* eta          */  DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_fista_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_fista_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --
