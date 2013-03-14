@@ -37,8 +37,8 @@ def __fista_params_parser(optimizer_params):
         items = s.split("=")
         if (len(items) != 2):
             plpy.error("Optimizer parameter list has incorrect format!")
-        param_name = items[0].strip()
-        param_value = items[1].strip()
+        param_name = items[0].strip().lower()
+        param_value = items[1].strip().lower()
 
         if param_name not in allowed_params:
             plpy.error("{0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
