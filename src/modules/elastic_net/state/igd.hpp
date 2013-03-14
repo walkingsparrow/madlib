@@ -77,21 +77,20 @@ class IgdState
   protected:
     void rebind ()
     {
-        dimension.rebind(&mStorage[0]);
+        dimension.rebind(&mStorage[0]); 
         stepsize.rebind(&mStorage[1]);
         lambda.rebind(&mStorage[2]);
         alpha.rebind(&mStorage[3]);
         totalRows.rebind(&mStorage[4]);
         intercept.rebind(&mStorage[5]);
         ymean.rebind(&mStorage[6]);
-        xmean.rebind(&mStorage[7], dimension);
-        coef.rebind(&mStorage[7 + dimension], dimension);
-
-        numRows.rebind(&mStorage[7 + 2 * dimension]);
-        loss.rebind(&mStorage[8 + 2 * dimension]);
-        p.rebind(&mStorage[9 + 2 * dimension]);
-        q.rebind(&mStorage[10 + 2 * dimension]);
-        incrIntercept.rebind(&mStorage[11 + 2 * dimension]);
+        numRows.rebind(&mStorage[7]);
+        loss.rebind(&mStorage[8]);
+        p.rebind(&mStorage[9]);
+        q.rebind(&mStorage[10]);
+        incrIntercept.rebind(&mStorage[11]);
+        xmean.rebind(&mStorage[12], dimension);
+        coef.rebind(&mStorage[12 + dimension], dimension);
         incrCoef.rebind(&mStorage[12 + 2 * dimension], dimension);
         theta.rebind(&mStorage[12 + 3 * dimension], dimension);
     }
@@ -119,7 +118,6 @@ class IgdState
     typename HandleTraits<Handle>::ReferenceToDouble ymean;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
-     
     typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
     typename HandleTraits<Handle>::ReferenceToDouble loss;
     typename HandleTraits<Handle>::ReferenceToDouble p; // used for mirror truncation

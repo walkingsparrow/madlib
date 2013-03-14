@@ -15,9 +15,19 @@ def __normalize_data(**args):
 
     The output is stored in tbl_data_scaled
     """
-    __utils_ind_var_scales(**args)
-    __utils_dep_var_scale(**args)
-    __utils_normalize_data(**args)
+    __utils_ind_var_scales(tbl_data = args["tbl_source"], col_ind_var = args["col_ind_var"],
+                           row_num = args["row_num"], dimension = args["dimension"],
+                           tbl_scales = args["tbl_ind_scales"])
+    
+    __utils_dep_var_scale (tbl_data = args["tbl_source"], col_dep_var = args["col_dep_var"],
+                           row_num = args["row_num"], tbl_scale = args["tbl_dep_scale"])
+
+    __utils_normalize_data(tbl_data = args["tbl_source"], col_ind_var = args["col_ind_var"],
+                           dimension = args["dimension"], col_dep_var = args["col_dep_var"],
+                           tbl_ind_scales = args["tbl_ind_scales"],
+                           tbl_dep_scale = args["tbl_dep_scale"],
+                           tbl_data_scaled = args["tbl_data_scaled"],
+                           col_ind_var_norm_new = args["col_ind_var_norm_new"])
 
     return None
 
@@ -80,7 +90,7 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
         
     xmean_str = "array["
     for i in range(dimension):
-        xmean_str += str(mean[i])
+        xmean_str += str(xmean[i])
         if i != dimension - 1:
             xmean_str += ", "
         else:

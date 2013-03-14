@@ -231,6 +231,7 @@ $$ LANGUAGE plpythonu STRICT;
 ------------------------------------------------------------------------
 
 CREATE TYPE MADLIB_SCHEMA.__elastic_net_result AS (
+    intercept       DOUBLE PRECISION,
     coefficients    DOUBLE PRECISION[],
     likelihood      DOUBLE PRECISION
 );
@@ -290,7 +291,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step(
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --

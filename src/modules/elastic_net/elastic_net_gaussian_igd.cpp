@@ -10,8 +10,12 @@ namespace elastic_net {
 
 // sign of a number
 static double sign(const double & x) {
-    if (x == 0.) { return 0.; }
-    else { return x > 0. ? 1. : -1.; }
+    if (x > 0)
+        return 1;
+    else if (x < 0)
+        return -1;
+    else
+        return 0;
 }
 
 // ------------------------------------------------------------------------
@@ -27,27 +31,26 @@ static double p_abs (ColumnVector v, double r)
 
 // p-form link function, q = p/(p-1)
 // For inverse function, jut replace w with theta and q with p 
-static ColumnVector link_fn (ColumnVector w, double q)
+static ColumnVector link_fn (ColumnVector theta, double p)
 {
-    ColumnVector theta(w.size());
-    double abs_w = p_abs(w, q);
-    if (abs_w == 0)
+    ColumnVector w(theta.size());
+    double abs_theta = p_abs(theta, p);
+    if (fabs(abs_theta) <= std::numeric_limits<double>::denorm_min())
     {
-        for (int i = 0; i < w.size(); i++)
-            theta(i) = 0;
-        
-        return theta;
+        for (int i = 0; i < theta.size(); i++) w(i) = 0;
+        return w;
     }
 
-    double denominator = pow(abs_w, q - 2);
+    double denominator = pow(abs_theta, p - 2);
 
-    for (int i = 0; i < w.size(); i++)
-        if (w(i) == 0) theta(i) = 0;
+    for (int i = 0; i < theta.size(); i++)
+        if (fabs(theta(i)) <= std::numeric_limits<double>::denorm_min())
+            w(i) = 0;
         else
-            theta(i) = sign(w(i)) * pow(fabs(w(i)), q - 1)
+            w(i) = sign(theta(i)) * pow(fabs(theta(i)), p - 1)
                 / denominator;
     
-    return theta;
+    return w;
 }
 
 // ------------------------------------------------------------------------
@@ -64,7 +67,7 @@ AnyType
 gaussian_igd_transition::run (AnyType& args)
 {
     IgdState<MutableArrayHandle<double> > state = args[0];
-    
+
     // initialize the state if working on the first tuple
     if (state.numRows == 0)
     {
@@ -93,16 +96,15 @@ gaussian_igd_transition::run (AnyType& args)
             state.theta.setZero();
             state.p = 2 * log(state.dimension);
             state.q = state.p / (state.p - 1);
+            state.coef = link_fn(state.theta, state.p);
+            state.intercept = state.ymean - dot(state.coef, state.xmean);
         }
       
         state.loss = 0.;
         state.incrCoef = state.coef;
         state.incrIntercept = state.intercept;
     }
-
-    // tuple
-    // using madlib::dbal::eigen_integration::MappedColumnVector;
-   
+    
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
 
@@ -111,31 +113,28 @@ gaussian_igd_transition::run (AnyType& args)
     double r = wx - y;
 
     ColumnVector gradient(state.dimension);
-    gradient = r * x;
-    
+    gradient = r * (x - state.xmean) + (1 - state.alpha) * state.lambda
+        * state.incrCoef;
+
     for (uint32_t i = 0; i < state.dimension; i++)
     {
-        gradient(i) += (1 - state.alpha) * state.lambda
-            * state.coef(i);
         // step 1
         state.theta(i) -= state.stepsize * gradient(i)
             / state.totalRows;
         double step1_sign = sign(state.theta(i));
         // step 2
         state.theta(i) -= state.stepsize * state.alpha
-            * state.lambda * sign(state.coef(i))
+            * state.lambda * sign(state.theta(i))
             / state.totalRows;
         // set to 0 if the value crossed zero during the two steps
-        if (step1_sign != sign(state.theta(i))) state.theta(i);
+        if (step1_sign != sign(state.theta(i))) state.theta(i) = 0;
     }
-    
+
     state.incrCoef = link_fn(state.theta, state.p);
 
     state.incrIntercept = state.ymean - dot(state.incrCoef, state.xmean);
-    
-    // OLSENRegularizedIGDAlgorithm::transition(state, tuple);
+
     state.loss += r * r / 2.;
-    // OLSLossAlgorithm::transition(state, tuple);
     state.numRows ++;
 
     return state;
@@ -168,8 +167,8 @@ gaussian_igd_merge::run (AnyType& args)
     // the following two lines might not be necessary, since incrCoef is
     // not used in merge, only in final function
     // this can be put into final
-    state1.incrCoef = link_fn(state1.theta, state1.p);
-    state1.incrIntercept = state1.ymean - dot(state1.incrCoef, state1.xmean);
+    // state1.incrCoef = link_fn(state1.theta, state1.p);
+    // state1.incrIntercept = state1.ymean - dot(state1.incrCoef, state1.xmean);
     
     state1.loss += state2.loss;
     
@@ -196,9 +195,11 @@ gaussian_igd_final::run (AnyType& args)
     if (state.numRows == 0) return Null(); 
 
     // finalizing
-    state.coef = state.incrCoef;
-    state.intercept = state.incrIntercept;
-
+    // state.coef = state.incrCoef;
+    // state.intercept = state.incrIntercept;
+    state.coef = link_fn(state.theta, state.p);
+    state.intercept = state.ymean - dot(state.coef, state.xmean);
+  
     return state;
 }
 
@@ -213,17 +214,17 @@ __gaussian_igd_state_diff::run (AnyType& args)
     IgdState<ArrayHandle<double> > state1 = args[0];
     IgdState<ArrayHandle<double> > state2 = args[1];
 
-    // double diff = 0;    
-    // Index i;
-    // int n = state1.coef.rows();
-    // for (i = 0; i < n; i++)
-    // {
-    //     diff += std::abs(state1.coef(i) - state2.coef(i));
-    // }
+    double diff = 0;    
+    Index i;
+    int n = state1.coef.rows();
+    for (i = 0; i < n; i++)
+    {
+        diff += std::abs(state1.coef(i) - state2.coef(i));
+    }
 
-    // return diff / n;
+    return diff / n;
 
-    return std::abs((state1.loss - state2.loss) / state2.loss);
+    // return std::abs((state1.loss - state2.loss) / state2.loss);
 }
 
 // ------------------------------------------------------------------------

@@ -11,11 +11,11 @@ from utilities.utilities import __unique_string
 from convex.utils_regularization import __utils_restore_linear_coef_scales
 from utilities.validate_args import __is_tbl_exists
 from utilities.validate_args import __is_tbl_has_rows
-from utilities.validate_args import __is_col_exists
+# from utilities.validate_args import __is_col_exists
 from utilities.validate_args import __is_tbl_exists_in_schema
-from utilities.validate_args import __is_scalar_col_no_null
-from utilities.validate_args import __is_array_col_same_dimension
-from utilities.validate_args import __is_array_col_no_null
+# from utilities.validate_args import __is_scalar_col_no_null
+# from utilities.validate_args import __is_array_col_same_dimension
+# from utilities.validate_args import __is_array_col_no_null
 from elastic_net_gaussian_igd import __tbl_dimension_rownum
 from utilities.control import IterationController
 from elastic_net_utils import IterationControllerNoTableDrop
@@ -438,7 +438,7 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               (_args.{alpha_name})::double precision,
                               (_args.{stepsize_name})::double precision,
                               (_args.{dimension_name})::integer,
-                              (_args.{xmeans_name})::double precision[],
+                              (_args.{xmean_name})::double precision[],
                               (_args.{ymean_name})::double precision,
                               (_args.{sq_name})::double precision[],
                               (_args.{total_rows_name})::integer)
