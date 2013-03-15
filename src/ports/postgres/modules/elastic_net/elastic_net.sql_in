@@ -403,6 +403,25 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step(
     InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
+CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step_single_seg (
+    /* ind_var */           DOUBLE PRECISION[],
+    /* dep_var */           DOUBLE PRECISION,
+    /* pre_state */         DOUBLE PRECISION[],
+    /* lambda  */           DOUBLE PRECISION,
+    /* alpha */             DOUBLE PRECISION,
+    /* dimension */         INTEGER,
+    /* stepsize */          DOUBLE PRECISION,
+    /* total_rows */        INTEGER,
+    /* xmeans */            DOUBLE PRECISION[],
+    /* ymean */             DOUBLE PRECISION
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
+    -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
+    FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+);
+
 --
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_state_diff (

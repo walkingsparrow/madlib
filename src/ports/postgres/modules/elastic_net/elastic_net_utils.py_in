@@ -137,29 +137,31 @@ def __compute_log_likelihood (**args):
     """
     Compute the log-likelihood at the end of calculation
     """
-    log_likelihood = plpy.execute(
+    loss = plpy.execute(
         """
         select
-            -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
+            avg(({col_dep_var_new} - {schema_madlib}.elastic_net_predict('gaussian',
+                                                                    coefficients,
+                                                                    intercept,
+                                                                    {col_ind_var_new}))^2) / 2.
+                                                                    as loss
+        from
+            {tbl_inter_result},
+            {tbl_used}
+        """.format(**args))[0]["loss"]
+    mods = plpy.execute(
+        """
+        select sum(coef^2) as module_2, sum(abs(coef)) as module_1
         from (
-            select
-                avg(({col_dep_var_new} - {schema_madlib}.elastic_net_predict('gaussian',
-                                                                        coefficients,
-                                                                        intercept,
-                                                                        {col_ind_var_new}))^2) / 2.
-                                                                        as loss
-            from
-                {tbl_inter_result},
-                {tbl_used}
-            ) t1,
-            (
-                select sum(coef^2) as module_2, sum(abs(coef)) as module_1
-                from (
-                    select unnest(coefficients) as coef
-                    from {tbl_inter_result}
-                ) s
-            ) t2
-        """.format(**args))[0]["llhd"]
+            select unnest(coefficients) as coef
+            from {tbl_inter_result}
+        ) s
+        """.format(**args))[0]
+    module_1 = mods["module_1"]
+    module_2 = mods["module_2"]
+
+    log_likelihood = -(loss + args["lambda_value"] * ((1 - args["alpha"])
+                                                      * module_2 / 2. + args["alpha"] * module_1))
     return log_likelihood
 
 # ========================================================================

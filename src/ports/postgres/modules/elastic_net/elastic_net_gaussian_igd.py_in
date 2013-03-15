@@ -22,9 +22,10 @@ def __igd_params_parser(optimizer_params):
     Parse IGD parameters.
     """
     allowed_params = set(["stepsize", "warmup", "warmup_lambdas",
-                          "warmup_lambda_no", "threshold"])
+                          "warmup_lambda_no", "threshold", "parallel"])
     name_value = dict()
     # default values
+    name_value["parallel"] = False
     name_value["stepsize"] = 0.01
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None
@@ -38,8 +39,8 @@ def __igd_params_parser(optimizer_params):
         items = s.split("=")
         if (len(items) != 2):
             plpy.error("Elastic Net error: Optimizer parameter list has incorrect format!")
-        param_name = items[0].strip()
-        param_value = items[1].strip()
+        param_name = items[0].strip().lower()
+        param_value = items[1].strip().lower()
 
         if param_name not in allowed_params:
             plpy.error("Elastic Net error: {0} is not a valid parameter name for the IGD optimizer.".format(param_name))
@@ -64,6 +65,14 @@ def __igd_params_parser(optimizer_params):
 
         if param_name == "threshold":
             name_value["threshold"] = float(param_value)
+
+        if param_name == "parallel":
+            if param_value in ["true", "t", "yes", "y"]:
+                name_value["parallel"] = True
+            elif param_value in ["false", "f", "no", "n"]:
+                name_value["parallel"] = False
+            else:
+                plpy.error("Elastic Net error: Do you need parallel (True/False or yes/no) ? IGD in parallel might be slower !")
 
     # validate the parameters
     if name_value["stepsize"] <= 0:
@@ -282,6 +291,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                                            True,
                                            max_iter = args["max_iter"],
                                            warm_no = args["warm_no"],
+                                           parallel = args["parallel"],
                                            col_ind_var_new = args["col_ind_var_new"],
                                            col_dep_var_new = args["col_dep_var_new"],
                                            dimension_name = args["dimension_name"],
@@ -395,11 +405,17 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
 
     with iterationCtrl as it:
         it.iteration = 0
+
+        if it.kwargs["parallel"]:
+            it.kwargs["parallel_step_func"] = "__gaussian_igd_step"
+        else:
+            it.kwargs["parallel_step_func"] = "__gaussian_igd_step_single_seg"
+        
         while True:
             # manually add the intercept term
             it.update("""
                       select
-                        {schema_madlib}.__gaussian_igd_step(
+                        {schema_madlib}.{parallel_step_func}(
                             {col_ind_var}::double precision[],
                             {col_dep_var}::double precision,
                             (select _state from {rel_state}

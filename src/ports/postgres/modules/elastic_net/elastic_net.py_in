@@ -41,6 +41,8 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         warmup_lambda_no - default 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas   
                            is not NULL
+        parallel         - default is False. Do you want to do IGD
+                           on multiple segments or a single one?
 
         When warmup is True and warmup_lambdas is NULL, a series
         of lambda values will be automatically generated and used.
