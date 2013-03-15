@@ -340,7 +340,7 @@ $$ LANGUAGE plpythonu STRICT;
 CREATE TYPE MADLIB_SCHEMA.__elastic_net_result AS (
     intercept       DOUBLE PRECISION,
     coefficients    DOUBLE PRECISION[],
-    likelihood      DOUBLE PRECISION
+    lambda_value    DOUBLE PRECISION
 );
 
 ------------------------------------------------------------------------

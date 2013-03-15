@@ -228,17 +228,18 @@ AnyType
 __gaussian_igd_result::run (AnyType& args)
 {
     IgdState<ArrayHandle<double> > state = args[0];
-    double norm = 0;
+    // double norm = 0;
 
-    for (Index i = 0; i < state.coef.rows() - 1; i ++) {
-        double m = state.coef(i);
-        norm += state.alpha * std::abs(m) + (1 - state.alpha) * m * m * 0.5;
-    }
-    norm *= state.lambda;
+    // for (Index i = 0; i < state.coef.rows() - 1; i ++) {
+    //     double m = state.coef(i);
+    //     norm += state.alpha * std::abs(m) + (1 - state.alpha) * m * m * 0.5;
+    // }
+    // norm *= state.lambda;
         
     AnyType tuple;
     tuple << static_cast<double>(state.intercept)
-          << state.coef << 0.;
+          << state.coef
+          << static_cast<double>(state.lambda);
         //<< static_cast<double>(state.loss) + norm;// +
         // (double)(GLMENRegularizer::loss(state.coef,
         //                                 state.lambda,

@@ -15,6 +15,37 @@ from utilities.control import IterationController
 
 # ========================================================================
 
+def __compute_log_likelihood (**args):
+    """
+    Compute the log-likelihood at the end of calculation
+    """
+    log_likelihood = plpy.execute(
+        """
+        select
+            -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
+        from (
+            select
+                avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian',
+                                                                        coefficients,
+                                                                        intercept,
+                                                                        {col_ind_var_new}))^2) / 2.
+                                                                        as loss
+            from
+                {tbl_inter_result},
+                {tbl_used}
+            ) t1,
+            (
+                select sum(coef^2) as module_2, sum(abs(coef)) as module_1
+                from (
+                    select unnest(coefficients) as coef
+                    from {tbl_inter_result}
+                ) s
+            ) t2
+        """.format(**args))[0]["llhd"]
+    return log_likelihood
+
+# ========================================================================
+
 def __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var,
                                 tbl_result, lambda_value, alpha,
                                 normalization, max_iter, tolerance):

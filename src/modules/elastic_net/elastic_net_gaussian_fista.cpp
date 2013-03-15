@@ -259,7 +259,7 @@ AnyType __gaussian_fista_result::run (AnyType& args)
     
     tuple << static_cast<double>(state.intercept)
           << state.coef
-          << 0.;
+          << static_cast<double>(state.lambda);
 
     return tuple;
 }

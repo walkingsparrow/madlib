@@ -195,21 +195,10 @@ def __utils_restore_linear_coef_scales(**kwargs):
             select
                 {foos}.{col_coef},
                 {foos}.intercept,
-                {goos}.ind_var_mean,
-                {goos}.ind_var_std,
-                {tbl_dep_scale}.dep_avg AS dep_var_mean,
-                {tbl_dep_scale}.dep_std AS dep_var_std,
                 {col_others_string}
             from
                 ({sql_query}) as {foos},
-                {tbl_coef},
-                (
-                    SELECT
-                        array_agg({tbl_ind_scales}.mean ORDER BY {tbl_ind_scales}.attr) AS ind_var_mean,
-                        array_agg({tbl_ind_scales}.std ORDER BY {tbl_ind_scales}.attr) AS ind_var_std
-                    FROM {tbl_ind_scales}
-                ) {goos},
-                {tbl_dep_scale}
+                {tbl_coef}
     """.format(col_others_string = col_others_string,
                foos = foos, goos = goos,
                sql_query = sql_query, **kwargs))

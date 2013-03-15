@@ -8,6 +8,7 @@ from convex.utils_regularization import __utils_restore_linear_coef_scales
 from elastic_net_utils import __normalize_data
 from elastic_net_utils import __tbl_dimension_rownum
 from elastic_net_utils import __elastic_net_validate_args
+from elastic_net_utils import __compute_log_likelihood
 
 ## ========================================================================
 
@@ -240,41 +241,29 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                     iteration_run     integer)
                  """.format(use_temp = use_temp, **args))
 
+    standardize_flag = "True" if normalization else "False"
+
     plpy.execute("""
                  insert into {tbl_inter_result}
                     select
                         (result).coefficients,
                         (result).intercept,
-                        -(result).likelihood / {row_num},
-                        False, {iteration_run}
+                        0.,
+                        {standardize_flag},
+                        {iteration_run}
                     from (
                         select {schema_madlib}.__gaussian_igd_result(_state) as result
                         from {tbl_igd_state}
                         where _iteration = {iteration_run}
                     ) t
-                 """.format(iteration_run = iteration_run, **args))
+                 """.format(iteration_run = iteration_run,
+                            standardize_flag = standardize_flag,
+                            **args))
 
     # compute the likelihood
-    plpy.execute("""
-                 update {tbl_inter_result} set log_likelihood = llhd from (
-                    select
-                        -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
-                    from (
-                        select
-                            avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian', coefficients, intercept, {col_ind_var_new}))^2) / 2. as loss
-                        from
-                            {tbl_inter_result},
-                            {tbl_used}
-                        ) t1,
-                        (
-                            select sum(coef^2) as module_2, sum(abs(coef)) as module_1
-                            from (
-                                select unnest(coefficients) as coef
-                                from {tbl_inter_result}
-                            ) s
-                        ) t2
-                 ) u
-                 """.format(**args))
+    log_likelihood = __compute_log_likelihood(**args)
+    plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
+        log_likelihood = log_likelihood, **args))
     
     if normalization:
         __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
@@ -282,8 +271,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                                            col_others = ["log_likelihood", "normalization", "iteration_run"],
                                            tbl_origin_coef = tbl_result,
                                            **args)
-        plpy.execute("update {tbl_result} set normalization = True".format(**args))
-
+ 
     # cleanup    
     __igd_cleanup_temp_tbls(**args)
     if normalization:
