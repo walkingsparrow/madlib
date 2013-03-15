@@ -34,8 +34,6 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 
         Parameters:
         stepsize         - default 0.01
-        max_iter         - default 100
-        tolenrance       - default 1e-5
 
         Reference:
         [1] Shai Shalev-Shwartz and Ambuj Tewari, Stochastic Methods for l1    
@@ -51,8 +49,6 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         Parameters:
         L0               - default is 0.01
         eta              - default 2
-        max_iter         - default 100
-        tolenrance       - default 1e-5
                 
         Reference:
         [1] Beck, A. and M. Teboulle (2009), A fast iterative   
