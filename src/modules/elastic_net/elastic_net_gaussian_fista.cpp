@@ -35,6 +35,7 @@ static ColumnVector proxy (ColumnVector y, ColumnVector gradient_y,
 AnyType gaussian_fista_transition::run (AnyType& args)
 {
     FistaState<MutableArrayHandle<double> > state = args[0];
+    double lambda = args[4].getAs<double>();
 
     // initialize the state if working on the first tuple
     if (state.numRows == 0)
@@ -47,7 +48,6 @@ AnyType gaussian_fista_transition::run (AnyType& args)
         }
         else
         {
-            double lambda = args[4].getAs<double>();
             double alpha = args[5].getAs<double>();
             uint32_t dimension = args[6].getAs<uint32_t>();
             MappedColumnVector xmean = args[7].getAs<MappedColumnVector>();
@@ -56,7 +56,6 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             int totalRows = args[10].getAs<int>();
             
             state.allocate(*this, dimension);
-            state.lambda = lambda;
             state.alpha = alpha;
             state.totalRows = totalRows;
             state.ymean = ymean;
@@ -84,6 +83,10 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             state.fn = 0;
             if (state.backtracking == 1) state.Qfn = 0;
         }
+
+        // lambda is changing if warm-up is used
+        // so needs to update it everytime
+        state.lambda = lambda;
     }
 
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();

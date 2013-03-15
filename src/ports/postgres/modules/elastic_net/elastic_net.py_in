@@ -47,8 +47,14 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         with backtracking for stepsizes
 
         Parameters:
-        L0               - default is 0.01
-        eta              - default 2
+        max_stepsize     - default is 4.0
+        eta              - default 2, if stepsize does not work
+                           stepsize/eta will be tried
+        warmup           - default is False
+        warmup_lambdas   - default in Null
+
+        When warmup is True and warmup_lambdas is NULL, a series
+        of lambda values will be automatically generated and used.
                 
         Reference:
         [1] Beck, A. and M. Teboulle (2009), A fast iterative   

@@ -14,18 +14,26 @@ from utilities.control import IterationController
 from elastic_net_utils import IterationControllerNoTableDrop
 from elastic_net_utils import __elastic_net_validate_args
 from elastic_net_utils import __compute_log_likelihood
+from utilities.utilities import _array_to_string
+from elastic_net_utils import __compute_average_sq
+from elastic_net_utils import __generate_warmup_lambda_sequence
+from elastic_net_utils import __process_warmup_lambdas
 
 ## ========================================================================
 
-def __fista_params_parser(optimizer_params):
+def __fista_params_parser(optimizer_params, lambda_value):
     """
     Parse fista parameters.
     """
-    allowed_params = set(["l0", "eta"])
+    allowed_params = set(["max_stepsize", "eta", "warmup", "warmup_lambdas", "warmup_lambda_no"])
     name_value = dict()
     # default values
-    name_value["L0"] = 0.01
+    name_value["L0"] = 0.25
+    name_value["max_stepsize"] = 1. / name_value["L0"]
     name_value["eta"] = 2
+    name_value["warmup"] = False
+    name_value["warmup_lambdas"] = None
+    name_value["warmup_lambda_no"] = 15
 
     if optimizer_params is None:
         return name_value
@@ -33,18 +41,33 @@ def __fista_params_parser(optimizer_params):
     for s in optimizer_params:
         items = s.split("=")
         if (len(items) != 2):
-            plpy.error("Optimizer parameter list has incorrect format!")
+            plpy.error("Elastic Net error: Optimizer parameter list has incorrect format!")
         param_name = items[0].strip().lower()
         param_value = items[1].strip().lower()
 
         if param_name not in allowed_params:
-            plpy.error("{0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
+            plpy.error("Elastic Net error: {0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
 
-        if param_name == "l0":
-            name_value["L0"] = float(param_value)
+        if param_name == "max_stepsize":
+            name_value["max_stepsize"] = float(param_value)
+            name_value["L0"] = 1. / name_value["max_stepsize"]
 
         if param_name == "eta":
             name_value["eta"] = float(param_value)
+
+        if param_name == "warmup":
+            if param_value in ["true", "t", "yes", "y"]:
+                name_value["warmup"] = True
+            elif param_value in ["false", "f", "no", "n"]:
+                name_value["warmup"] = False
+            else:
+                plpy.error("Elastic Net error: Do you need warmup (True/False or yes/no) ?")
+
+        if param_name == "warmup_lambdas" and param_value != "null":
+            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+
+        if param_name == "warmup_lambda_no":
+            name_value["warmup_lambda_no"] = int(param_value)
             
     # validate the parameters
     if name_value["L0"] <= 0:
@@ -65,14 +88,14 @@ def __fista_create_tbl_args(**args):
                                          args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
     
-    effective_lambda = args["lambda_value"] # * row_num
+    # effective_lambda = args["lambda_value"] # * row_num
     tbl_fista_state = __unique_string()
     tbl_fista_args = __unique_string()
     plpy.execute("""
                  drop table if exists {tbl_fista_args};       
                  create temp table {tbl_fista_args} (
                      {dimension_name}       integer,
-                     {lambda_name}          double precision,
+                     {lambda_name}          double precision[],
                      {alpha_name}           double precision,
                      {total_rows_name}      integer,
                      {max_iter_name}        integer,
@@ -85,11 +108,10 @@ def __fista_create_tbl_args(**args):
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_fista_args} values
-                     ({dimension}, {effective_lambda},
+                     ({dimension}, '{warmup_lambdas}',
                      {alpha}, {row_num}, {max_iter}, {tolerance},
                      {xmean_str}, {ymean}, {L0}, {eta});
-                 """.format(effective_lambda = effective_lambda,
-                            xmean_str = xmean_str, ymean = ymean,
+                 """.format(xmean_str = xmean_str, ymean = ymean,
                             **args))
 
     return None
@@ -219,7 +241,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     args = __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
                                   dimension, row_num, lambda_value, alpha, normalization,
                                   max_iter, tolerance,
-                                  __fista_params_parser(optimizer_params))
+                                  __fista_params_parser(optimizer_params, lambda_value))
 
     # use normalized data or not
     if normalization:
@@ -237,14 +259,35 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
 
     args["tbl_used"] = tbl_used
 
+    if args["warmup_lambdas"] is not None:
+        args["warm_no"] = len(args["warmup_lambdas"])
+        args["warmup_lambdas"] = _array_to_string(args["warmup_lambdas"])
+    
+    if args["warmup"] and args["warmup_lambdas"] is None:
+        # average squares of each feature
+        # used to estimate the largest lambda value
+        args["sq"] = __compute_average_sq(tbl_used, args["col_ind_var_new"], dimension, normalization) 
+        args["warmup_lambdas"] = __generate_warmup_lambda_sequence(tbl_used, args["col_ind_var_new"],
+                                                                   args["col_dep_var_new"],
+                                                                   dimension, row_num, lambda_value, alpha,
+                                                                   args["warmup_lambda_no"], args["sq"])
+        args["warm_no"] = len(args["warmup_lambdas"])
+        args["warmup_lambdas"] = _array_to_string(args["warmup_lambdas"])
+    elif args["warmup"] is False:
+        args["warm_no"] = 1
+        args["warmup_lambdas"] = _array_to_string([lambda_value]) # only one value
+
     # create the temp table that passes parameter values to FISTA optimizer
     __fista_create_tbl_args(**args)
-    
+        
     # perform the actual calculation
     iteration_run = __compute_gaussian_fista(schema_madlib, args["tbl_fista_args"],
                                              args["tbl_fista_state"], tbl_used,
                                              args["col_ind_var_new"],
-                                             args["col_dep_var_new"], start_iter = 0,
+                                             args["col_dep_var_new"],
+                                             start_iter = 0,
+                                             max_iter = args["max_iter"],
+                                             warm_no = args["warm_no"],
                                              dimension_name = args["dimension_name"],
                                              lambda_name = args["lambda_name"],
                                              alpha_name = args["alpha_name"],
@@ -263,7 +306,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
                     intercept         double precision,
                     log_likelihood    double precision,
                     normalization     boolean,
-                    iteration_run        integer)
+                    iteration_run     integer)
                  """.format(use_temp = use_temp, **args))
 
     standardize_flag = "True" if normalization else "False"
@@ -338,6 +381,7 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
         rel_source = tbl_source,
         col_ind_var = col_ind_var,
         col_dep_var = col_dep_var,
+        lambda_count = 1,
         **kwargs)
     
     with iterationCtrl as it:
@@ -351,7 +395,7 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               ({col_dep_var})::double precision,
                               (select _state from {rel_state}
                                   where _iteration = {iteration}),
-                              (_args.{lambda_name})::double precision,
+                              (_args.{lambda_name}[{lambda_count}])::double precision,
                               (_args.{alpha_name})::double precision,
                               (_args.{dimension_name})::integer,
                               (_args.{xmean_name})::double precision[],
@@ -371,5 +415,15 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                            (select _state from {rel_state}
                                where _iteration = {iteration})) < _args.{tolerance_name}
                        """):
-                break
+                if (it.iteration < it.kwargs["max_iter"] and
+                    it.kwargs["lambda_count"] < it.kwargs["warm_no"]):
+                    it.kwargs["lambda_count"] += 1
+                else:
+                    break
+        if it.kwargs["lambda_count"] < it.kwargs["warm_no"]:
+            plpy.error("""
+                       Elastic Net error: The final target lambda value is not
+                       reached in warm-up iterations. You need more iterations!
+                       """)
+            
     return iterationCtrl.iteration
