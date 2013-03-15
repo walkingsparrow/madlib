@@ -62,7 +62,7 @@ def __fista_create_tbl_args(**args):
     create the temporary schema and argument table used in FISTA iterations
     """
     (xmean_str, ymean) = __compute_means(args["tbl_used"], args["col_ind_var_new"],
-                                         args["col_dep_var"], args["dimension"],
+                                         args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
     
     effective_lambda = args["lambda_value"] # * row_num
@@ -107,6 +107,8 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 col_ind_var = col_ind_var, col_dep_var = col_dep_var,
                 col_ind_var_norm_new = __unique_string(), # for normalization usage
                 col_ind_var_tmp = __unique_string(),
+                col_dep_var_norm_new = __unique_string(), # for normalization usage
+                col_dep_var_tmp = __unique_string(),
                 tbl_result = tbl_result,
                 lambda_value = lambda_value, alpha = alpha,
                 dimension = dimension, row_num = row_num,
@@ -225,11 +227,13 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
         tbl_used = args["tbl_data_scaled"]
         use_temp = "temp"
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
+        args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
         tbl_used = tbl_source
         args["tbl_inter_result"] = tbl_result
         use_temp = ""
         args["col_ind_var_new"] = col_ind_var
+        args["col_dep_var_new"] = col_dep_var
 
     args["tbl_used"] = tbl_used
 
@@ -240,7 +244,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     iteration_run = __compute_gaussian_fista(schema_madlib, args["tbl_fista_args"],
                                              args["tbl_fista_state"], tbl_used,
                                              args["col_ind_var_new"],
-                                             col_dep_var, start_iter = 0,
+                                             args["col_dep_var_new"], start_iter = 0,
                                              dimension_name = args["dimension_name"],
                                              lambda_name = args["lambda_name"],
                                              alpha_name = args["alpha_name"],

@@ -167,6 +167,8 @@ def __ridge_newton_cv_validate_args(args):
         plpy.error("Ridge CV error: Too few data! Fewer than fold_num.")
 
     return None
+
+# ========================================================================
     
 def __ridge_newton_cv_compute(**kwargs):
     """
@@ -208,6 +210,7 @@ def __ridge_newton_cv_compute(**kwargs):
     tbl_accum_error = kwargs["tbl_accum_error"]
     validation_result = kwargs["validation_result"]
     kwargs["col_ind_var_tmp"] = __unique_string()
+    kwargs["col_dep_var_tmp"] = __unique_string()
 
     accum_count = 0
     coef_count = 0
@@ -238,7 +241,7 @@ def __ridge_newton_cv_compute(**kwargs):
                         select {schema_madlib}.__ridge_newton_result(
                             {schema_madlib}.__ridge_newton_step(
                                 array_append(({tbl_train}.{col_ind_var_new})::float8[], 1::float8),
-                                ({tbl_train}.{col_dep_var})::float8,
+                                ({tbl_train}.{col_dep_var_new})::float8,
                                 NULL::float8[],
                                 ({dimension}+1)::int2,
                                 ({effective_lambda})::float8
@@ -262,11 +265,13 @@ def __ridge_newton_cv_compute(**kwargs):
                 from (
                     select
                         {schema_madlib}.ridge_linear_newton_predict(coef, intercept, z.{col_ind_var_tmp}) as pred,
-                        z.{col_dep_var} as real_value
+                        z.{col_dep_var_tmp} as real_value
                     from
                         {tbl_coef},
                         (
-                            select {col_dep_var}, {col_ind_var_cp_new} as {col_ind_var_tmp}
+                            select
+                                {col_dep_var} as {col_dep_var_tmp},
+                                {col_ind_var_cp_new} as {col_ind_var_tmp}
                             from {tbl_valid}
                         ) z
                     where {tbl_coef}.id = {coef_count}
@@ -402,7 +407,9 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                 tbl_dep_scale = __unique_string(),
                 tbl_data_scaled = __unique_string(),
                 col_ind_var_norm_new = __unique_string(),
-                col_ind_var_tmp = __unique_string())
+                col_ind_var_tmp = __unique_string(),
+                col_dep_var_norm_new = __unique_string(),
+                col_dep_var_tmp = __unique_string())
     
     row_num = plpy.execute("select count(*) from " + tbl_source)[0]["count"]
     dimension = plpy.execute("""
@@ -414,21 +421,24 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
     if normalization:
         __utils_ind_var_scales(tbl_data = tbl_source, col_ind_var = col_ind_var, row_num = row_num,
                                dimension = dimension, tbl_scales = args["tbl_ind_scales"])
-        __utils_dep_var_scale(tbl_data = tbl_source, col_dep_var = col_dep_var,
+        __utils_dep_var_scale(tbl_data = tbl_source, col_dep_var = col_dep_var, 
                               row_num = row_num, tbl_scale = args["tbl_dep_scale"])
         __utils_normalize_data(tbl_data = tbl_source, col_ind_var = col_ind_var, dimension = dimension,
                                col_dep_var = col_dep_var, tbl_ind_scales = args["tbl_ind_scales"],
                                tbl_dep_scale = args["tbl_dep_scale"], tbl_data_scaled = args["tbl_data_scaled"],
-                               col_ind_var_norm_new = args["col_ind_var_norm_new"])
+                               col_ind_var_norm_new = args["col_ind_var_norm_new"],
+                               col_dep_var_norm_new = args["col_dep_var_norm_new"])
         tbl_inter = args["tbl_data_scaled"]
         use_temp = "temp"
         tbl_inter_result = __unique_string()
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
+        args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
         tbl_inter = tbl_source
         tbl_inter_result = tbl_output
         use_temp = ""
         args["col_ind_var_new"] = col_ind_var
+        args["col_dep_var_new"] = col_dep_var
 
     args.update(tbl_inter = tbl_inter, tbl_inter_result = tbl_inter_result,
                 use_temp = use_temp)
@@ -449,7 +459,7 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                     select {schema_madlib}.__ridge_newton_result(
                         {schema_madlib}.__ridge_newton_step(
                             array_append(({col_ind_var_new})::double precision[],1::double precision),
-                            ({col_dep_var})::double precision,
+                            ({col_dep_var_new})::double precision,
                             (NULL)::double precision[],
                             ({dimension}+1)::int2,
                             {effective_lambda}::double precision)
@@ -471,7 +481,9 @@ def ridge_newton_train_compute (schema_madlib, tbl_source, col_ind_var,
                            from
                                {tbl_inter_result} as z,
                                (
-                                   select {col_dep_var}, {col_ind_var_new} as {col_ind_var_tmp}
+                                   select
+                                       {col_dep_var} as {col_dep_var_new},
+                                       {col_ind_var_new} as {col_ind_var_tmp}
                                    from {tbl_inter}
                                ) w
                         ) s,

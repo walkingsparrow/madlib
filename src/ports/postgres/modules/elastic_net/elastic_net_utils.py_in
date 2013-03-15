@@ -25,7 +25,7 @@ def __compute_log_likelihood (**args):
             -(loss + {lambda_value} * ((1 - {alpha}) * module_2 / 2. + {alpha} * module_1)) as llhd
         from (
             select
-                avg(({col_dep_var} - {schema_madlib}.elastic_net_predict('gaussian',
+                avg(({col_dep_var_new} - {schema_madlib}.elastic_net_predict('gaussian',
                                                                         coefficients,
                                                                         intercept,
                                                                         {col_ind_var_new}))^2) / 2.
@@ -110,7 +110,8 @@ def __normalize_data(**args):
                            tbl_ind_scales = args["tbl_ind_scales"],
                            tbl_dep_scale = args["tbl_dep_scale"],
                            tbl_data_scaled = args["tbl_data_scaled"],
-                           col_ind_var_norm_new = args["col_ind_var_norm_new"])
+                           col_ind_var_norm_new = args["col_ind_var_norm_new"],
+                           col_dep_var_norm_new = args["col_dep_var_norm_new"])
 
     return None
 

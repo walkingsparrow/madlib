@@ -50,7 +50,7 @@ def __igd_create_tbl_args(**args):
     create the temporary schema and argument table used in IGD iterations
     """
     (xmean_str, ymean) = __compute_means(args["tbl_used"], args["col_ind_var_new"],
-                                         args["col_dep_var"], args["dimension"],
+                                         args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
     
     effective_lambda = args["lambda_value"] # * args["row_num"]
@@ -91,6 +91,8 @@ def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 col_ind_var = col_ind_var, col_dep_var = col_dep_var,
                 col_ind_var_norm_new = __unique_string(), # for normalization usage
                 col_ind_var_tmp = __unique_string(),
+                col_dep_var_norm_new = __unique_string(), # for normalization usage
+                col_dep_var_tmp = __unique_string(),
                 tbl_result = tbl_result,
                 lambda_value = lambda_value, alpha = alpha,
                 dimension = dimension, row_num = row_num,
@@ -207,11 +209,13 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
         args["tbl_used"] = args["tbl_data_scaled"]
         use_temp = "temp"
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
+        args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
         args["tbl_used"] = tbl_source
-        tbl_inter_result = tbl_result
+        args["tbl_inter_result"] = tbl_result
         use_temp = ""
         args["col_ind_var_new"] = col_ind_var
+        args["col_dep_var_new"] = col_dep_var
 
     # create the temp table that passes parameter values to IGD optimizer
     __igd_create_tbl_args(**args)
@@ -219,8 +223,10 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     # perform the actual calculation
     iteration_run = __compute_gaussian_igd(schema_madlib, args["tbl_igd_args"],
                                            args["tbl_igd_state"], args["tbl_used"],
-                                           args["col_ind_var_new"], col_dep_var, True,
+                                           args["col_ind_var_new"], args["col_dep_var_new"],
+                                           True,
                                            col_ind_var_new = args["col_ind_var_new"],
+                                           col_dep_var_new = args["col_dep_var_new"],
                                            dimension_name = args["dimension_name"],
                                            stepsize_name = args["stepsize_name"],
                                            lambda_name = args["lambda_name"],
