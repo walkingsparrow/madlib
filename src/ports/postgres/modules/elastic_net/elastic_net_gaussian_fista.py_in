@@ -64,6 +64,7 @@ def __fista_params_parser(optimizer_params, lambda_value):
                 plpy.error("Elastic Net error: Do you need warmup (True/False or yes/no) ?")
 
         if param_name == "warmup_lambdas" and param_value != "null":
+            # errors are handled in __process_warmup_lambdas
             name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
 
         if param_name == "warmup_lambda_no":
@@ -75,6 +76,10 @@ def __fista_params_parser(optimizer_params, lambda_value):
 
     if name_value["eta"] < 1:
         plpy.error("Elastic Net error: backtracking parameter eta must be larger than 1!")
+
+    if (name_value["warmup"] and name_value["warmup_lambdas"] is None and
+        name_value["warmup_lambda_no"] < 1):
+        plpy.error("Elastic Net error: Number of warm-up lambdas must be a positive integer!")
 
     return name_value
     
@@ -88,7 +93,6 @@ def __fista_create_tbl_args(**args):
                                          args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
     
-    # effective_lambda = args["lambda_value"] # * row_num
     tbl_fista_state = __unique_string()
     tbl_fista_args = __unique_string()
     plpy.execute("""

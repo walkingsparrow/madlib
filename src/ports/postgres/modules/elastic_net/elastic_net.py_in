@@ -34,6 +34,14 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 
         Parameters:
         stepsize         - default 0.01
+        warmup           - default is False
+        warmup_lambdas   - default in Null
+        warmup_lambda_no - default 15. How many lambda's are used in
+                           warm-up, will be overridden if warmup_lambdas
+                           is not NULL
+
+        When warmup is True and warmup_lambdas is NULL, a series
+        of lambda values will be automatically generated and used.
 
         Reference:
         [1] Shai Shalev-Shwartz and Ambuj Tewari, Stochastic Methods for l1    
@@ -52,6 +60,9 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
                            stepsize/eta will be tried
         warmup           - default is False
         warmup_lambdas   - default in Null
+        warmup_lambda_no - default 15. How many lambda's are used in
+                           warm-up, will be overridden if warmup_lambdas
+                           is not NULL
 
         When warmup is True and warmup_lambdas is NULL, a series
         of lambda values will be automatically generated and used.

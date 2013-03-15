@@ -67,6 +67,7 @@ AnyType
 gaussian_igd_transition::run (AnyType& args)
 {
     IgdState<MutableArrayHandle<double> > state = args[0];
+    double lambda = args[4].getAs<double>();
 
     // initialize the state if working on the first tuple
     if (state.numRows == 0)
@@ -79,7 +80,6 @@ gaussian_igd_transition::run (AnyType& args)
         }
         else
         {
-            double lambda = args[4].getAs<double>();
             double alpha = args[5].getAs<double>();
             int dimension = args[6].getAs<int>();
             double stepsize = args[7].getAs<double>();
@@ -87,7 +87,6 @@ gaussian_igd_transition::run (AnyType& args)
 
             state.allocate(*this, dimension);
             state.stepsize = stepsize;
-            state.lambda = lambda;
             state.alpha = alpha;
             state.totalRows = total_rows;
             state.xmean = args[9].getAs<MappedColumnVector>();
@@ -103,6 +102,7 @@ gaussian_igd_transition::run (AnyType& args)
         state.loss = 0.;
         state.incrCoef = state.coef;
         state.incrIntercept = state.intercept;
+        state.lambda = lambda;
     }
     
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();

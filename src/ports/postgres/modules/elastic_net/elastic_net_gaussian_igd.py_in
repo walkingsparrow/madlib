@@ -1,5 +1,6 @@
 
 import plpy
+import math
 from utilities.utilities import __unique_string
 from utilities.control import IterationController
 from elastic_net_utils import IterationControllerNoTableDrop
@@ -9,6 +10,10 @@ from elastic_net_utils import __normalize_data
 from elastic_net_utils import __tbl_dimension_rownum
 from elastic_net_utils import __elastic_net_validate_args
 from elastic_net_utils import __compute_log_likelihood
+from utilities.utilities import _array_to_string
+from elastic_net_utils import __compute_average_sq
+from elastic_net_utils import __generate_warmup_lambda_sequence
+from elastic_net_utils import __process_warmup_lambdas
 
 ## ========================================================================
 
@@ -16,10 +21,13 @@ def __igd_params_parser(optimizer_params):
     """
     Parse IGD parameters.
     """
-    allowed_params = set(["stepsize"])
+    allowed_params = set(["stepsize", "warmup", "warmup_lambdas", "warmup_lambda_no"])
     name_value = dict()
     # default values
-    name_value["stepsize"] = 0.01 
+    name_value["stepsize"] = 0.01
+    name_value["warmup"] = False
+    name_value["warmup_lambdas"] = None
+    name_value["warmup_lambda_no"] = 15
 
     if optimizer_params is None:
         return name_value
@@ -27,19 +35,38 @@ def __igd_params_parser(optimizer_params):
     for s in optimizer_params:
         items = s.split("=")
         if (len(items) != 2):
-            plpy.error("Optimizer parameter list has incorrect format!")
+            plpy.error("Elastic Net error: Optimizer parameter list has incorrect format!")
         param_name = items[0].strip()
         param_value = items[1].strip()
 
         if param_name not in allowed_params:
-            plpy.error("{0} is not a valid parameter name for the IGD optimizer.".format(param_name))
+            plpy.error("Elastic Net error: {0} is not a valid parameter name for the IGD optimizer.".format(param_name))
 
         if param_name == "stepsize":
             name_value["stepsize"] = float(param_value)
 
+        if param_name == "warmup":
+            if param_value in ["true", "t", "yes", "y"]:
+                name_value["warmup"] = True
+            elif param_value in ["false", "f", "no", "n"]:
+                name_value["warmup"] = False
+            else:
+                plpy.error("Elastic Net error: Do you need warmup (True/False or yes/no) ?")
+
+        if param_name == "warmup_lambdas" and param_value != "null":
+            # errors are handled in __process_warmup_lambdas
+            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+
+        if param_name == "warmup_lambda_no":
+            name_value["warmup_lambda_no"] = int(param_value)
+
     # validate the parameters
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")
+    
+    if (name_value["warmup"] and name_value["warmup_lambdas"] is None and
+        name_value["warmup_lambda_no"] < 1):
+        plpy.error("Elastic Net error: Number of warm-up lambdas must be a positive integer!")
 
     return name_value
 
@@ -52,14 +79,13 @@ def __igd_create_tbl_args(**args):
     (xmean_str, ymean) = __compute_means(args["tbl_used"], args["col_ind_var_new"],
                                          args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
-    
-    effective_lambda = args["lambda_value"] # * args["row_num"]
+        
     plpy.execute("""
                  drop table if exists {tbl_igd_args};
                  create temp table {tbl_igd_args} (
                     {dimension_name}       integer,
                     {stepsize_name}        double precision,
-                    {lambda_name}          double precision,
+                    {lambda_name}          double precision[],
                     {alpha_name}           double precision,
                     {total_rows_name}      integer,
                     {max_iter_name}        integer,
@@ -70,10 +96,9 @@ def __igd_create_tbl_args(**args):
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_igd_args} values
-                    ({dimension}, {stepsize}, {effective_lambda}, {alpha},
+                    ({dimension}, {stepsize}, '{warmup_lambdas}', {alpha},
                      {row_num}, {max_iter}, {tolerance}, {xmean_str}, {ymean})
-                 """.format(effective_lambda = effective_lambda,
-                            xmean_str = xmean_str, ymean = ymean,
+                 """.format(xmean_str = xmean_str, ymean = ymean,
                             **args))
 
     return None
@@ -217,6 +242,24 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
 
+    if args["warmup_lambdas"] is not None:
+        args["warm_no"] = len(args["warmup_lambdas"])
+        args["warmup_lambdas"] = _array_to_string(args["warmup_lambdas"])
+    
+    if args["warmup"] and args["warmup_lambdas"] is None:
+        # average squares of each feature
+        # used to estimate the largest lambda value
+        args["sq"] = __compute_average_sq(args["tbl_used"], args["col_ind_var_new"], dimension, normalization) 
+        args["warmup_lambdas"] = __generate_warmup_lambda_sequence(args["tbl_used"], args["col_ind_var_new"],
+                                                                   args["col_dep_var_new"],
+                                                                   dimension, row_num, lambda_value, alpha,
+                                                                   args["warmup_lambda_no"], args["sq"])
+        args["warm_no"] = len(args["warmup_lambdas"])
+        args["warmup_lambdas"] = _array_to_string(args["warmup_lambdas"])
+    elif args["warmup"] is False:
+        args["warm_no"] = 1
+        args["warmup_lambdas"] = _array_to_string([lambda_value]) # only one value
+
     # create the temp table that passes parameter values to IGD optimizer
     __igd_create_tbl_args(**args)
 
@@ -225,6 +268,8 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                                            args["tbl_igd_state"], args["tbl_used"],
                                            args["col_ind_var_new"], args["col_dep_var_new"],
                                            True,
+                                           max_iter = args["max_iter"],
+                                           warm_no = args["warm_no"],
                                            col_ind_var_new = args["col_ind_var_new"],
                                            col_dep_var_new = args["col_dep_var_new"],
                                            dimension_name = args["dimension_name"],
@@ -320,6 +365,7 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
             rel_source = tbl_source,
             col_ind_var = col_ind_var,
             col_dep_var = col_dep_var,
+            lambda_count = 1,
             **kwargs)
     else:
         iterationCtrl = IterationControllerNoTableDrop(
@@ -331,6 +377,7 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
             rel_source = tbl_source,
             col_ind_var = col_ind_var,
             col_dep_var = col_dep_var,
+            lambda_count = 1,
             **kwargs)
 
     with iterationCtrl as it:
@@ -344,7 +391,7 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
                             {col_dep_var}::double precision,
                             (select _state from {rel_state}
                                 where _iteration = {iteration}),
-                            (_args.{lambda_name})::double precision,
+                            (_args.{lambda_name}[{lambda_count}])::double precision,
                             (_args.{alpha_name})::double precision,
                             (_args.{dimension_name})::integer,
                             (_args.{stepsize_name})::double precision,
@@ -363,7 +410,16 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
                             (select _state from {rel_state}
                                 where _iteration = {iteration})) < _args.{tolerance_name}
                        """):
-                break
-
+                if (it.iteration < it.kwargs["max_iter"] and
+                    it.kwargs["lambda_count"] < it.kwargs["warm_no"]):
+                    it.kwargs["lambda_count"] += 1
+                else:
+                    break
+        if it.kwargs["lambda_count"] < it.kwargs["warm_no"]:
+            plpy.error("""
+                       Elastic Net error: The final target lambda value is not
+                       reached in warm-up iterations. You need more iterations!
+                       """)
+    
     return iterationCtrl.iteration
     
