@@ -2,7 +2,6 @@
 import plpy
 from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
 from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
-from elastic_net_gaussian_cd import __elastic_net_gaussian_cd_train
 
 # ========================================================================
 
@@ -21,7 +20,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         return """
         Supported optimizer:
         (1) Incremental gradient descent method ('igd')
-        (2) Batch coordinate descent method ('cd')
+        (2) Fast iterative shrinkage thesholding algorithm ('fista')
 
         For alpha = 0, Newton method ('newton') is also supported.    
         """
@@ -42,20 +41,6 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         [1] Shai Shalev-Shwartz and Ambuj Tewari, Stochastic Methods for l1    
             Regularized Loss Minimization. Proceedings of the 26th Interna-   
             tional Conference on Machine Learning, Montreal, Canada, 2009.   
-        """
-
-    if family_or_optimizer.lower() == "cd":
-        return """
-        Coordinate descent method:
-
-        Parameters:
-        max_iter         - default 100
-        tolenrance       - default 1e-5
-
-        Reference:
-        [1] A. Van der Kooij, Prediction accuracy and stability of regrsssion   
-            with optimal sclaing transformations. Technical report, Dept. of   
-            Data Theory, Leiden University, 2007.
         """
 
     if family_or_optimizer.lower() == "fista":
@@ -145,21 +130,6 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
                                            standardize, optimizer_params, max_iter,
                                            tolerance, **kwargs)
         return None
-
-    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
-        optimizer.lower() == "cd"):
-        __elastic_net_gaussian_cd_train(schema_madlib, tbl_source, col_ind_var,
-                                        col_dep_var, tbl_result, lambda_value, alpha,
-                                        standardize, optimizer_params, max_iter,
-                                        tolerance, **kwargs)
-        return None
-        
-    # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
-    #     optimizer.lower() == "igd"):
-    #     __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
-    #                                      col_dep_var, tbl_result, lambda_value, alpha,
-    #                                      normalization, optimizer_params, **kwargs)
-    #    return None
 
     plpy.error("Not a supported response family or supported optimizer of the given response family!")
     return None
