@@ -25,7 +25,6 @@ def __process_warmup_lambdas (lambdas, lambda_value):
     @param lambda_value The target value of lambda, which must be equal to
     the last element of the input array
     """
-    plpy.info("*****" + lambdas + "*******")
     matched = re.match(r"^[\[\{\(](.*)[\]\}\)]$", lambdas)
     if matched is None:
         plpy.error("Elastic Net error: warmup_lambdas must be NULL or something like {3,2,1} !")
