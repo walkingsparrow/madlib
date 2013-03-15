@@ -4,7 +4,7 @@ from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
 from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
 from elastic_net_gaussian_cd import __elastic_net_gaussian_cd_train
 
-## ========================================================================
+# ========================================================================
 
 def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     """
@@ -64,7 +64,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         with backtracking for stepsizes
 
         Parameters:
-        L0               - default is the average of |x_i^2|
+        L0               - default is 0.01
         eta              - default 2
         max_iter         - default 100
         tolenrance       - default 1e-5
@@ -83,13 +83,15 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     """
         
 
-## ========================================================================
+# ========================================================================
 
-## lambda is a keyword of Python, try to avoid using
-## it, so use lambda_value instead
-def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
-                      tbl_result, lambda_value, alpha, normalization, regress_family,
-                      optimizer, optimizer_params, **kwargs):
+# lambda is a keyword of Python, try to avoid using
+# it, so use lambda_value instead
+def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
+                      col_ind_var, regress_family, alpha, lambda_value,
+                      standardize, grouping_col, optimizer,
+                      optimizer_params, excluded, max_iter, tolerance,
+                      **kwargs):
     """
     A wrapper for all variants of elastic net regularization.
 
@@ -102,47 +104,54 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                              likelihood
     @param lambda_value      The regularization parameter
     @param alpha             The elastic net parameter, [0, 1]
-    @param normalization     Whether to normalize the variables
+    @param standardize       Whether to normalize the variables
     @param regress_family    Response type, 'gaussian' or 'binomial'
     @param optimizer         The optimization algorithm, for example 'igd'
     @param optimizer_params  Parameters of the above optimizer, the format
                              is '{arg = value, ...}'::varchar[]
+    @param excluded Which variables are excluded when col_ind_var == "*"
     """
+    # handle all special cases of col_ind_var
+    (col_ind_var, outstr_array) = analyze_input_str(tbl_source, col_ind_var, col_dep_var,
+                                                    excluded)
     # Special case for ridge linear regression
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "newton" and
         alpha == 0):
         plpy.execute("""select {schema_madlib}.ridge_newton_train(
                             '{tbl_source}', '{col_ind_var}', '{col_dep_var}',
-                            '{tbl_result}', {lambda_value}, {normalization}
+                            '{tbl_result}', {lambda_value}, {standardize}
         )""".format(schema_madlib = schema_madlib,
                     tbl_source = tbl_source,
                     col_ind_var = col_ind_var,
                     col_dep_var = col_dep_var,
                     tbl_result = tbl_result,
                     lambda_value = lambda_value,
-                    normalization = normalization))
+                    standardize = standardize))
         return None
     
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "igd"):
         __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                          col_dep_var, tbl_result, lambda_value, alpha,
-                                         normalization, optimizer_params, **kwargs)
+                                         standardize, optimizer_params, max_iter,
+                                         tolerance, **kwargs)
         return None
 
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "fista"):
         __elastic_net_gaussian_fista_train(schema_madlib, tbl_source, col_ind_var,
-                                          col_dep_var, tbl_result, lambda_value, alpha,
-                                          normalization, optimizer_params, **kwargs)
+                                           col_dep_var, tbl_result, lambda_value, alpha,
+                                           standardize, optimizer_params, max_iter,
+                                           tolerance, **kwargs)
         return None
 
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "cd"):
         __elastic_net_gaussian_cd_train(schema_madlib, tbl_source, col_ind_var,
                                         col_dep_var, tbl_result, lambda_value, alpha,
-                                        normalization, optimizer_params, **kwargs)
+                                        standardize, optimizer_params, max_iter,
+                                        tolerance, **kwargs)
         return None
         
     # if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
@@ -154,8 +163,21 @@ def elastic_net_train(schema_madlib, tbl_source, col_ind_var, col_dep_var,
 
     plpy.error("Not a supported response family or supported optimizer of the given response family!")
     return None
-    
-## ========================================================================
+
+# ========================================================================
+
+def analyze_input_str(tbl_source, col_ind_var, col_dep_var, excluded):
+    """
+    Make input strings and output strings compatible with functions
+
+    @param tbl_source Data table
+    @param col_ind_var Independent variables
+    @param col_dep_var Dependent variables
+    @param excluded Which variables are excluded when col_ind_var == "*"
+    """
+    return (col_ind_var, "")
+
+# ========================================================================
 
 def elastic_net_predict(schema_madlib, regress_family, coefficients,
                         intercept, ind_var, **kwargs):
@@ -168,6 +190,8 @@ def elastic_net_predict(schema_madlib, regress_family, coefficients,
     plpy.error("Not a supported response family!")
     return None
 
+# ========================================================================
+    
 def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
     """
     Prediction for linear models
@@ -176,3 +200,5 @@ def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
     for i in range(len(coefficients)):
         dot += coefficients[i] * ind_var[i]
     return dot
+
+    

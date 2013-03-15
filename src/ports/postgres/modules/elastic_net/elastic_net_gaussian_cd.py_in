@@ -25,6 +25,9 @@ def __cd_params_parser(optimizer_params):
     name_value["num_steps"] = 15
     name_value["max_iter"] = 100 
     name_value["tolerance"] = 0.000001
+
+    if optimizer_params is None:
+        return name_value
     
     for s in optimizer_params:
         items = s.split("=")

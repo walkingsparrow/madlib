@@ -153,17 +153,18 @@ mydb-# from en_data, en_model;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     tbl_source          VARCHAR,
     tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
     col_dep_var         VARCHAR,
+    col_ind_var         VARCHAR,
     regress_family      VARCHAR,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
-    standardization     BOOLEAN,
+    standardize         BOOLEAN,
     grouping_col        VARCHAR,
     optimizer           VARCHAR,
     optimizer_params    VARCHAR[],
-    exclude             VARCHAR, 
-    num_of_iteration    INTEGER
+    excluded            VARCHAR,
+    max_iter            INTEGER,
+    tolerance           DOUBLE PRECISION
 ) RETURNS VOID AS $$
 PythonFunction(elastic_net, elastic_net, elastic_net_train)
 $$ LANGUAGE plpythonu;
@@ -182,11 +183,32 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
     grouping_columns    VARCHAR,
     optimizer           VARCHAR,
     optimizer_params    VARCHAR[],
-    exclude             VARCHAR
+    excluded            VARCHAR,
+    max_iter            INTEGER
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        $9, $10, $11, $12, 100);
+        $9, $10, $11, $12, $13, 1e-6);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          VARCHAR,
+    tbl_result          VARCHAR,
+    col_ind_var         VARCHAR,
+    col_dep_var         VARCHAR,
+    regress_family      VARCHAR,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION,
+    standardization     BOOLEAN,
+    grouping_columns    VARCHAR,
+    optimizer           VARCHAR,
+    optimizer_params    VARCHAR[],
+    excluded            VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
+        $9, $10, $11, $12, 1000);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -205,7 +227,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        $9, $10, $11, NULL, 100);
+        $9, $10, $11, NULL);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -223,7 +245,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        $9, $10, '{NULL}'::VARCHAR[] ,NULL, 100);
+        $9, $10, NULL::VARCHAR[]);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -240,7 +262,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        $9, 'FISTA', '{NULL}'::VARCHAR[] ,NULL, 100);
+        $9, 'FISTA');
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
@@ -256,7 +278,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        NULL, 'FISTA', '{NULL}'::VARCHAR[] ,NULL, 100);
+        NULL);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 ------------------------------------------------------------------------
@@ -272,7 +294,7 @@ BEGIN
     str := '
     Right now, only gaussian (linear) family is supported!  
     SELECT madlib.elastic_net_train(''gaussian'');   
-    to see more.';
+    to see more help.';
     return str;
 END;
 $$ LANGUAGE plpgsql STRICT;
@@ -322,6 +344,8 @@ CREATE TYPE MADLIB_SCHEMA.__elastic_net_result AS (
 );
 
 ------------------------------------------------------------------------
+
+/* IGD */
 
 CREATE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
     state               DOUBLE PRECISION[],
@@ -398,6 +422,8 @@ LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
 
+/* CD */
+
 CREATE FUNCTION MADLIB_SCHEMA.__gaussian_cd_transition (
     state               DOUBLE PRECISION[],
     ind_var             DOUBLE PRECISION[],
@@ -470,6 +496,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_cd_result (
 LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
+
+/* FISTA */
 
 CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
     state               DOUBLE PRECISION[],

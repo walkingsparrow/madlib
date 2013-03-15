@@ -134,7 +134,7 @@ gaussian_igd_transition::run (AnyType& args)
 
     state.incrIntercept = state.ymean - dot(state.incrCoef, state.xmean);
 
-    state.loss += r * r / 2.;
+    // state.loss += r * r / 2.;
     state.numRows ++;
 
     return state;
@@ -163,14 +163,8 @@ gaussian_igd_merge::run (AnyType& args)
     state1.theta += state2.incrCoef;
     state1.theta *= static_cast<double>(state2.numRows) /
         static_cast<double>(totalNumRows);
-
-    // the following two lines might not be necessary, since incrCoef is
-    // not used in merge, only in final function
-    // this can be put into final
-    // state1.incrCoef = link_fn(state1.theta, state1.p);
-    // state1.incrIntercept = state1.ymean - dot(state1.incrCoef, state1.xmean);
     
-    state1.loss += state2.loss;
+    //state1.loss += state2.loss;
     
     // The following numRows update, cannot be put above, because the coef
     // averaging depends on their original values
@@ -195,8 +189,6 @@ gaussian_igd_final::run (AnyType& args)
     if (state.numRows == 0) return Null(); 
 
     // finalizing
-    // state.coef = state.incrCoef;
-    // state.intercept = state.incrIntercept;
     state.coef = link_fn(state.theta, state.p);
     state.intercept = state.ymean - dot(state.coef, state.xmean);
   
@@ -246,8 +238,8 @@ __gaussian_igd_result::run (AnyType& args)
         
     AnyType tuple;
     tuple << static_cast<double>(state.intercept)
-          << state.coef 
-          << static_cast<double>(state.loss) + norm;// +
+          << state.coef << 0.;
+        //<< static_cast<double>(state.loss) + norm;// +
         // (double)(GLMENRegularizer::loss(state.coef,
         //                                 state.lambda,
         //                                 state.alpha));
