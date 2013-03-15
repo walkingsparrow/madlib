@@ -227,7 +227,23 @@ __gaussian_igd_state_diff::run (AnyType& args)
 AnyType
 __gaussian_igd_result::run (AnyType& args)
 {
-    IgdState<ArrayHandle<double> > state = args[0];
+    IgdState<MutableArrayHandle<double> > state = args[0];
+    MappedColumnVector x2 = args[1].getAs<MappedColumnVector>();
+    double threshold = args[2].getAs<double>();
+
+    ColumnVector norm_coef(state.dimension);
+    double avg = 0;
+    for (uint32_t i = 0; i < state.dimension; i++)
+    {
+        norm_coef(i) = state.coef(i) * sqrt(x2(i) - state.xmean(i) * state.xmean(i));
+        avg += norm_coef(i);
+    }
+    avg /= state.dimension;
+
+    for (uint32_t i = 0; i < state.dimension; i++)
+        if (fabs(state.coef(i)/avg) < threshold)
+            state.coef(i) = 0;
+    
     // double norm = 0;
 
     // for (Index i = 0; i < state.coef.rows() - 1; i ++) {

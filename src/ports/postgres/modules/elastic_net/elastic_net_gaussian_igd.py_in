@@ -21,13 +21,15 @@ def __igd_params_parser(optimizer_params):
     """
     Parse IGD parameters.
     """
-    allowed_params = set(["stepsize", "warmup", "warmup_lambdas", "warmup_lambda_no"])
+    allowed_params = set(["stepsize", "warmup", "warmup_lambdas",
+                          "warmup_lambda_no", "threshold"])
     name_value = dict()
     # default values
     name_value["stepsize"] = 0.01
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None
     name_value["warmup_lambda_no"] = 15
+    name_value["threshold"] = 1e-10
 
     if optimizer_params is None:
         return name_value
@@ -60,6 +62,9 @@ def __igd_params_parser(optimizer_params):
         if param_name == "warmup_lambda_no":
             name_value["warmup_lambda_no"] = int(param_value)
 
+        if param_name == "threshold":
+            name_value["threshold"] = float(param_value)
+
     # validate the parameters
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")
@@ -67,6 +72,9 @@ def __igd_params_parser(optimizer_params):
     if (name_value["warmup"] and name_value["warmup_lambdas"] is None and
         name_value["warmup_lambda_no"] < 1):
         plpy.error("Elastic Net error: Number of warm-up lambdas must be a positive integer!")
+
+    if name_value["threshold"] < 0:
+        plpy.error("Elastic Net error: A positive threshold is needed to screen out tiny values around zero!")
 
     return name_value
 
@@ -242,14 +250,18 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
 
+    # average squares of each feature
+    # used to estimate the largest lambda value
+    # also used to screen out tiny values, so order is needed
+    args["sq"] = __compute_average_sq(args["tbl_used"], args["col_ind_var_new"], dimension,
+                                          normalization, True)
+    args["sq_str"] = _array_to_string(args["sq"])
+        
     if args["warmup_lambdas"] is not None:
         args["warm_no"] = len(args["warmup_lambdas"])
         args["warmup_lambdas"] = _array_to_string(args["warmup_lambdas"])
     
     if args["warmup"] and args["warmup_lambdas"] is None:
-        # average squares of each feature
-        # used to estimate the largest lambda value
-        args["sq"] = __compute_average_sq(args["tbl_used"], args["col_ind_var_new"], dimension, normalization) 
         args["warmup_lambdas"] = __generate_warmup_lambda_sequence(args["tbl_used"], args["col_ind_var_new"],
                                                                    args["col_dep_var_new"],
                                                                    dimension, row_num, lambda_value, alpha,
@@ -303,7 +315,8 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                         {standardize_flag},
                         {iteration_run}
                     from (
-                        select {schema_madlib}.__gaussian_igd_result(_state) as result
+                        select {schema_madlib}.__gaussian_igd_result(_state,
+                             '{sq_str}'::double precision[], {threshold}::double precision) as result
                         from {tbl_igd_state}
                         where _iteration = {iteration_run}
                     ) t
@@ -397,8 +410,7 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
                             (_args.{stepsize_name})::double precision,
                             (_args.{total_rows_name})::integer,
                             (_args.{xmean_name})::double precision[],
-                            (_args.{ymean_name})::double precision
-                      )
+                            (_args.{ymean_name})::double precision)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
 

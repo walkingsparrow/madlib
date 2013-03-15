@@ -34,10 +34,12 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 
         Parameters:
         stepsize         - default 0.01
+        threshold        - default 1e-10. When a coefficient is really
+                           small, set it to be 0
         warmup           - default is False
         warmup_lambdas   - default in Null
         warmup_lambda_no - default 15. How many lambda's are used in
-                           warm-up, will be overridden if warmup_lambdas
+                           warm-up, will be overridden if warmup_lambdas   
                            is not NULL
 
         When warmup is True and warmup_lambdas is NULL, a series
@@ -61,7 +63,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         warmup           - default is False
         warmup_lambdas   - default in Null
         warmup_lambda_no - default 15. How many lambda's are used in
-                           warm-up, will be overridden if warmup_lambdas
+                           warm-up, will be overridden if warmup_lambdas     
                            is not NULL
 
         When warmup is True and warmup_lambdas is NULL, a series

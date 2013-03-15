@@ -71,7 +71,7 @@ class IgdState
      */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 12 + 4 * inDimension;
+        return 13 + 4 * inDimension;
     }
 
   protected:
@@ -93,6 +93,7 @@ class IgdState
         coef.rebind(&mStorage[12 + dimension], dimension);
         incrCoef.rebind(&mStorage[12 + 2 * dimension], dimension);
         theta.rebind(&mStorage[12 + 3 * dimension], dimension);
+        threshold.rebind(&mStorage[12 + 4 * dimension]);
     }
 
     Handle mStorage;
@@ -125,6 +126,7 @@ class IgdState
     typename HandleTraits<Handle>::ReferenceToDouble incrIntercept; 
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap incrCoef;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap theta; // used for mirror truncation
+    typename HandleTraits<Handle>::ReferenceToDouble threshold; // used for remove tiny values
 };
 
 }

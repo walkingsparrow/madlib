@@ -93,7 +93,8 @@ def __generate_warmup_lambda_sequence (tbl_used, col_ind_var, col_dep_var,
 
 # ========================================================================
 
-def __compute_average_sq(tbl_source, col_ind_var, dimension, normalization):
+def __compute_average_sq(tbl_source, col_ind_var, dimension,
+                         normalization, need_order = False):
     """
     Compute the average squares of all features, used to estimtae the largest lambda
     Actually only the largest value is used, so order does not matter here
@@ -101,12 +102,19 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension, normalization):
     if normalization:
         sq = [1] * dimension
     else:
+        if need_order:
+            order_flag = "order by attr"
+            order_flag1 = ", attr"
+        else:
+            order_flag = ""
+            order_flag1 = ""
+            
         sq = plpy.execute(
             """
             select
-                array_agg(sq) as sq
+                array_agg(sq {order_flag}) as sq
             from (
-                select avg(val^2) as sq
+                select avg(val^2) as sq {order_flag1}
                 from (
                     select
                         generate_series(1,{dimension}) as attr,
@@ -117,6 +125,8 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension, normalization):
             ) s
             """.format(tbl_source = tbl_source,
                        col_ind_var = col_ind_var,
+                       order_flag = order_flag,
+                       order_flag1 = order_flag1,
                        dimension = dimension))[0]["sq"]
 
     return sq
