@@ -294,7 +294,27 @@ BEGIN
     str := '
     Right now, only gaussian (linear) family is supported!  
     SELECT madlib.elastic_net_train(''gaussian'');   
-    to see more help.';
+    to see more help.
+
+    Usage:
+    SELECT MADLIB_SCHEME.elastic_net_train (
+        ''tbl_source'',     -- Data table
+        ''tbl_result'',     -- Result table
+        ''col_dep_var'',    -- Dependent variable, can be an expression or
+                                ''*''
+        ''col_ind_var'',    -- Independent variable, can be an expression
+        ''regress_family'', -- ''gaussian'' (or ''linear''), ''binomial''
+                                (or ''logistic'') will be supported
+        alpha,              -- Elastic net control parameter, value in [0, 1]
+        lambda_value,       -- Regularization parameter, positive
+        standardize,        -- Whether to normalize the data
+        ''grouping_col'',   -- Group by which columns. Default: NULL
+        ''optimizer'',      -- Name of optimizer. Default: ''fista''
+        ''excluded'',       -- Column names excluded from ''*''
+        max_iter,           -- Maximum iteration number
+        tolerance           -- Stopping criteria
+    );
+    ';
     return str;
 END;
 $$ LANGUAGE plpgsql STRICT;

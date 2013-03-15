@@ -22,7 +22,11 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         (1) Incremental gradient descent method ('igd')
         (2) Fast iterative shrinkage thesholding algorithm ('fista')
 
-        For alpha = 0, Newton method ('newton') is also supported.    
+        For alpha = 0, Newton method ('newton') is also supported.
+
+        Run:
+        SELECT {schema_madlib}.elastic_net_train('optimizer');
+        to see more help on each optimizer.
         """
 
     if family_or_optimizer.lower() == "igd":

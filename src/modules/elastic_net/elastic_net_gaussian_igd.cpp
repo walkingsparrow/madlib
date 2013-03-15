@@ -100,8 +100,8 @@ gaussian_igd_transition::run (AnyType& args)
         }
       
         state.loss = 0.;
-        state.incrCoef = state.coef;
-        state.incrIntercept = state.intercept;
+        // state.incrCoef = state.coef;
+        // state.incrIntercept = state.intercept;
         state.lambda = lambda;
     }
     
@@ -157,11 +157,18 @@ gaussian_igd_merge::run (AnyType& args)
     else if (state2.numRows == 0) { return state1; }
 
     // Merge states together
+    // double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
+    // state1.theta *= static_cast<double>(state1.numRows) /
+    //     static_cast<double>(state2.numRows);
+    // state1.theta += state2.theta;
+    // state1.theta *= static_cast<double>(state2.numRows) /
+    //     static_cast<double>(totalNumRows);
+
     double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
-    state1.theta *= static_cast<double>(state1.numRows) /
+    state1.incrCoef *= static_cast<double>(state1.numRows) /
         static_cast<double>(state2.numRows);
-    state1.theta += state2.incrCoef;
-    state1.theta *= static_cast<double>(state2.numRows) /
+    state1.incrCoef += state2.incrCoef;
+    state1.incrCoef *= static_cast<double>(state2.numRows) /
         static_cast<double>(totalNumRows);
     
     //state1.loss += state2.loss;
@@ -189,8 +196,11 @@ gaussian_igd_final::run (AnyType& args)
     if (state.numRows == 0) return Null(); 
 
     // finalizing
-    state.coef = link_fn(state.theta, state.p);
+    //state.coef = link_fn(state.theta, state.p);
+    state.coef = state.incrCoef;
     state.intercept = state.ymean - dot(state.coef, state.xmean);
+
+    state.theta = link_fn(state.coef, state.q);
   
     return state;
 }
