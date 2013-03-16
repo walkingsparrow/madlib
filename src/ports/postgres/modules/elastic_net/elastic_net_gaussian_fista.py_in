@@ -49,11 +49,17 @@ def __fista_params_parser(optimizer_params, lambda_value):
             plpy.error("Elastic Net error: {0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
 
         if param_name == "max_stepsize":
-            name_value["max_stepsize"] = float(param_value)
+            try:
+                name_value["max_stepsize"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: max_stepsize must be a float number!")
             name_value["L0"] = 1. / name_value["max_stepsize"]
 
         if param_name == "eta":
-            name_value["eta"] = float(param_value)
+            try:
+                name_value["eta"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: eta must be a float number!")
 
         if param_name == "warmup":
             if param_value in ["true", "t", "yes", "y"]:
@@ -68,7 +74,10 @@ def __fista_params_parser(optimizer_params, lambda_value):
             name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
 
         if param_name == "warmup_lambda_no":
-            name_value["warmup_lambda_no"] = int(param_value)
+            try:
+                name_value["warmup_lambda_no"] = int(param_value)
+            except:
+                plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
             
     # validate the parameters
     if name_value["L0"] <= 0:
@@ -201,14 +210,14 @@ def __fista_cleanup_temp_tbls(**args):
 def __elastic_net_gaussian_fista_train(schema_madlib, tbl_source, col_ind_var,
                                        col_dep_var, tbl_result, lambda_value, alpha,
                                        normalization, optimizer_params, max_iter,
-                                       tolerance, **kwargs):
+                                       tolerance, outstr_array, **kwargs):
     __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var, tbl_result,
                                 lambda_value, alpha, normalization, max_iter, tolerance)
     
     return __elastic_net_gaussian_fista_train_compute(schema_madlib, tbl_source, col_ind_var,
                                                       col_dep_var, tbl_result, lambda_value, alpha,
                                                       normalization, optimizer_params, max_iter,
-                                                      tolerance, **kwargs)
+                                                      tolerance, outstr_array, **kwargs)
 
 ## ========================================================================
     
@@ -251,13 +260,12 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     if normalization:
         __normalize_data(**args)
         tbl_used = args["tbl_data_scaled"]
-        use_temp = "temp"
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
         args["col_dep_var_new"] = args["col_dep_var_norm_new"]
+        args["tbl_inter_result"] = tbl_result
     else:
         tbl_used = tbl_source
         args["tbl_inter_result"] = tbl_result
-        use_temp = ""
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
 
@@ -303,51 +311,10 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
                                              L0_name = args["L0_name"],
                                              eta_name = args["eta_name"])
 
-    plpy.execute("""
-                 drop table if exists {tbl_inter_result};
-                 create {use_temp} table {tbl_inter_result} (
-                    coefficients      double precision[],
-                    intercept         double precision,
-                    log_likelihood    double precision,
-                    normalization     boolean,
-                    iteration_run     integer)
-                 """.format(use_temp = use_temp, **args))
-
-    standardize_flag = "True" if normalization else "False"
+    __elastic_net_generate_result("fista", **args)
     
-    plpy.execute("""
-                 insert into {tbl_inter_result}
-                    select
-                        (result).coefficients,
-                        (result).intercept,
-                        0., 
-                        {standardize_flag},
-                        {iteration_run}
-                    from (
-                        select {schema_madlib}.__gaussian_fista_result(_state) as result
-                        from {tbl_fista_state}
-                        where _iteration = {iteration_run}
-                    ) t
-                 """.format(iteration_run = iteration_run,
-                            standardize_flag = standardize_flag,
-                            **args))
-
-    # compute the likelihood
-    log_likelihood = __compute_log_likelihood(**args)
-    plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
-        log_likelihood = log_likelihood, **args))
-    
-    if normalization:
-        __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
-                                           col_coef = "coefficients",
-                                           col_others = ["log_likelihood", "normalization", "iteration_run"],
-                                           tbl_origin_coef = tbl_result,
-                                           **args)
-
     # cleanup    
     __fista_cleanup_temp_tbls(**args)
-    if normalization:
-        plpy.execute("drop table if exists {tbl_inter_result}".format(**args))
     plpy.execute("set client_min_messages to " + old_msg_level)
     return None
     

@@ -46,7 +46,10 @@ def __igd_params_parser(optimizer_params):
             plpy.error("Elastic Net error: {0} is not a valid parameter name for the IGD optimizer.".format(param_name))
 
         if param_name == "stepsize":
-            name_value["stepsize"] = float(param_value)
+            try:
+                name_value["stepsize"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: stepsize must be a float number!")
 
         if param_name == "warmup":
             if param_value in ["true", "t", "yes", "y"]:
@@ -61,10 +64,16 @@ def __igd_params_parser(optimizer_params):
             name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
 
         if param_name == "warmup_lambda_no":
-            name_value["warmup_lambda_no"] = int(param_value)
-
+            try:
+                name_value["warmup_lambda_no"] = int(param_value)
+            except:
+                plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
+   
         if param_name == "threshold":
-            name_value["threshold"] = float(param_value)
+            try:
+                name_value["threshold"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: threshold must be a float number!")
 
         if param_name == "parallel":
             if param_value in ["true", "t", "yes", "y"]:
@@ -199,14 +208,14 @@ def __igd_cleanup_temp_tbls(**args):
 def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                      col_dep_var, tbl_result, lambda_value, alpha,
                                      normalization, optimizer_params, max_iter,
-                                     tolerance, **kwargs):
+                                     tolerance, outstr_array, **kwargs):
     __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var, tbl_result, 
                                 lambda_value, alpha, normalization, max_iter, tolerance)
     
     return __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_var,
                                                     col_dep_var, tbl_result, lambda_value, alpha,
                                                     normalization, optimizer_params, max_iter,
-                                                    tolerance, **kwargs)
+                                                    tolerance, outstr_array, **kwargs)
     
 ## ========================================================================
     

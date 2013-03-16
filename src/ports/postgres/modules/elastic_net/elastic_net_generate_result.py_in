@@ -1,0 +1,68 @@
+
+import plpy
+
+def __elastic_net_generate_result (optimizer, **args):
+    """
+    Generate result table for all optimizers
+    """
+    plpy.execute("""
+                 drop table if exists {tbl_inter_result};
+                 create table {tbl_inter_result} (
+                     family            text,
+                     features          text[],
+                     features_selected text[],
+                     dense_coef        double precision[],
+                     sparse_coef       double precision[],
+                     intercept         double precision,
+                     log_likelihood    double precision,
+                     normalization     boolean,
+                     iteration_run     integer)
+                 """.format(**args))
+
+    standardize_flag = "True" if normalization else "False"
+    
+    result = plpy.execute(
+        """
+        select
+            (result).coefficients as coef,
+            (result).intercept as intercept,
+            {iteration_run} as iteration
+        from (
+            select {schema_madlib}.__gaussian_fista_result(_state) as result
+            from {tbl_fista_state}
+            where _iteration = {iteration_run}
+        ) t
+        """.format(iteration_run = iteration_run,
+                   standardize_flag = standardize_flag,
+                   **args))[0]
+
+    if normalization:
+        (ind_std, ind_avg, dep_std, dep_ind) = __obtain_scales(**args)
+    
+        (coef, intercept) = __restore_scale(result["coef"], result["intercept"],
+                                            ind_std, ind_avg, dep_std, dep_ind)
+    else:
+        coef = result["coef"]
+        intercept = result["intercept"]
+
+    (features, features_selected, dense_coef, sparse_coef) = __process_results(coef, intercept,
+                                                                               outstr_array)
+
+    # compute the likelihood
+    log_likelihood = __compute_log_likelihood(result["coef"], sparse_coef, result["intercept"], **args)
+    plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
+        log_likelihood = log_likelihood, **args))
+
+    plpy.execute(
+        """
+        insert into {tbl_inter_result} values
+            ('gaussian', '{features}'::text[], '{features_selected}'::text[],
+            '{dense_coef}'::double precision[], '{sparse_coef}'::double precision[],
+            {intercept}, {log_likelihood}, {standardize_flag}, {iteration})
+        """.format(
+            features = features, features_selected = features_selected,
+            dense_coef = dense_coef, sparse_coef = sparse_coef,
+            intercept = intercept, log_likelihood = log_likelihood,
+            standardize_flag = standardize_flag, iteration = result["iteration"]))
+
+    return None

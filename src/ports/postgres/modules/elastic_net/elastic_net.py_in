@@ -141,7 +141,7 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
         __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
                                          col_dep_var, tbl_result, lambda_value, alpha,
                                          standardize, optimizer_params, max_iter,
-                                         tolerance, **kwargs)
+                                         tolerance, outstr_array, **kwargs)
         return None
 
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
@@ -149,7 +149,7 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
         __elastic_net_gaussian_fista_train(schema_madlib, tbl_source, col_ind_var,
                                            col_dep_var, tbl_result, lambda_value, alpha,
                                            standardize, optimizer_params, max_iter,
-                                           tolerance, **kwargs)
+                                           tolerance, outstr_array, **kwargs)
         return None
 
     plpy.error("Not a supported response family or supported optimizer of the given response family!")
@@ -157,7 +157,8 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
 
 # ========================================================================
 
-def analyze_input_str(tbl_source, col_ind_var, col_dep_var, excluded):
+def analyze_input_str(schema_madlib, tbl_source,
+                      col_ind_var, col_dep_var, excluded):
     """
     Make input strings and output strings compatible with functions
 
@@ -166,7 +167,72 @@ def analyze_input_str(tbl_source, col_ind_var, col_dep_var, excluded):
     @param col_dep_var Dependent variables
     @param excluded Which variables are excluded when col_ind_var == "*"
     """
-    return (col_ind_var, "")
+    outstr_array = []
+    
+    if col_ind_var == "*":
+        cols = __get_cols(tbl_source, schema_madlib)
+        if excluded is not None:
+            s = _string_to_array(excluded)
+        else:
+            s = []
+
+        col_ind_var_new = "array["
+        
+        for i in range(len(cols)):
+            if cols[i] not in s and cols[i] != col_dep_var:
+                col_ind_var_new += cols[i]
+                outstr_array.append(cols[i])
+                if i != len(cols) - 1:
+                    col_ind_var_new += ", "
+                else:
+                    col_ind_var_new += "]"
+        return (col_ind_var_new, outstr_array)
+
+    elif __is_col_exists(tbl, [col_ind_var], schema_madlib):
+        # a single column is independent variable
+        # which means that it is an array
+        # excluded must be a string contains integers
+        if excluded is not None:
+            s = _string_to_array(excluded)
+            try:
+                for i in range(len(s)):
+                    s[i] = int(s[i])
+            except:
+                plpy.error("Elastic Net error: When the independent variable is an array, excluded can only be integers!")
+
+            dimension = plpy.execute(
+                """
+                select array_upper({col_ind_var},1) as dimension
+                from {tbl_source} limit 1
+                """.format(tbl_source = tbl_source,
+                           col_ind_var = col_ind_var))[0]["dimension"]
+        else:
+            s = []
+
+        if excluded is None:
+            col_ind_var_new = col_ind_var               
+            outstr_array.append(col_ind_var)
+        else:
+            col_ind_var_new = "array["
+            for i in range(dimension):
+                if i not in s:
+                    col_ind_var_new += col_ind_var + "[" + i + "]"
+                    outstr_array.append(col_ind_var + "[" + i + "]")
+                    if i != dimension - 1:
+                        col_ind_var_new += ", "
+                    else:
+                        col_ind_var_new += "]"
+                        
+        return (col_ind_var_new, outstr_array)
+            
+    try:
+        matched = re.match(r"(?i)^array\[(.*)\]$", col_ind_var)
+        if matched is None:
+            plpy.error("Elastic Net error: Independent variable format is not quite right!")
+        outstr_array = _string_to_array(match.group(1))
+    except:
+        plpy.error("Elastic Net error: Independent variable format is not quite right!")
+    return (col_ind_var, outstr_array)
 
 # ========================================================================
 

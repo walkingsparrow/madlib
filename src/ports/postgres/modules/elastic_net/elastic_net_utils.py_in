@@ -18,6 +18,24 @@ from utilities.control import IterationController
 
 # ========================================================================
 
+def __process_results (coef, intercept, outstr_array):
+    """
+    Return features, features_selected, dense_coef
+    """
+    features = _array_to_string(outstr_array)
+    selected_array = []
+    dense_coef = []
+    for i in range(len(coef)):
+        if coef[i] != 0:
+            selected_array.append(outstr_array[i])
+            dense_coef.append(coef[i])
+    features_selected = _array_to_string(selected_array)
+    dense_coef = _array_to_string(dense_coef)
+
+    return (features, features_selected, dense_coef, _array_to_string(coef))    
+
+# ========================================================================
+
 def __process_warmup_lambdas (lambdas, lambda_value):
     """
     Convert the string of warmup_lambdas into an double array
@@ -133,7 +151,7 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
     
 # ========================================================================
 
-def __compute_log_likelihood (**args):
+def __compute_log_likelihood (coef, coef_str, intercept, **args):
     """
     Compute the log-likelihood at the end of calculation
     """
@@ -141,27 +159,21 @@ def __compute_log_likelihood (**args):
         """
         select
             avg(({col_dep_var_new} - {schema_madlib}.elastic_net_predict('gaussian',
-                                                                    coefficients,
-                                                                    intercept,
+                                                                    '{coefficients}'::double precision[],
+                                                                    {intercept},
                                                                     {col_ind_var_new}))^2) / 2.
                                                                     as loss
         from
-            {tbl_inter_result},
             {tbl_used}
-        """.format(**args))[0]["loss"]
-    mods = plpy.execute(
-        """
-        select sum(coef^2) as module_2, sum(abs(coef)) as module_1
-        from (
-            select unnest(coefficients) as coef
-            from {tbl_inter_result}
-        ) s
-        """.format(**args))[0]
-    module_1 = mods["module_1"]
-    module_2 = mods["module_2"]
+        """.format(coefficients = coef_str,
+                   intercept = intercept,
+                   **args))[0]["loss"]
+    
+    module_1 = sum(x*x for x in coef)
+    module_2 = sum(map(abs, coef))
 
-    log_likelihood = -(loss + args["lambda_value"] * ((1 - args["alpha"])
-                                                      * module_2 / 2. + args["alpha"] * module_1))
+    log_likelihood = -(loss + args["lambda_value"] * ((1 - args["alpha"]) \
+                    * module_2 / 2. + args["alpha"] * module_1))
     return log_likelihood
 
 # ========================================================================

@@ -55,9 +55,9 @@ def __is_tbl_has_rows(tbl):
 
 ## ========================================================================
 
-def __is_col_exists(tbl, cols, schema_madlib="madlib"):
+def __get_cols(tbl, schema_madlib="madlib"):
     """
-    Is the column exist?
+    Get the column names in a table
     """
     version_wrapper = __mad_version()
     array_agg_string = version_wrapper.select_array_agg(schema_madlib)
@@ -81,6 +81,16 @@ def __is_col_exists(tbl, cols, schema_madlib="madlib"):
                                     )[0]["cols"]
     else:
         plpy.error("Format error: Table name strange!")
+
+    return existing_cols
+    
+## ========================================================================
+
+def __is_col_exists(tbl, cols, schema_madlib="madlib"):
+    """
+    Is the column exist?
+    """
+    existing_cols = __get_cols(tbl, schema_madlib)
 
     for col in cols:
         if col not in existing_cols:
