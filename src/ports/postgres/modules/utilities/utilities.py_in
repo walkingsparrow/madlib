@@ -43,8 +43,8 @@ def _array_to_string (origin):
         rst += str(origin[i])
         if i != len(origin) - 1:
             rst += ", "
-        else:
-            rst += "}"
+       
+    rst += "}"
     return rst
 
 ## ========================================================================
