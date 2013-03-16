@@ -1,7 +1,10 @@
 
 import plpy
+import re
 from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
 from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
+from utilities.validate_args import __is_col_exists
+from utilities.utilities import _string_to_array
 
 # ========================================================================
 
@@ -20,14 +23,14 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         return """
         Supported optimizer:
         (1) Incremental gradient descent method ('igd')
-        (2) Fast iterative shrinkage thesholding algorithm ('fista')
+        (2) Fast iterative shrinkage thesholding algorithm ('fista')  
 
         For alpha = 0, Newton method ('newton') is also supported.
 
         Run:
         SELECT {schema_madlib}.elastic_net_train('optimizer');
         to see more help on each optimizer.
-        """
+        """.format(schema_madlib = schema_madlib)
 
     if family_or_optimizer.lower() == "igd":
         return """
@@ -45,8 +48,6 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         warmup_lambda_no - default 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas   
                            is not NULL
-        parallel         - default is False. Do you want to do IGD
-                           on multiple segments or a single one?
 
         When warmup is True and warmup_lambdas is NULL, a series
         of lambda values will be automatically generated and used.
@@ -118,8 +119,8 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
     @param excluded Which variables are excluded when col_ind_var == "*"
     """
     # handle all special cases of col_ind_var
-    (col_ind_var, outstr_array) = analyze_input_str(tbl_source, col_ind_var, col_dep_var,
-                                                    excluded)
+    (col_ind_var, outstr_array) = analyze_input_str(schema_madlib, tbl_source, col_ind_var, 
+                                                    col_dep_var, excluded)
     # Special case for ridge linear regression
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "newton" and
@@ -168,6 +169,13 @@ def analyze_input_str(schema_madlib, tbl_source,
     @param excluded Which variables are excluded when col_ind_var == "*"
     """
     outstr_array = []
+
+    dimension = plpy.execute(
+        """
+        select array_upper({col_ind_var},1) as dimension
+        from {tbl_source} limit 1
+        """.format(tbl_source = tbl_source,
+                   col_ind_var = col_ind_var))[0]["dimension"]
     
     if col_ind_var == "*":
         cols = __get_cols(tbl_source, schema_madlib)
@@ -188,7 +196,7 @@ def analyze_input_str(schema_madlib, tbl_source,
                     col_ind_var_new += "]"
         return (col_ind_var_new, outstr_array)
 
-    elif __is_col_exists(tbl, [col_ind_var], schema_madlib):
+    elif __is_col_exists(tbl_source, [col_ind_var], schema_madlib):
         # a single column is independent variable
         # which means that it is an array
         # excluded must be a string contains integers
@@ -199,19 +207,12 @@ def analyze_input_str(schema_madlib, tbl_source,
                     s[i] = int(s[i])
             except:
                 plpy.error("Elastic Net error: When the independent variable is an array, excluded can only be integers!")
-
-            dimension = plpy.execute(
-                """
-                select array_upper({col_ind_var},1) as dimension
-                from {tbl_source} limit 1
-                """.format(tbl_source = tbl_source,
-                           col_ind_var = col_ind_var))[0]["dimension"]
         else:
             s = []
 
         if excluded is None:
             col_ind_var_new = col_ind_var               
-            outstr_array = map(lambda x: x + 1, range(dimension))
+            outstr_array = map(lambda x: str(x + 1), range(dimension))
         else:
             col_ind_var_new = "array["
             for i in range(dimension):
@@ -229,7 +230,7 @@ def analyze_input_str(schema_madlib, tbl_source,
         matched = re.match(r"(?i)^array\[(.*)\]$", col_ind_var)
         if matched is None:
             plpy.error("Elastic Net error: Independent variable format is not quite right!")
-        outstr_array = _string_to_array(match.group(1))
+        outstr_array = _string_to_array(matched.group(1))
     except:
         plpy.error("Elastic Net error: Independent variable format is not quite right!")
     return (col_ind_var, outstr_array)

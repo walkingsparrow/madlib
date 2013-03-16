@@ -18,10 +18,11 @@ from utilities.utilities import _array_to_string
 from elastic_net_utils import __compute_average_sq
 from elastic_net_utils import __generate_warmup_lambda_sequence
 from elastic_net_utils import __process_warmup_lambdas
+from elastic_net_generate_result import __elastic_net_generate_result
 
 ## ========================================================================
 
-def __fista_params_parser(optimizer_params, lambda_value):
+def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     """
     Parse fista parameters.
     """
@@ -46,7 +47,16 @@ def __fista_params_parser(optimizer_params, lambda_value):
         param_value = items[1].strip().lower()
 
         if param_name not in allowed_params:
-            plpy.error("Elastic Net error: {0} is not a valid parameter name for the FISTA optimizer.".format(param_name))
+            plpy.error(
+                """
+                Elastic Net error: {param_name} is not a valid parameter name for the FISTA optimizer.
+                Run:
+                
+                SELECT {schema_madlib}.elastic_net_train('fista');
+
+                to see the parameters for FISTA algorithm.
+                """.format(param_name = param_name,
+                           schema_madlib = schema_madlib))
 
         if param_name == "max_stepsize":
             try:
@@ -133,7 +143,7 @@ def __fista_create_tbl_args(**args):
 
 def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                          tbl_result, dimension, row_num, lambda_value, alpha,
-                         normalization, max_iter, tolerance, optimizer_params_dict):
+                         normalization, max_iter, tolerance, outstr_array, optimizer_params_dict):
     """
     Construct the dict used by a series of SQL queries in FISTA optimizer.
     """
@@ -148,6 +158,7 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 lambda_value = lambda_value, alpha = alpha,
                 dimension = dimension, row_num = row_num,
                 max_iter = max_iter, tolerance = tolerance,
+                outstr_array = outstr_array,
                 normalization = normalization)
     
     # Add the optimizer parameters
@@ -224,7 +235,7 @@ def __elastic_net_gaussian_fista_train(schema_madlib, tbl_source, col_ind_var,
 def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_ind_var,
                                                 col_dep_var, tbl_result, lambda_value, alpha,
                                                 normalization, optimizer_params, max_iter,
-                                                tolerance, **kwargs):
+                                                tolerance, outstr_array, **kwargs):
     """
     Fit linear model with elastic net regularization using FISTA optimization.
 
@@ -253,8 +264,8 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     # including several temporary table names
     args = __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
                                   dimension, row_num, lambda_value, alpha, normalization,
-                                  max_iter, tolerance,
-                                  __fista_params_parser(optimizer_params, lambda_value))
+                                  max_iter, tolerance, outstr_array,
+                                  __fista_params_parser(optimizer_params, lambda_value, schema_madlib))
 
     # use normalized data or not
     if normalization:
@@ -311,7 +322,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
                                              L0_name = args["L0_name"],
                                              eta_name = args["eta_name"])
 
-    __elastic_net_generate_result("fista", **args)
+    __elastic_net_generate_result("fista", iteration_run, **args)
     
     # cleanup    
     __fista_cleanup_temp_tbls(**args)

@@ -1,7 +1,9 @@
 
 import plpy
+from elastic_net_utils import __process_results
+from elastic_net_utils import __compute_log_likelihood
 
-def __elastic_net_generate_result (optimizer, **args):
+def __elastic_net_generate_result (optimizer, iteration_run, **args):
     """
     Generate result table for all optimizers
     """
@@ -19,7 +21,7 @@ def __elastic_net_generate_result (optimizer, **args):
                      iteration_run     integer)
                  """.format(**args))
 
-    standardize_flag = "True" if normalization else "False"
+    standardize_flag = "True" if args["normalization"] else "False"
 
     if optimizer == "fista":
         result_func = "__gaussian_fista_result(_state)"
@@ -40,17 +42,17 @@ def __elastic_net_generate_result (optimizer, **args):
             iteration_run = iteration_run,
             **args))[0]
 
-    if normalization:
-        (ind_std, ind_avg, dep_std, dep_ind) = __obtain_scales(**args)
+    if args["normalization"]:
+        (ind_std, ind_avg, dep_std, dep_avg) = __obtain_scales(**args)
     
-        (coef, intercept) = __restore_scale(result["coef"], result["intercept"],
-                                            ind_std, ind_avg, dep_std, dep_ind)
+        (coef, intercept) = __restore_scale(result["coef"], ind_std,
+                                            ind_avg, dep_std, dep_avg)
     else:
         coef = result["coef"]
         intercept = result["intercept"]
 
     (features, features_selected, dense_coef, sparse_coef) = __process_results(coef, intercept,
-                                                                               outstr_array)
+                                                                               args["outstr_array"])
 
     # compute the likelihood
     log_likelihood = __compute_log_likelihood(result["coef"], sparse_coef, result["intercept"], **args)
@@ -67,7 +69,8 @@ def __elastic_net_generate_result (optimizer, **args):
             features = features, features_selected = features_selected,
             dense_coef = dense_coef, sparse_coef = sparse_coef,
             intercept = intercept, log_likelihood = log_likelihood,
-            standardize_flag = standardize_flag, iteration = result["iteration"]))
+            standardize_flag = standardize_flag, iteration = iteration_run,
+            **args))
 
     return None
 
@@ -77,11 +80,37 @@ def __obtain_scales (**args):
     """
     extract scales of ind and dep
     """
-    pass
+    version_wrapper = __mad_version()
+    array_agg = version_wrapper.select_array_agg(schema_madlib)
+
+    result_ind = plpy.execute(
+        """
+        select
+            {array_agg}(mean order by attr) as ind_avg,
+            {array_agg}(std order by attr) as ind_std
+        from {tbl_ind_scales}
+        """.format(array_agg = array_agg, **args))[0]
+    result_dep = plpy.execute(
+        """
+        select
+            dep_avg, dep_std
+        from {tbl_dep_scale}
+        """.format(**args))[0]
+    return (result_ind["ind_std"], result_ind["ind_avg"],
+            result_dep["dep_std"], result_dep["dep_avg"])    
 
 # ========================================================================
 
-def __restore_scale (coef, intercept, ind_std, ind_mean, dep_std, dep_ind):
+def __restore_scale (coef, ind_std, ind_mean, dep_std, dep_avg):
     """
     Restore the original scales
     """
+    rcoef = coef
+    rintercept = dep_avg
+    for i in range(len(coef)):
+        if ind_std[i] == 0:
+            rcoef[i] = 0
+        else:
+            rcoef[i] = coef[i] * dep_std / ind_std[i]
+            rintercept -= coef[i] * dep_std * ind_avg[i] / ind_std[i]
+    return (rcoef, rintercept)

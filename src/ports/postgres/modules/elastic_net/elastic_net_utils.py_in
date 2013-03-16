@@ -3,6 +3,7 @@ import plpy
 import math
 import re
 from utilities.utilities import _string_to_array
+from utilities.utilities import _array_to_string
 from convex.utils_regularization import __utils_ind_var_scales
 from convex.utils_regularization import __utils_dep_var_scale
 from convex.utils_regularization import __utils_normalize_data

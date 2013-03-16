@@ -17,7 +17,7 @@ from elastic_net_utils import __process_warmup_lambdas
 
 ## ========================================================================
 
-def __igd_params_parser(optimizer_params):
+def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
     """
     Parse IGD parameters.
     """
@@ -25,7 +25,9 @@ def __igd_params_parser(optimizer_params):
                           "warmup_lambda_no", "threshold", "parallel"])
     name_value = dict()
     # default values
-    name_value["parallel"] = False
+    name_value["parallel"] = False # This option is not exposed to user
+    # And is only used for development
+
     name_value["stepsize"] = 0.01
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None
@@ -43,7 +45,16 @@ def __igd_params_parser(optimizer_params):
         param_value = items[1].strip().lower()
 
         if param_name not in allowed_params:
-            plpy.error("Elastic Net error: {0} is not a valid parameter name for the IGD optimizer.".format(param_name))
+            plpy.error(
+                """
+                Elastic Net error: {param_name} is not a valid parameter name for the IGD optimizer.
+                Run:
+                
+                SELECT {schema_madlib}.elastic_net_train('igd');
+
+                to see the parameters for IGD algorithm.
+                """.format(param_name = param_name,
+                           schema_madlib = schema_madlib))
 
         if param_name == "stepsize":
             try:
@@ -252,7 +263,7 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     args = __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
                                 dimension, row_num, lambda_value, alpha, normalization,
                                 max_iter, tolerance,
-                                __igd_params_parser(optimizer_params))
+                                __igd_params_parser(optimizer_params, lambda_value, schema_madlib))
 
     # use normalized data or not
     if normalization:
