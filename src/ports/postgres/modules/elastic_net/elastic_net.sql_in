@@ -305,14 +305,14 @@ BEGIN
         ''col_ind_var'',    -- Independent variable, can be an expression
         ''regress_family'', -- ''gaussian'' (or ''linear''), ''binomial''
                                 (or ''logistic'') will be supported
-        alpha,              -- Elastic net control parameter, value in [0, 1]
-        lambda_value,       -- Regularization parameter, positive
-        standardize,        -- Whether to normalize the data
+        alpha,            -- Elastic net control parameter, value in [0, 1]  
+        lambda_value,     -- Regularization parameter, positive
+        standardize,      -- Whether to normalize the data
         ''grouping_col'',   -- Group by which columns. Default: NULL
         ''optimizer'',      -- Name of optimizer. Default: ''fista''
         ''excluded'',       -- Column names excluded from ''*''
-        max_iter,           -- Maximum iteration number
-        tolerance           -- Stopping criteria
+        max_iter,         -- Maximum iteration number
+        tolerance         -- Stopping criteria
     );
     ';
     return str;

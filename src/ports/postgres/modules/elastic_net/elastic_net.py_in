@@ -116,7 +116,8 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
     @param optimizer         The optimization algorithm, for example 'igd'
     @param optimizer_params  Parameters of the above optimizer, the format
                              is '{arg = value, ...}'::varchar[]
-    @param excluded Which variables are excluded when col_ind_var == "*"
+    @param excluded          Which variables are excluded when
+                             col_ind_var == "*"
     """
     # handle all special cases of col_ind_var
     (col_ind_var, outstr_array) = analyze_input_str(schema_madlib, tbl_source, col_ind_var, 

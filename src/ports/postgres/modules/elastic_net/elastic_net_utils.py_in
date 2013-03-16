@@ -174,7 +174,7 @@ def __compute_log_likelihood (coef, coef_str, intercept, **args):
     module_2 = sum(map(abs, coef))
 
     log_likelihood = -(loss + args["lambda_value"] * ((1 - args["alpha"]) \
-                    * module_2 / 2. + args["alpha"] * module_1))
+                    * module_1 / 2. + args["alpha"] * module_2))
     return log_likelihood
 
 # ========================================================================

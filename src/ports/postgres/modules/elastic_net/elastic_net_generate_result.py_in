@@ -2,6 +2,8 @@
 import plpy
 from elastic_net_utils import __process_results
 from elastic_net_utils import __compute_log_likelihood
+from utilities.utilities import __mad_version
+from utilities.utilities import _array_to_string
 
 def __elastic_net_generate_result (optimizer, iteration_run, **args):
     """
@@ -25,8 +27,10 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
 
     if optimizer == "fista":
         result_func = "__gaussian_fista_result(_state)"
+        tbl_state = "{tbl_fista_state}"
     elif optimizer == "igd":
         result_func = "__gaussian_igd_result(_state, '{sq_str}'::double precision[], {threshold}::double precision)"
+        tbl_state = "{tbl_igd_state}"
     
     result = plpy.execute(
         """
@@ -35,10 +39,10 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
             (result).intercept as intercept
         from (
             select {{schema_madlib}}.{result_func} as result
-            from {{tbl_fista_state}}
+            from {tbl_state}
             where _iteration = {{iteration_run}}
         ) t
-        """.format(result_func = result_func).format(
+        """.format(result_func = result_func, tbl_state = tbl_state).format(
             iteration_run = iteration_run,
             **args))[0]
 
@@ -55,7 +59,12 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
                                                                                args["outstr_array"])
 
     # compute the likelihood
-    log_likelihood = __compute_log_likelihood(result["coef"], sparse_coef, result["intercept"], **args)
+    if args["normalization"]:
+        coef_str = _array_to_string(result["coef"]) # use un-restored coef
+    else:
+        coef_str = sparse_coef
+    log_likelihood = __compute_log_likelihood(result["coef"], coef_str,
+                                              result["intercept"], **args)
     plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
         log_likelihood = log_likelihood, **args))
 
@@ -81,7 +90,7 @@ def __obtain_scales (**args):
     extract scales of ind and dep
     """
     version_wrapper = __mad_version()
-    array_agg = version_wrapper.select_array_agg(schema_madlib)
+    array_agg = version_wrapper.select_array_agg(args["schema_madlib"])
 
     result_ind = plpy.execute(
         """
@@ -101,7 +110,7 @@ def __obtain_scales (**args):
 
 # ========================================================================
 
-def __restore_scale (coef, ind_std, ind_mean, dep_std, dep_avg):
+def __restore_scale (coef, ind_std, ind_avg, dep_std, dep_avg):
     """
     Restore the original scales
     """

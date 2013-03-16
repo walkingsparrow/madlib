@@ -14,6 +14,7 @@ from utilities.utilities import _array_to_string
 from elastic_net_utils import __compute_average_sq
 from elastic_net_utils import __generate_warmup_lambda_sequence
 from elastic_net_utils import __process_warmup_lambdas
+from elastic_net_generate_result import __elastic_net_generate_result
 
 ## ========================================================================
 
@@ -144,7 +145,8 @@ def __igd_create_tbl_args(**args):
 
 def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                          tbl_result, dimension, row_num, lambda_value, alpha,
-                         normalization, max_iter, tolerance, optimizer_params_dict):
+                         normalization, max_iter, tolerance, outstr_array,
+                         optimizer_params_dict):
     """
     Construct the dict used by a series of SQL queries in IGD optimizer.
     """
@@ -159,6 +161,7 @@ def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
                 lambda_value = lambda_value, alpha = alpha,
                 dimension = dimension, row_num = row_num,
                 max_iter = max_iter, tolerance = tolerance,
+                outstr_array = outstr_array,
                 normalization = normalization)
     
     # Add the optimizer parameters
@@ -233,7 +236,7 @@ def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
 def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_var,
                                              col_dep_var, tbl_result, lambda_value, alpha,
                                              normalization, optimizer_params, max_iter,
-                                             tolerance, **kwargs):
+                                             tolerance, outstr_array, **kwargs):
     """
     Fit linear model with elastic net regularization using IGD optimization.
 
@@ -262,20 +265,19 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     # including several temporary table names
     args = __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
                                 dimension, row_num, lambda_value, alpha, normalization,
-                                max_iter, tolerance,
+                                max_iter, tolerance, outstr_array,
                                 __igd_params_parser(optimizer_params, lambda_value, schema_madlib))
 
     # use normalized data or not
     if normalization:
         __normalize_data(**args)
         args["tbl_used"] = args["tbl_data_scaled"]
-        use_temp = "temp"
+        args["tbl_inter_result"] = tbl_result
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
         args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
         args["tbl_used"] = tbl_source
         args["tbl_inter_result"] = tbl_result
-        use_temp = ""
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
 
@@ -323,53 +325,11 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
                                            tolerance_name = args["tolerance_name"],
                                            xmean_name = args["xmean_name"],
                                            ymean_name = args["ymean_name"])
-        
-    plpy.execute("""
-                 drop table if exists {tbl_inter_result};
-                 create {use_temp} table {tbl_inter_result} (
-                    coefficients      double precision[],
-                    intercept         double precision,
-                    log_likelihood    double precision,
-                    normalization     boolean,
-                    iteration_run     integer)
-                 """.format(use_temp = use_temp, **args))
 
-    standardize_flag = "True" if normalization else "False"
-
-    plpy.execute("""
-                 insert into {tbl_inter_result}
-                    select
-                        (result).coefficients,
-                        (result).intercept,
-                        0.,
-                        {standardize_flag},
-                        {iteration_run}
-                    from (
-                        select {schema_madlib}.__gaussian_igd_result(_state,
-                             '{sq_str}'::double precision[], {threshold}::double precision) as result
-                        from {tbl_igd_state}
-                        where _iteration = {iteration_run}
-                    ) t
-                 """.format(iteration_run = iteration_run,
-                            standardize_flag = standardize_flag,
-                            **args))
-
-    # compute the likelihood
-    log_likelihood = __compute_log_likelihood(**args)
-    plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
-        log_likelihood = log_likelihood, **args))
-    
-    if normalization:
-        __utils_restore_linear_coef_scales(tbl_coef = args["tbl_inter_result"],
-                                           col_coef = "coefficients",
-                                           col_others = ["log_likelihood", "normalization", "iteration_run"],
-                                           tbl_origin_coef = tbl_result,
-                                           **args)
- 
+    __elastic_net_generate_result("igd", iteration_run, **args)
+  
     # cleanup    
     __igd_cleanup_temp_tbls(**args)
-    if normalization:
-        plpy.execute("drop table if exists {tbl_inter_result}".format(**args))
     plpy.execute("set client_min_messages to " + old_msg_level)
     return None
 
