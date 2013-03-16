@@ -63,10 +63,9 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
         coef_str = _array_to_string(result["coef"]) # use un-restored coef
     else:
         coef_str = sparse_coef
+
     log_likelihood = __compute_log_likelihood(result["coef"], coef_str,
                                               result["intercept"], **args)
-    plpy.execute("update {tbl_inter_result} set log_likelihood = {log_likelihood}".format(
-        log_likelihood = log_likelihood, **args))
 
     plpy.execute(
         """
@@ -114,12 +113,10 @@ def __restore_scale (coef, ind_std, ind_avg, dep_std, dep_avg):
     """
     Restore the original scales
     """
-    rcoef = coef
+    rcoef = [0] * len(coef)
     rintercept = dep_avg
     for i in range(len(coef)):
-        if ind_std[i] == 0:
-            rcoef[i] = 0
-        else:
+        if ind_std[i] != 0:
             rcoef[i] = coef[i] * dep_std / ind_std[i]
             rintercept -= coef[i] * dep_std * ind_avg[i] / ind_std[i]
     return (rcoef, rintercept)
