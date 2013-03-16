@@ -211,13 +211,13 @@ def analyze_input_str(schema_madlib, tbl_source,
 
         if excluded is None:
             col_ind_var_new = col_ind_var               
-            outstr_array.append(col_ind_var)
+            outstr_array = map(lambda x: x + 1, range(dimension))
         else:
             col_ind_var_new = "array["
             for i in range(dimension):
-                if i not in s:
-                    col_ind_var_new += col_ind_var + "[" + i + "]"
-                    outstr_array.append(col_ind_var + "[" + i + "]")
+                if i+1 not in s:
+                    col_ind_var_new += col_ind_var + "[" + str(i+1) + "]"
+                    outstr_array.append(str(i+1))
                     if i != dimension - 1:
                         col_ind_var_new += ", "
                     else:

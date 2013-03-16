@@ -20,21 +20,25 @@ def __elastic_net_generate_result (optimizer, **args):
                  """.format(**args))
 
     standardize_flag = "True" if normalization else "False"
+
+    if optimizer == "fista":
+        result_func = "__gaussian_fista_result(_state)"
+    elif optimizer == "igd":
+        result_func = "__gaussian_igd_result(_state, '{sq_str}'::double precision[], {threshold}::double precision)"
     
     result = plpy.execute(
         """
         select
             (result).coefficients as coef,
-            (result).intercept as intercept,
-            {iteration_run} as iteration
+            (result).intercept as intercept
         from (
-            select {schema_madlib}.__gaussian_fista_result(_state) as result
-            from {tbl_fista_state}
-            where _iteration = {iteration_run}
+            select {{schema_madlib}}.{result_func} as result
+            from {{tbl_fista_state}}
+            where _iteration = {{iteration_run}}
         ) t
-        """.format(iteration_run = iteration_run,
-                   standardize_flag = standardize_flag,
-                   **args))[0]
+        """.format(result_func = result_func).format(
+            iteration_run = iteration_run,
+            **args))[0]
 
     if normalization:
         (ind_std, ind_avg, dep_std, dep_ind) = __obtain_scales(**args)
@@ -66,3 +70,18 @@ def __elastic_net_generate_result (optimizer, **args):
             standardize_flag = standardize_flag, iteration = result["iteration"]))
 
     return None
+
+# ========================================================================
+
+def __obtain_scales (**args):
+    """
+    extract scales of ind and dep
+    """
+    pass
+
+# ========================================================================
+
+def __restore_scale (coef, intercept, ind_std, ind_mean, dep_std, dep_ind):
+    """
+    Restore the original scales
+    """
