@@ -74,7 +74,7 @@ class FistaState
     */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 16 + 5 * inDimension;
+        return 18 + 5 * inDimension;
     }
 
   protected:
@@ -101,6 +101,8 @@ class FistaState
         stepsize.rebind(&mStorage[14 + 4 * dimension]);
         b_coef.rebind(&mStorage[15 + 4 * dimension], dimension);
         b_intercept.rebind(&mStorage[15 + 5 * dimension]);
+        use_active_set.rebind(&mStorage[16 + 5 * dimension]);
+        is_active.rebind(&mStorage[17 + 5 * dimension]);
     }
 
     Handle mStorage;
@@ -127,6 +129,8 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToDouble b_intercept; // backtracking intercept
     typename HandleTraits<Handle>::ReferenceToDouble fn; // store the function value in backtracking
     typename HandleTraits<Handle>::ReferenceToDouble Qfn; // the Q function value in backtracking
+    typename HandleTraits<Handle>::ReferenceToUInt32 use_active_set; // whether to use active set method
+    typename HandleTraits<Handle>::ReferenceToUInt32 is_active; // is using active-set now?
 };
 
 }

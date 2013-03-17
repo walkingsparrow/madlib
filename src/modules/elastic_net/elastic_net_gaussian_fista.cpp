@@ -99,6 +99,11 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             state.max_stepsize = args[11].getAs<double>();
             state.eta = args[12].getAs<double>();
 
+            // whether to use active-set method
+            // 1 is yes, 0 is no
+            state.activeset = args[13].getAs<int>();
+            state.is_active = 0;
+
             for (uint32_t i = 0; i < dimension; i++)
             {
                 // initial values
@@ -266,7 +271,7 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
 
     // during backtracking, do not comprae the coefficients
     // of two consecutive states
-    if (state2.backtracking > 0) return 1e6;
+    if (state2.backtracking > 0) return std::numeric_limits<double>::max();
     
     double diff_sum = 0;
     uint32_t n = state1.coef.rows();
@@ -278,7 +283,17 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
         diff_sum += diff;
     }
 
-    return diff_sum / n;
+    diff_sum /= n;
+    
+    if (state.activeset == 1 && state.is_active == 1)
+    {
+        if (diff_sum < state.tolerance) state.is_active = 0;
+        return std::numeric_limits<double>::max();
+    }
+
+    if (state.activeset == 1) state.is_active = 1;
+    
+    return diff_sum;
 }
 
 // ------------------------------------------------------------------------
