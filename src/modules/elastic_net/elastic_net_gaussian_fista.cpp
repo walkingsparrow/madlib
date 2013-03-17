@@ -46,7 +46,7 @@ static double sparse_dot (CVector& coef, CVector& x)
     return sum;
 }
 
-static double sparse_dot (CVector& coef, ColumnVector& x)
+static double sparse_dot (ColumnVector& coef, CVector& x)
 {
     double sum = 0;
     for (int i = 0; i < x.size(); i++)
@@ -220,7 +220,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
                 * sparse_dot(state.coef_y, state.coef_y);
 
         ColumnVector r = state.b_coef - state.coef_y;
-        double extra_Q = sparse_dot(state.gradient, r) + 0.5 * sparse_dot(r, r) / state.stepsize;
+        double extra_Q = sparse_dot(r, state.gradient) + 0.5 * sparse_dot(r, r) / state.stepsize;
         
         if (state.fn <= state.Qfn + extra_Q) { // use last backtracking coef
             // update coef and intercept
@@ -273,7 +273,7 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
     for (uint32_t i = 0; i < n; i++)
     {
         double diff = std::abs(state1.coef(i) - state2.coef(i));
-        double tmp = std::abs(state2.coef(i));
+        double tmp = std::abs(state1.coef(i));
         if (tmp > 1) diff /= tmp;
         diff_sum += diff;
     }

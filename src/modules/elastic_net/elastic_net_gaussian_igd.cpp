@@ -240,7 +240,7 @@ __gaussian_igd_state_diff::run (AnyType& args)
     for (uint32_t i = 0; i < n; i++)
     {
         double diff = std::abs(state1.coef(i) - state2.coef(i));
-        double tmp = std::abs(state2.coef(i));
+        double tmp = std::abs(state1.coef(i));
         if (tmp > 1) diff /= tmp;
         diff_sum += diff;
     }
