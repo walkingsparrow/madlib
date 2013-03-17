@@ -7,10 +7,12 @@ namespace madlib {
 namespace modules {
 namespace elastic_net {
 
+typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandleMap CVector;
+
 /*
   The proxy function, in this case it is just the soft thresholding
  */
-static ColumnVector proxy (ColumnVector y, ColumnVector gradient_y,
+static ColumnVector proxy (CVector& y, CVector& gradient_y,
                            double stepsize, double lambda)
 {
     ColumnVector x(y.size());
@@ -25,6 +27,41 @@ static ColumnVector proxy (ColumnVector y, ColumnVector gradient_y,
             x(i) = 0;
     }
     return x;
+}
+
+/*
+  dot product of sparese vector
+ */
+static double sparse_dot (CVector& coef, MappedColumnVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
+static double sparse_dot (CVector& coef, CVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
+static double sparse_dot (CVector& coef, ColumnVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
+static double sparse_dot (ColumnVector& coef, ColumnVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
 }
 
 /**
@@ -95,21 +132,20 @@ AnyType gaussian_fista_transition::run (AnyType& args)
     if (state.backtracking == 0)
     {
         state.gradient += - (x - state.xmean) * (y - state.intercept_y);
-        
-        for (uint32_t i = 0; i < state.dimension; i++)
-            if (state.coef_y(i) != 0)
-                for (uint32_t j = 0; j < state.dimension; j++)
-                    state.gradient(j) += (x(j) - state.xmean(j)) * state.coef_y(i) * x(i);
+        for (uint32_t j = 0; j < state.dimension; j++)
+            state.gradient(j) += (x(j) - state.xmean(j)) *
+                sparse_dot(state.coef_y, x);
     }
     // during backtracking, always use b_coef and b_intercept
     else 
     {
-        double r = y - state.b_intercept - dot(state.b_coef, x);
+        double r = y - state.b_intercept - sparse_dot(state.b_coef, x);
         state.fn += r * r * 0.5;
+        
         // Qfn only need to be calculated once in each backtracking
         if (state.backtracking == 1)
         {
-            r = y - state.intercept_y - dot(state.coef_y, x);
+            r = y - state.intercept_y - sparse_dot(state.coef_y, x);
             state.Qfn += r * r * 0.5;
         }
     }
@@ -160,15 +196,18 @@ AnyType gaussian_fista_final::run (AnyType& args)
 
     if (state.backtracking == 0) 
     {
-        state.gradient = state.gradient / state.totalRows
-            + state.lambda * (1 - state.alpha) * state.coef_y;
+        state.gradient = state.gradient / state.totalRows;
+        double la = state.lambda * (1 - state.alpha);
+        for (uint32_t i = 0; i < state.dimension; i++)
+            if (state.coef_y(i) != 0)
+                state.gradient(i) += la * state.coef_y(i);
 
         // compute the first set of coef for backtracking
         state.stepsize = 1. / state.L0;
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
         state.b_coef = proxy(state.coef_y, state.gradient, state.stepsize,
                            effective_lambda);
-        state.b_intercept = state.ymean - dot(state.b_coef, state.xmean);
+        state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
 
         state.backtracking = 1; // will do backtracking
     }
@@ -176,14 +215,14 @@ AnyType gaussian_fista_final::run (AnyType& args)
     {
         // finish computing fn and Qfn if needed
         state.fn = state.fn / state.totalRows + 0.5 * state.lambda * (1 - state.alpha)
-            * dot(state.b_coef, state.b_coef);
+            * sparse_dot(state.b_coef, state.b_coef);
         
         if (state.backtracking == 1)
             state.Qfn = state.Qfn / state.totalRows + 0.5 * state.lambda * (1 - state.alpha)
-                * dot(state.coef_y, state.coef_y);
+                * sparse_dot(state.coef_y, state.coef_y);
 
         ColumnVector r = state.b_coef - state.coef_y;
-        double extra_Q = dot(r, state.gradient) + 0.5 * dot(r, r) / state.stepsize;
+        double extra_Q = sparse_dot(state.gradient, r) + 0.5 * sparse_dot(r, r) / state.stepsize;
         
         if (state.fn <= state.Qfn + extra_Q) { // use last backtracking coef
             // update coef and intercept
@@ -198,7 +237,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
             // update coef_y and intercept_y
             state.coef_y = state.coef + (old_tk - 1) * (state.coef - old_coef)
                 / state.tk;
-            state.intercept_y = state.ymean - dot(state.xmean, state.coef_y);
+            state.intercept_y = state.ymean - sparse_dot(state.coef_y, state.xmean);
             
             state.backtracking = 0; // stop backtracking
         }
@@ -208,7 +247,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
             double effective_lambda = state.lambda * state.alpha * state.stepsize;
             state.b_coef = proxy(state.coef_y, state.gradient, state.stepsize,
                                  effective_lambda);
-            state.b_intercept = state.ymean - dot(state.b_coef, state.xmean);
+            state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
 
             state.backtracking++;
         }

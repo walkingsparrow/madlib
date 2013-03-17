@@ -8,6 +8,27 @@ namespace madlib {
 namespace modules {
 namespace elastic_net {
 
+typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandleMap CVector;
+
+/*
+  dot product of sparese vector
+ */
+static double sparse_dot (CVector& coef, MappedColumnVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
+static double sparse_dot (CVector& coef, CVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
 // sign of a number
 static double sign(const double & x) {
     if (x > 0)
@@ -21,17 +42,18 @@ static double sign(const double & x) {
 // ------------------------------------------------------------------------
 // Need divided-by-zero type check
 
-static double p_abs (ColumnVector v, double r)
+static double p_abs (CVector& v, double r)
 {
     double sum = 0;
     for (int i = 0; i < v.size(); i++)
-        sum += pow(fabs(v(i)), r);
+        if (v(i) != 0)
+            sum += pow(fabs(v(i)), r);
     return pow(sum, 1./r);
 }
 
 // p-form link function, q = p/(p-1)
 // For inverse function, jut replace w with theta and q with p 
-static ColumnVector link_fn (ColumnVector theta, double p)
+static ColumnVector link_fn (CVector& theta, double p)
 {
     ColumnVector w(theta.size());
     double abs_theta = p_abs(theta, p);
@@ -98,7 +120,7 @@ gaussian_igd_transition::run (AnyType& args)
             state.coef = link_fn(state.theta, state.p);
             state.intercept = state.ymean - dot(state.coef, state.xmean);
         }
-      
+         
         state.loss = 0.;
         // state.incrCoef = state.coef;
         // state.incrIntercept = state.intercept;
@@ -109,30 +131,30 @@ gaussian_igd_transition::run (AnyType& args)
     double y = args[2].getAs<double>();
 
     // Now do the transition step
-    double wx = dot(state.incrCoef, x) + state.incrIntercept;
+    double wx = sparse_dot(state.incrCoef, x) + state.incrIntercept;
     double r = wx - y;
 
     ColumnVector gradient(state.dimension);
     gradient = r * (x - state.xmean) + (1 - state.alpha) * state.lambda
         * state.incrCoef;
 
+    double a = state.stepsize / state.totalRows;
+    double b = state.stepsize * state.alpha * state.lambda
+        / state.totalRows;
     for (uint32_t i = 0; i < state.dimension; i++)
     {
         // step 1
-        state.theta(i) -= state.stepsize * gradient(i)
-            / state.totalRows;
+        state.theta(i) -= a * gradient(i);
         double step1_sign = sign(state.theta(i));
         // step 2
-        state.theta(i) -= state.stepsize * state.alpha
-            * state.lambda * sign(state.theta(i))
-            / state.totalRows;
+        state.theta(i) -= b * sign(state.theta(i));
         // set to 0 if the value crossed zero during the two steps
         if (step1_sign != sign(state.theta(i))) state.theta(i) = 0;
     }
 
     state.incrCoef = link_fn(state.theta, state.p);
 
-    state.incrIntercept = state.ymean - dot(state.incrCoef, state.xmean);
+    state.incrIntercept = state.ymean - sparse_dot(state.incrCoef, state.xmean);
 
     // state.loss += r * r / 2.;
     state.numRows ++;
@@ -198,7 +220,7 @@ gaussian_igd_final::run (AnyType& args)
     // finalizing
     //state.coef = link_fn(state.theta, state.p);
     state.coef = state.incrCoef;
-    state.intercept = state.ymean - dot(state.coef, state.xmean);
+    state.intercept = state.ymean - sparse_dot(state.coef, state.xmean);
 
     state.theta = link_fn(state.coef, state.q);
   
@@ -223,7 +245,7 @@ __gaussian_igd_state_diff::run (AnyType& args)
         double diff = std::abs(state1.coef(i) - state2.coef(i));
         double tmp = std::abs(state2.coef(i));
         if (tmp > 1) diff /= tmp;
-        diff_sum = diff;
+        diff_sum += diff;
     }
 
     return diff_sum / n;
