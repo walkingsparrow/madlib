@@ -98,7 +98,7 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             state.ymean = ymean;
             state.tk = tk;
             state.backtracking = 0; // the first iteration is always non-backtracking
-            state.L0 = args[11].getAs<double>();
+            state.max_stepsize = args[11].getAs<double>();
             state.eta = args[12].getAs<double>();
 
             for (uint32_t i = 0; i < dimension; i++)
@@ -203,7 +203,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
                 state.gradient(i) += la * state.coef_y(i);
 
         // compute the first set of coef for backtracking
-        state.stepsize = 1. / state.L0;
+        state.stepsize = state.max_stepsize;
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
         state.b_coef = proxy(state.coef_y, state.gradient, state.stepsize,
                            effective_lambda);

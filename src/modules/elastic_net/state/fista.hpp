@@ -94,7 +94,7 @@ class FistaState
         tk.rebind(&mStorage[8 + 3 * dimension]);
         numRows.rebind(&mStorage[9 + 3 * dimension]);
         gradient.rebind(&mStorage[10 + 3 * dimension], dimension);
-        L0.rebind(&mStorage[10 + 4 * dimension]);
+        max_stepsize.rebind(&mStorage[10 + 4 * dimension]);
         eta.rebind(&mStorage[11 + 4 * dimension]);
         fn.rebind(&mStorage[12 + 4 * dimension]);
         Qfn.rebind(&mStorage[13 + 4 * dimension]);
@@ -121,7 +121,7 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
     typename HandleTraits<Handle>::ReferenceToUInt32 backtracking; // is backtracking now?
-    typename HandleTraits<Handle>::ReferenceToDouble L0;
+    typename HandleTraits<Handle>::ReferenceToDouble max_stepsize;
     typename HandleTraits<Handle>::ReferenceToDouble eta;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap b_coef; // backtracking coef
     typename HandleTraits<Handle>::ReferenceToDouble b_intercept; // backtracking intercept

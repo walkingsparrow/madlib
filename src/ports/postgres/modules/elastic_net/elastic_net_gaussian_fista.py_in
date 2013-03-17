@@ -29,8 +29,7 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     allowed_params = set(["max_stepsize", "eta", "warmup", "warmup_lambdas", "warmup_lambda_no"])
     name_value = dict()
     # default values
-    name_value["L0"] = 0.25
-    name_value["max_stepsize"] = 1. / name_value["L0"]
+    name_value["max_stepsize"] = 3.
     name_value["eta"] = 2
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None
@@ -66,7 +65,6 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
                 name_value["max_stepsize"] = float(param_value)
             except:
                 plpy.error("Elastic Net error: max_stepsize must be a float number!")
-            name_value["L0"] = 1. / name_value["max_stepsize"]
 
         if param_name == "eta":
             try:
@@ -134,7 +132,7 @@ def __fista_create_tbl_args(**args):
                      {tolerance_name}       double precision,
                      {xmean_name}           double precision[],
                      {ymean_name}           double precision,
-                     {L0_name}              double precision,
+                     {max_stepsize_name}    double precision,
                      {eta_name}             double precision
                  );
                  """.format(**args))
@@ -142,7 +140,7 @@ def __fista_create_tbl_args(**args):
                  insert into {tbl_fista_args} values
                      ({dimension}, '{warmup_lambdas}',
                      {alpha}, {row_num}, {max_iter}, {tolerance},
-                     {xmean_str}, {ymean}, {L0}, {eta});
+                     {xmean_str}, {ymean}, {max_stepsize}, {eta});
                  """.format(xmean_str = xmean_str, ymean = ymean,
                             **args))
 
@@ -202,7 +200,7 @@ def __fista_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     args["tolerance_name"] = __unique_string()
     args["xmean_name"] = __unique_string()
     args["ymean_name"] = __unique_string()
-    args["L0_name"] = __unique_string()
+    args["max_stepsize_name"] = __unique_string()
     args["eta_name"] = __unique_string()
    
     return args
@@ -328,7 +326,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
                                              tolerance_name = args["tolerance_name"],
                                              xmean_name = args["xmean_name"],
                                              ymean_name = args["ymean_name"],
-                                             L0_name = args["L0_name"],
+                                             max_stepsize_name = args["max_stepsize_name"],
                                              eta_name = args["eta_name"])
 
     __elastic_net_generate_result("fista", iteration_run, **args)
@@ -393,7 +391,7 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               (_args.{ymean_name})::double precision,
                               1::double precision,
                               (_args.{total_rows_name})::integer,
-                              (_args.{L0_name})::double precision,
+                              (_args.{max_stepsize_name})::double precision,
                               (_args.{eta_name})::double precision)
                       from {rel_source} as _src, {rel_args} as _args
                       """)
