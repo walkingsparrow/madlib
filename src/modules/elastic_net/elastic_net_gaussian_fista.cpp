@@ -9,6 +9,8 @@ namespace elastic_net {
 
 typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandleMap CVector;
 
+// ------------------------------------------------------------------------
+
 /*
   The proxy function, in this case it is just the soft thresholding
  */
@@ -26,6 +28,8 @@ static void proxy (CVector& y, CVector& gradient_y, CVector& x,
             x(i) = 0;
     }
 }
+
+// ------------------------------------------------------------------------
 
 /*
   dot product of sparese vector
@@ -61,6 +65,66 @@ static double sparse_dot (ColumnVector& coef, ColumnVector& x)
         if (coef(i) != 0) sum += coef(i) * x(i);
     return sum;
 }
+
+// ------------------------------------------------------------------------
+
+static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
+                                     MappedColumnVector& x, double y)
+{
+    double r = y - state.b_intercept - sparse_dot(state.b_coef, x);
+    state.fn += r * r * 0.5;
+    
+    // Qfn only need to be calculated once in each backtracking
+    if (state.backtracking == 1)
+    {
+        r = y - state.intercept_y - sparse_dot(state.coef_y, x);
+        state.Qfn += r * r * 0.5;
+    }
+}
+
+// ------------------------------------------------------------------------
+/*
+  Transition part when no active set is used
+ */
+static void normal_transition (FistaState<MutableArrayHandle<double> >& state,
+                               MappedColumnVector& x, double y)
+{
+    if (state.backtracking == 0)
+    {
+        state.gradient += - (x - state.xmean) * (y - state.intercept_y);
+        for (uint32_t j = 0; j < state.dimension; j++)
+            state.gradient(j) += (x(j) - state.xmean(j)) *
+                sparse_dot(state.coef_y, x);
+    }
+    // during backtracking, always use b_coef and b_intercept
+    else 
+        backtracking_transition(state, x, y);
+}
+
+// ------------------------------------------------------------------------
+
+/*
+  Transition part when active set is used
+ */
+static void active_transition (FistaState<MutableArrayHandle<double> >& state,
+                               MappedColumnVector& x, double y)
+{
+    if (state.backtracking == 0)
+    {
+        // state.gradient += - (x - state.xmean) * (y - state.intercept_y);
+        for (uint32_t j = 0; j < state.dimension; j++)
+            if (state.coef_y(j) == 0)
+                state.gradient(j) += - (x(j) - state.xmean(j)) *
+                    (y - state.intercept_y - sparse_dot(state.coef_y, x));
+            else
+                state.gradient(j) = 0;
+    }
+    // during backtracking, always use b_coef and b_intercept
+    else 
+        backtracking_transition(state, x, y);
+}
+
+// ------------------------------------------------------------------------
 
 /**
    @brief Perform FISTA transition step
@@ -101,8 +165,7 @@ AnyType gaussian_fista_transition::run (AnyType& args)
 
             // whether to use active-set method
             // 1 is yes, 0 is no
-            state.activeset = args[13].getAs<int>();
-            state.is_active = 0;
+            state.use_active_set = args[13].getAs<int>();
 
             for (uint32_t i = 0; i < dimension; i++)
             {
@@ -127,36 +190,29 @@ AnyType gaussian_fista_transition::run (AnyType& args)
         // lambda is changing if warm-up is used
         // so needs to update it everytime
         state.lambda = lambda;
+
+        state.is_active = args[14].getAs<int>();
     }
 
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
 
-    if (state.backtracking == 0)
+    if (state.use_active_set == 1)
     {
-        state.gradient += - (x - state.xmean) * (y - state.intercept_y);
-        for (uint32_t j = 0; j < state.dimension; j++)
-            state.gradient(j) += (x(j) - state.xmean(j)) *
-                sparse_dot(state.coef_y, x);
+        if (state.is_active == 0)
+            normal_transition(state, x, y);
+        else
+            active_transition(state, x, y);
     }
-    // during backtracking, always use b_coef and b_intercept
-    else 
-    {
-        double r = y - state.b_intercept - sparse_dot(state.b_coef, x);
-        state.fn += r * r * 0.5;
-        
-        // Qfn only need to be calculated once in each backtracking
-        if (state.backtracking == 1)
-        {
-            r = y - state.intercept_y - sparse_dot(state.coef_y, x);
-            state.Qfn += r * r * 0.5;
-        }
-    }
+    else
+        normal_transition(state, x, y);
 
     state.numRows++;
 
     return state;
 }
+
+// ------------------------------------------------------------------------
 
 /**
    @brief Perform Merge transition steps
@@ -186,6 +242,8 @@ AnyType gaussian_fista_merge::run (AnyType& args)
 
     return state1;
 }
+
+// ------------------------------------------------------------------------
 
 /**
    @brief Perform the final computation
@@ -255,7 +313,7 @@ AnyType gaussian_fista_final::run (AnyType& args)
             state.backtracking++;
         }
     }
-
+    
     return state;
 }
 
@@ -271,7 +329,7 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
 
     // during backtracking, do not comprae the coefficients
     // of two consecutive states
-    if (state2.backtracking > 0) return std::numeric_limits<double>::max();
+    if (state2.backtracking > 0) return 1e12;
     
     double diff_sum = 0;
     uint32_t n = state1.coef.rows();
@@ -282,18 +340,8 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
         if (tmp > 1) diff /= tmp;
         diff_sum += diff;
     }
-
-    diff_sum /= n;
     
-    if (state.activeset == 1 && state.is_active == 1)
-    {
-        if (diff_sum < state.tolerance) state.is_active = 0;
-        return std::numeric_limits<double>::max();
-    }
-
-    if (state.activeset == 1) state.is_active = 1;
-    
-    return diff_sum;
+    return diff_sum / n;
 }
 
 // ------------------------------------------------------------------------

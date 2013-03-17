@@ -143,7 +143,7 @@ def __fista_create_tbl_args(**args):
                      {xmean_name}           double precision[],
                      {ymean_name}           double precision,
                      {max_stepsize_name}    double precision,
-                     {eta_name}             double precision
+                     {eta_name}             double precision,
                      {activeset_name}       integer
                  );
                  """.format(**args))
@@ -151,7 +151,8 @@ def __fista_create_tbl_args(**args):
                  insert into {tbl_fista_args} values
                      ({dimension}, '{warmup_lambdas}',
                      {alpha}, {row_num}, {max_iter}, {tolerance},
-                     {xmean_str}, {ymean}, {max_stepsize}, {eta}, {use_active_set});
+                     {xmean_str}, {ymean}, {max_stepsize}, {eta},
+                     {use_active_set});
                  """.format(xmean_str = xmean_str, ymean = ymean,
                             **args))
 
@@ -325,17 +326,18 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
                                              start_iter = 0,
                                              max_iter = args["max_iter"],
                                              warm_no = args["warm_no"],
+                                             use_active_set = args["use_active_set"],
                                              dimension_name = args["dimension_name"],
                                              lambda_name = args["lambda_name"],
                                              alpha_name = args["alpha_name"],
                                              total_rows_name = args["total_rows_name"],
                                              max_iter_name = args["max_iter_name"],
-                                             tolerance_name = args["tolerance_name"],
                                              xmean_name = args["xmean_name"],
                                              ymean_name = args["ymean_name"],
                                              max_stepsize_name = args["max_stepsize_name"],
-                                             eta_name = args["eta_name"])
-                                             activeset_name = args["activeset_name"])
+                                             eta_name = args["eta_name"],
+                                             activeset_name = args["activeset_name"],
+                                             tolerance_name = args["tolerance_name"])
 
     __elastic_net_generate_result("fista", iteration_run, **args)
     
@@ -379,6 +381,7 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
         col_ind_var = col_ind_var,
         col_dep_var = col_dep_var,
         lambda_count = 1,
+        is_active = 0,
         **kwargs)
     
     with iterationCtrl as it:
@@ -400,24 +403,35 @@ def __compute_gaussian_fista(schema_madlib, tbl_args, tbl_state, tbl_source,
                               1::double precision,
                               (_args.{total_rows_name})::integer,
                               (_args.{max_stepsize_name})::double precision,
-                              (_args.{eta_name})::double precision)
-                              (_args.{activeset_name})::integer)
+                              (_args.{eta_name})::double precision,
+                              (_args.{activeset_name})::integer,
+                              {is_active}::integer
+                          )
                       from {rel_source} as _src, {rel_args} as _args
                       """)
-         
+            
             if it.test("""
-                       {iteration} >= _args.{max_iter_name} or
+                       {iteration} >= _args.{max_iter_name}
+                       or
                        {schema_madlib}.__gaussian_fista_state_diff(
                            (select _state from {rel_state}
                                where _iteration = {iteration} - 1),
                            (select _state from {rel_state}
                                where _iteration = {iteration})) < _args.{tolerance_name}
                        """):
-                if (it.iteration < it.kwargs["max_iter"] and
-                    it.kwargs["lambda_count"] < it.kwargs["warm_no"]):
-                    it.kwargs["lambda_count"] += 1
+                if it.iteration < it.kwargs["max_iter"]:
+                    if it.kwargs["is_active"] == 0:
+                        if (it.kwargs["lambda_count"] < it.kwargs["warm_no"]):
+                            it.kwargs["lambda_count"] += 1
+                        else:
+                            break
+                    else:
+                        it.kwargs["is_active"] = 0
                 else:
                     break
+            else:
+                it.kwargs["is_active"] = 1
+                        
         if it.kwargs["lambda_count"] < it.kwargs["warm_no"]:
             plpy.error("""
                        Elastic Net error: The final target lambda value is not

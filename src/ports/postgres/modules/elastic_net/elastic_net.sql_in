@@ -478,7 +478,9 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
     tk                  DOUBLE PRECISION,
     total_rows          INTEGER,
     L0                  DOUBLE PRECISION,
-    eta                 DOUBLE PRECISION
+    eta                 DOUBLE PRECISION,
+    use_active_set      INTEGER,
+    is_active           INTEGER
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'gaussian_fista_transition'
 LANGUAGE C IMMUTABLE;
@@ -516,7 +518,9 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
     /* tk           */  DOUBLE PRECISION,
     /* total_rows   */  INTEGER,
     /* L0           */  DOUBLE PRECISION,
-    /* eta          */  DOUBLE PRECISION
+    /* eta          */  DOUBLE PRECISION,
+    /* use_active_set */INTEGER,
+    /* is_active */     INTEGER
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
