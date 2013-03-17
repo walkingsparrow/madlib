@@ -194,9 +194,6 @@ def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
     args.update(tbl_igd_state = __unique_string(),
                 tbl_igd_args = __unique_string())
 
-    # Table name used as the intermediate storage before scale restores
-    args.update(tbl_inter_result = __unique_string())
-
     # more, for args table
     args["dimension_name"] = __unique_string()
     args["stepsize_name"] = __unique_string()
@@ -282,12 +279,10 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     if normalization:
         __normalize_data(**args)
         args["tbl_used"] = args["tbl_data_scaled"]
-        args["tbl_inter_result"] = tbl_result
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
         args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
         args["tbl_used"] = tbl_source
-        args["tbl_inter_result"] = tbl_result
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
 

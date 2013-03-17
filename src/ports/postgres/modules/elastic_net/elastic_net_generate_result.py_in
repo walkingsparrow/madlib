@@ -10,8 +10,8 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
     Generate result table for all optimizers
     """
     plpy.execute("""
-                 drop table if exists {tbl_inter_result};
-                 create table {tbl_inter_result} (
+                 drop table if exists {tbl_result};
+                 create table {tbl_result} (
                      family            text,
                      features          text[],
                      features_selected text[],
@@ -69,7 +69,7 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
 
     plpy.execute(
         """
-        insert into {tbl_inter_result} values
+        insert into {tbl_result} values
             ('gaussian', '{features}'::text[], '{features_selected}'::text[],
             '{dense_coef}'::double precision[], '{sparse_coef}'::double precision[],
             {intercept}, {log_likelihood}, {standardize_flag}, {iteration})
