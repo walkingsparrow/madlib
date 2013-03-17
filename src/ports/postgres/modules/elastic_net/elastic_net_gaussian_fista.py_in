@@ -36,6 +36,9 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     name_value["warmup_lambdas"] = None
     name_value["warmup_lambda_no"] = 15
 
+    warmup_lambdas = None
+    warmup_lambda_no = None
+
     if optimizer_params is None:
         return name_value
     
@@ -80,18 +83,24 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
                 plpy.error("Elastic Net error: Do you need warmup (True/False or yes/no) ?")
 
         if param_name == "warmup_lambdas" and param_value != "null":
-            # errors are handled in __process_warmup_lambdas
-            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+            warmup_lambdas = param_value
 
         if param_name == "warmup_lambda_no":
+            warmup_lambda_no = param_value
+
+    if name_value["warmup"]:
+        if warmup_lambdas is not None:
+            # errors are handled in __process_warmup_lambdas
+            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+        if warmup_lambda_no is not None:
             try:
                 name_value["warmup_lambda_no"] = int(param_value)
             except:
                 plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
             
     # validate the parameters
-    if name_value["L0"] <= 0:
-        plpy.error("Elastic Net error: backtracking parameter L0 must be positive!")
+    if name_value["max_stepsize"] <= 0:
+        plpy.error("Elastic Net error: backtracking parameter max_stepsize must be positive!")
 
     if name_value["eta"] < 1:
         plpy.error("Elastic Net error: backtracking parameter eta must be larger than 1!")

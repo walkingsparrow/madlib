@@ -154,7 +154,7 @@ AnyType gaussian_fista_merge::run (AnyType& args)
 AnyType gaussian_fista_final::run (AnyType& args)
 {
     FistaState<MutableArrayHandle<double> > state = args[0];
-
+   
     // Aggregates that haven't seen any data just return Null
     if (state.numRows == 0) return Null();
 
@@ -227,27 +227,21 @@ AnyType __gaussian_fista_state_diff::run (AnyType& args)
     FistaState<ArrayHandle<double> > state1 = args[0];
     FistaState<ArrayHandle<double> > state2 = args[1];
 
-    // double diff = 0;    
-    // uint32_t n = state1.coef.rows();
-    // for (uint32_t i = 0; i < n; i++)
-    //     diff += std::abs(state1.coef(i) - state2.coef(i));
-
-    // return diff / n;
-
     // during backtracking, do not comprae the coefficients
     // of two consecutive states
     if (state2.backtracking > 0) return 1e6;
     
-    double diff_max = 0;
+    double diff_sum = 0;
     uint32_t n = state1.coef.rows();
     for (uint32_t i = 0; i < n; i++)
     {
         double diff = std::abs(state1.coef(i) - state2.coef(i));
-        if (diff > diff_max)
-            diff_max = diff;
+        double tmp = std::abs(state2.coef(i));
+        if (tmp > 1) diff /= tmp;
+        diff_sum += diff;
     }
 
-    return diff_max;
+    return diff_sum / n;
 }
 
 // ------------------------------------------------------------------------

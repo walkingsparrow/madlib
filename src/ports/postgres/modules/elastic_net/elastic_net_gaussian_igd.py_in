@@ -35,6 +35,9 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
     name_value["warmup_lambda_no"] = 15
     name_value["threshold"] = 1e-10
 
+    warmup_lambdas = None
+    warmup_lambda_no = None
+
     if optimizer_params is None:
         return name_value
     
@@ -72,14 +75,10 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
                 plpy.error("Elastic Net error: Do you need warmup (True/False or yes/no) ?")
 
         if param_name == "warmup_lambdas" and param_value != "null":
-            # errors are handled in __process_warmup_lambdas
-            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+            warmup_lambdas = param_value
 
         if param_name == "warmup_lambda_no":
-            try:
-                name_value["warmup_lambda_no"] = int(param_value)
-            except:
-                plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
+            warmup_lambda_no = param_value
    
         if param_name == "threshold":
             try:
@@ -95,6 +94,17 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
             else:
                 plpy.error("Elastic Net error: Do you need parallel (True/False or yes/no) ? IGD in parallel might be slower !")
 
+    if name_value["warmup"]:
+        if warmup_lambdas is not None:
+            # errors are handled in __process_warmup_lambdas
+            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+        if warmup_lambda_no is not None:
+            try:
+                name_value["warmup_lambda_no"] = int(param_value)
+            except:
+                plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
+    
+                
     # validate the parameters
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")

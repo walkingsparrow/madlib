@@ -216,17 +216,17 @@ __gaussian_igd_state_diff::run (AnyType& args)
     IgdState<ArrayHandle<double> > state1 = args[0];
     IgdState<ArrayHandle<double> > state2 = args[1];
 
-    double diff = 0;    
-    Index i;
-    int n = state1.coef.rows();
-    for (i = 0; i < n; i++)
+    double diff_sum = 0;
+    uint32_t n = state1.coef.rows();
+    for (uint32_t i = 0; i < n; i++)
     {
-        diff += std::abs(state1.coef(i) - state2.coef(i));
+        double diff = std::abs(state1.coef(i) - state2.coef(i));
+        double tmp = std::abs(state2.coef(i));
+        if (tmp > 1) diff /= tmp;
+        diff_sum = diff;
     }
 
-    return diff / n;
-
-    // return std::abs((state1.loss - state2.loss) / state2.loss);
+    return diff_sum / n;
 }
 
 // ------------------------------------------------------------------------
