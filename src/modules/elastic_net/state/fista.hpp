@@ -83,7 +83,7 @@ class FistaState
         dimension.rebind(&mStorage[0]);
         lambda.rebind(&mStorage[1]);
         alpha.rebind(&mStorage[2]);
-        backtracking.rebind(&mStorage[3]);
+        is_active.rebind(&mStorage[3]);
         totalRows.rebind(&mStorage[4]);
         intercept.rebind(&mStorage[5]);
         intercept_y.rebind(&mStorage[6]);
@@ -102,7 +102,7 @@ class FistaState
         b_coef.rebind(&mStorage[15 + 4 * dimension], dimension);
         b_intercept.rebind(&mStorage[15 + 5 * dimension]);
         use_active_set.rebind(&mStorage[16 + 5 * dimension]);
-        is_active.rebind(&mStorage[17 + 5 * dimension]);
+        backtracking.rebind(&mStorage[17 + 5 * dimension]);
     }
 
     Handle mStorage;

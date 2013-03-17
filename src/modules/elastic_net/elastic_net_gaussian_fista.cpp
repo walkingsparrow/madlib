@@ -71,6 +71,7 @@ static double sparse_dot (ColumnVector& coef, ColumnVector& x)
 static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                      MappedColumnVector& x, double y)
 {
+    // during backtracking, always use b_coef and b_intercept
     double r = y - state.b_intercept - sparse_dot(state.b_coef, x);
     state.fn += r * r * 0.5;
     
@@ -96,7 +97,6 @@ static void normal_transition (FistaState<MutableArrayHandle<double> >& state,
             state.gradient(j) += (x(j) - state.xmean(j)) *
                 sparse_dot(state.coef_y, x);
     }
-    // during backtracking, always use b_coef and b_intercept
     else 
         backtracking_transition(state, x, y);
 }
@@ -109,18 +109,12 @@ static void normal_transition (FistaState<MutableArrayHandle<double> >& state,
 static void active_transition (FistaState<MutableArrayHandle<double> >& state,
                                MappedColumnVector& x, double y)
 {
-    if (state.backtracking == 0)
-    {
-        // state.gradient += - (x - state.xmean) * (y - state.intercept_y);
-        for (uint32_t j = 0; j < state.dimension; j++)
-            if (state.coef_y(j) == 0)
-                state.gradient(j) += - (x(j) - state.xmean(j)) *
+    if (state.backtracking == 0) {
+        for (uint32_t i = 0; i < state.dimension; i++)
+            if (state.coef_y(i) != 0)
+                state.gradient(i) += - (x(i) - state.xmean(i)) *
                     (y - state.intercept_y - sparse_dot(state.coef_y, x));
-            else
-                state.gradient(j) = 0;
-    }
-    // during backtracking, always use b_coef and b_intercept
-    else 
+    } else 
         backtracking_transition(state, x, y);
 }
 
@@ -197,13 +191,8 @@ AnyType gaussian_fista_transition::run (AnyType& args)
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y = args[2].getAs<double>();
 
-    if (state.use_active_set == 1)
-    {
-        if (state.is_active == 0)
-            normal_transition(state, x, y);
-        else
-            active_transition(state, x, y);
-    }
+    if (state.use_active_set == 1 && state.is_active == 1)
+        active_transition(state, x, y);
     else
         normal_transition(state, x, y);
 
@@ -227,8 +216,16 @@ AnyType gaussian_fista_merge::run (AnyType& args)
     else if (state2.numRows == 0)
         return state1;
 
-    if (state1.backtracking == 0)
-        state1.gradient += state2.gradient;
+    if (state1.backtracking == 0) {
+        if (state1.use_active_set == 1 && state1.is_active == 1)
+        {
+            for (uint32_t i = 0; i < state1.dimension; i++)
+                if (state1.coef_y(i) != 0)
+                    state1.gradient(i) += state2.gradient(i);
+        }
+        else
+            state1.gradient += state2.gradient;
+    }
     else
     {
         state1.fn += state2.fn;
