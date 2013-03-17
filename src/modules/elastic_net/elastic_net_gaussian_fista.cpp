@@ -12,10 +12,9 @@ typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandle
 /*
   The proxy function, in this case it is just the soft thresholding
  */
-static ColumnVector proxy (CVector& y, CVector& gradient_y,
-                           double stepsize, double lambda)
+static void proxy (CVector& y, CVector& gradient_y, CVector& x,
+                   double stepsize, double lambda)
 {
-    ColumnVector x(y.size());
     ColumnVector u = y - stepsize * gradient_y;
     for (int i = 0; i < y.size(); i++)
     {
@@ -26,7 +25,6 @@ static ColumnVector proxy (CVector& y, CVector& gradient_y,
         else
             x(i) = 0;
     }
-    return x;
 }
 
 /*
@@ -205,8 +203,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
         // compute the first set of coef for backtracking
         state.stepsize = state.max_stepsize;
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
-        state.b_coef = proxy(state.coef_y, state.gradient, state.stepsize,
-                           effective_lambda);
+        proxy(state.coef_y, state.gradient, state.b_coef, 
+              state.stepsize, effective_lambda);
         state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
 
         state.backtracking = 1; // will do backtracking
@@ -245,8 +243,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
         {
             state.stepsize = state.stepsize / state.eta;
             double effective_lambda = state.lambda * state.alpha * state.stepsize;
-            state.b_coef = proxy(state.coef_y, state.gradient, state.stepsize,
-                                 effective_lambda);
+            proxy(state.coef_y, state.gradient, state.b_coef, 
+                  state.stepsize, effective_lambda);
             state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
 
             state.backtracking++;

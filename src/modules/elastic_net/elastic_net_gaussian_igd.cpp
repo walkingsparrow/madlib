@@ -53,14 +53,13 @@ static double p_abs (CVector& v, double r)
 
 // p-form link function, q = p/(p-1)
 // For inverse function, jut replace w with theta and q with p 
-static ColumnVector link_fn (CVector& theta, double p)
+static void link_fn (CVector& theta, CVector& w, double p)
 {
-    ColumnVector w(theta.size());
     double abs_theta = p_abs(theta, p);
     if (fabs(abs_theta) <= std::numeric_limits<double>::denorm_min())
     {
         for (int i = 0; i < theta.size(); i++) w(i) = 0;
-        return w;
+        return;
     }
 
     double denominator = pow(abs_theta, p - 2);
@@ -71,8 +70,6 @@ static ColumnVector link_fn (CVector& theta, double p)
         else
             w(i) = sign(theta(i)) * pow(fabs(theta(i)), p - 1)
                 / denominator;
-    
-    return w;
 }
 
 // ------------------------------------------------------------------------
@@ -117,7 +114,7 @@ gaussian_igd_transition::run (AnyType& args)
             state.theta.setZero();
             state.p = 2 * log(state.dimension);
             state.q = state.p / (state.p - 1);
-            state.coef = link_fn(state.theta, state.p);
+            link_fn(state.theta, state.coef, state.p);
             state.intercept = state.ymean - dot(state.coef, state.xmean);
         }
          
@@ -152,7 +149,7 @@ gaussian_igd_transition::run (AnyType& args)
         if (step1_sign != sign(state.theta(i))) state.theta(i) = 0;
     }
 
-    state.incrCoef = link_fn(state.theta, state.p);
+    link_fn(state.theta, state.incrCoef, state.p);
 
     state.incrIntercept = state.ymean - sparse_dot(state.incrCoef, state.xmean);
 
@@ -222,7 +219,7 @@ gaussian_igd_final::run (AnyType& args)
     state.coef = state.incrCoef;
     state.intercept = state.ymean - sparse_dot(state.coef, state.xmean);
 
-    state.theta = link_fn(state.coef, state.q);
+    link_fn(state.coef, state.theta, state.q);
   
     return state;
 }
