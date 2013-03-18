@@ -16,7 +16,7 @@ from utilities.validate_args import __is_tbl_exists_in_schema
 # from utilities.validate_args import __is_array_col_no_null
 from utilities.control import IterationController
 #from convex.lasso_igd import IterationControllerNoTableDrop
-from utilities import __mad_version
+from utilities.utilities import __mad_version
 
 version_wrapper = __mad_version()
 mad_vec = version_wrapper.select_vecfunc()
@@ -116,7 +116,7 @@ def __generate_warmup_lambda_sequence (tbl_used, col_ind_var, col_dep_var,
 
 # ========================================================================
 
-def __compute_average_sq(tbl_source, col_ind_var, dimension,
+def __compute_average_sq(schema_madlib, tbl_source, col_ind_var, dimension,
                          normalization, need_order = False):
     """
     Compute the average squares of all features, used to estimtae the largest lambda
@@ -125,6 +125,7 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
     if normalization:
         sq = [1] * dimension
     else:
+        array_agg = version_wrapper.select_array_agg(schema_madlib)
         if need_order:
             order_flag = "order by attr"
             order_flag1 = ", attr"
@@ -135,7 +136,7 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
         sq = mad_vec(plpy.execute(
             """
             select
-                array_agg(sq {order_flag}) as sq
+                {array_agg}(sq {order_flag}) as sq
             from (
                 select avg(val^2) as sq {order_flag1}
                 from (
@@ -146,7 +147,8 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
                 ) t
                 group by attr
             ) s
-            """.format(tbl_source = tbl_source,
+            """.format(array_agg = array_agg,
+                       tbl_source = tbl_source,
                        col_ind_var = col_ind_var,
                        order_flag = order_flag,
                        order_flag1 = order_flag1,
@@ -174,7 +176,7 @@ def __compute_log_likelihood (coef, coef_str, intercept, **args):
         """.format(coefficients = coef_str,
                    intercept = intercept,
                    **args))[0]["loss"]
-    
+
     module_1 = sum(x*x for x in coef)
     module_2 = sum(map(abs, coef))
 
@@ -245,6 +247,7 @@ def __normalize_data(**args):
 
     __utils_normalize_data(tbl_data = args["tbl_source"], col_ind_var = args["col_ind_var"],
                            dimension = args["dimension"], col_dep_var = args["col_dep_var"],
+                           schema_madlib = args["schema_madlib"],
                            tbl_ind_scales = args["tbl_ind_scales"],
                            tbl_dep_scale = args["tbl_dep_scale"],
                            tbl_data_scaled = args["tbl_data_scaled"],
@@ -274,7 +277,7 @@ def __tbl_dimension_rownum(tbl_source, col_ind_var):
 
 # ========================================================================
 
-def __compute_means (tbl_source, col_ind_var, col_dep_var,
+def __compute_means (schema_madlib, tbl_source, col_ind_var, col_dep_var,
                      dimension, normalization):
     """
     Compute the averages of dependent (y) and independent (x) variables
@@ -283,10 +286,11 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
         xmean = [0] * dimension;
         ymean = 0
     else:
+        array_agg = version_wrapper.select_array_agg(schema_madlib)
         xmean = mad_vec(plpy.execute(
             """
              select
-                 array_agg(mean order by idx) as mean
+                 {array_agg}(mean order by idx) as mean
              from (
                  select idx, avg(x) as mean
                  from (
@@ -298,6 +302,7 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
                  group by idx
              ) s
             """.format(
+                array_agg = array_agg,
                 dimension = dimension,
                 col_ind_var = col_ind_var,
                 tbl_source = tbl_source))[0]["mean"], text = False)

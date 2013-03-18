@@ -7,7 +7,6 @@ from utilities.utilities import _array_to_string
 from utilities.utilities import __mad_version
 
 version_wrapper = __mad_version()
-array_agg = version_wrapper.select_array_agg(schema_madlib)
 mad_vec = version_wrapper.select_vecfunc()
 
 def __elastic_net_generate_result (optimizer, iteration_run, **args):
@@ -95,6 +94,7 @@ def __obtain_scales (**args):
     """
     extract scales of ind and dep
     """
+    array_agg = version_wrapper.select_array_agg(args["schema_madlib"])
     result_ind = plpy.execute(
         """
         select

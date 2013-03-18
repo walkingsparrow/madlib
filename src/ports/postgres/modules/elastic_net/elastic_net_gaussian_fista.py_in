@@ -19,6 +19,10 @@ from elastic_net_utils import __compute_average_sq
 from elastic_net_utils import __generate_warmup_lambda_sequence
 from elastic_net_utils import __process_warmup_lambdas
 from elastic_net_generate_result import __elastic_net_generate_result
+from utilities.utilities import __mad_version
+
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
 
@@ -43,12 +47,12 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     if optimizer_params is None:
         return name_value
     
-    for s in optimizer_params:
+    for s in mad_vec(optimizer_params):
         items = s.split("=")
         if (len(items) != 2):
             plpy.error("Elastic Net error: Optimizer parameter list has incorrect format!")
-        param_name = items[0].strip().lower()
-        param_value = items[1].strip().lower()
+        param_name = items[0].strip(" \"").lower()
+        param_value = items[1].strip(" \"").lower()
 
         if param_name not in allowed_params:
             plpy.error(
@@ -99,10 +103,10 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     if name_value["warmup"]:
         if warmup_lambdas is not None:
             # errors are handled in __process_warmup_lambdas
-            name_value["warmup_lambdas"] = __process_warmup_lambdas(param_value, lambda_value)
+            name_value["warmup_lambdas"] = __process_warmup_lambdas(warmup_lambdas, lambda_value)
         if warmup_lambda_no is not None:
             try:
-                name_value["warmup_lambda_no"] = int(param_value)
+                name_value["warmup_lambda_no"] = int(warmup_lambda_no)
             except:
                 plpy.error("Elastic Net error: warmup_lambda_no must be an integer!")
             
@@ -125,7 +129,7 @@ def __fista_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in FISTA iterations
     """
-    (xmean_str, ymean) = __compute_means(args["tbl_used"], args["col_ind_var_new"],
+    (xmean_str, ymean) = __compute_means(args["schema_madlib"], args["tbl_used"], args["col_ind_var_new"],
                                          args["col_dep_var_new"], args["dimension"],
                                          args["normalization"])
     
@@ -304,7 +308,8 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     if args["warmup"] and args["warmup_lambdas"] is None:
         # average squares of each feature
         # used to estimate the largest lambda value
-        args["sq"] = __compute_average_sq(tbl_used, args["col_ind_var_new"], dimension, normalization) 
+        args["sq"] = __compute_average_sq(schema_madlib, tbl_used, args["col_ind_var_new"],
+                                          dimension, normalization) 
         args["warmup_lambdas"] = __generate_warmup_lambda_sequence(tbl_used, args["col_ind_var_new"],
                                                                    args["col_dep_var_new"],
                                                                    dimension, row_num, lambda_value, alpha,

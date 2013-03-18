@@ -6,7 +6,7 @@ from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
 from utilities.validate_args import __is_col_exists
 from utilities.utilities import _string_to_array
 from utilities.validate_args import __get_cols
-from utilities import __mad_version
+from utilities.utilities import __mad_version
 
 version_wrapper = __mad_version()
 mad_vec = version_wrapper.select_vecfunc()
@@ -267,13 +267,15 @@ def analyze_input_str(schema_madlib, tbl_source,
         else:
             s = []
 
-        col_ind_var_new = "array["
         for i in range(len(cols)):
             if cols[i] not in s and cols[i] != col_dep_var:
-                col_ind_var_new += cols[i]
                 outstr_array.append(cols[i])
-                if i != len(cols) - 1:
-                    col_ind_var_new += ", "
+
+        col_ind_var_new = "array["
+        for i in range(len(outstr_array)):
+            col_ind_var_new += outstr_array[i]
+            if i != len(outstr_array) - 1:
+                col_ind_var_new += ", "
         col_ind_var_new += "]"
         return (col_ind_var_new, outstr_array)
 
@@ -345,8 +347,8 @@ def __elastic_net_gaussian_predict (coefficients, intercept, ind_var):
     coef = mad_vec(coefficients, text = False)
     ind = mad_vec(ind_var, text = False)
     dot = intercept
-    for i in range(len(coefficients)):
-        dot += coefficients[i] * ind_var[i]
+    for i in range(len(coef)):
+        dot += coef[i] * ind[i]
     return dot
 
 # ========================================================================

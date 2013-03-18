@@ -3,7 +3,6 @@ import plpy
 from utilities import __mad_version
 
 version_wrapper = __mad_version()
-array_agg_string = version_wrapper.select_array_agg(schema_madlib)
 mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
@@ -63,6 +62,7 @@ def __get_cols(tbl, schema_madlib="madlib"):
     """
     Get the column names in a table
     """
+    array_agg_string = version_wrapper.select_array_agg(schema_madlib)
     if tbl is None or tbl.upper() == 'NULL':
         return plpy.error('Input error: Table name is invalid')
     names = tbl.split(".")

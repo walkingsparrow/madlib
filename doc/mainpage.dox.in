@@ -35,7 +35,7 @@ and included third-party libraries can be found inside the
     @defgroup grp_validation Cross Validation
     @ingroup grp_suplearn
 
-    @defgroup grp_ridge Ridge Regression
+    @defgroup grp_elasticnet Elastic Net Regularization
     @ingroup grp_suplearn
 
 	@defgroup grp_dectree Decision Tree

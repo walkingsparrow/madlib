@@ -7,6 +7,9 @@ from validation.cv_utils import __cv_copy_data_with_id_compute
 from validation.cv_utils import __cv_split_data_using_id_col_compute
 from validation.cv_utils import __cv_split_data_using_id_tbl_compute
 from validation.cv_utils import __cv_generate_random_id
+from utilities.utilities import __mad_version
+
+version_wrapper = __mad_version()
 
 ## ========================================================================
     
@@ -83,13 +86,14 @@ def __utils_normalize_data(**kwargs):
     col_ind_var_norm_new -- create a new name for the scaled array
                        to be compatible with array[...] expressions
     """
-    # intermediate table name to avoid name conflicts 
+    # intermediate table name to avoid name conflicts
+    array_agg = version_wrapper.select_array_agg(kwargs["schema_madlib"])
     foos = __unique_string()
     plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
     plpy.execute("""
         create temp table {tbl_data_scaled} as
             select
-                array_agg(val order by attr ) as {col_ind_var_norm_new},
+                {array_agg}(val order by attr ) as {col_ind_var_norm_new},
                 max(dep_var) as {col_dep_var_norm_new}
             from (
                 select
@@ -122,7 +126,7 @@ def __utils_normalize_data(**kwargs):
                 where {tbl_ind_scales}.attr = {foos}.attr
             ) as t
             group by ids
-    """.format(foos = foos, **kwargs))
+    """.format(array_agg = array_agg, foos = foos, **kwargs))
     return None
 
 ## ========================================================================
@@ -134,6 +138,7 @@ def __utils_restore_linear_coef_scales_sql(**kwargs):
 
     Only for linear fitting.
     """
+    array_agg = version_wrapper.select_array_agg(kwargs["schema_madlib"])
     subq2 = __unique_string()
     query = """
         select
@@ -141,7 +146,7 @@ def __utils_restore_linear_coef_scales_sql(**kwargs):
             subq1.intercept + subq1.dep_avg as intercept
         from (
             select
-                array_agg(val order by attr) as coefficients,
+                {array_agg}(val order by attr) as coefficients,
                 sum(intercept_tmp) as intercept,
                 max(dep_avg) as dep_avg
             from (
@@ -174,7 +179,7 @@ def __utils_restore_linear_coef_scales_sql(**kwargs):
                 where {tbl_ind_scales}.attr = {subq2}.attr
             ) as subq3
         ) as subq1
-    """.format(subq2 = subq2, **kwargs)
+    """.format(array_agg = array_agg, subq2 = subq2, **kwargs)
     return query
 
 ## ========================================================================
