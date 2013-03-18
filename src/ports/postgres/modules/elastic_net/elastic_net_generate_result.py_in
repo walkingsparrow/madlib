@@ -19,7 +19,7 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
                      coef_all          double precision[],
                      intercept         double precision,
                      log_likelihood    double precision,
-                     normalization     boolean,
+                     standardize       boolean,
                      iteration_run     integer)
                  """.format(**args))
 

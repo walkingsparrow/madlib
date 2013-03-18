@@ -307,6 +307,22 @@ PythonFunction(elastic_net, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
+/**
+ * @brief Prediction and put the result in a table
+ *        can be used together with General-CV
+ * @param tbl_model The result from elastic_net_train
+ * @param tbl_new_source Data table
+ * @param tbl_predict Prediction result
+ * @param id_col Unique ID associated with each row
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
+    tbl_model       TEXT,
+    tbl_new_source  TEXT,
+    col_id          TEXT,
+    tbl_predict     TEXT
+) RETURNS VOID AS $$
+PythonFunction(elastic_net, elastic_net, elastic_net_predict_all)
+$$ LANGUAGE plpythonu;
 
 /**
  * @brief Prediction use learned coefficients for a given example

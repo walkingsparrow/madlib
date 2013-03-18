@@ -21,12 +21,19 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
     if family_or_optimizer is None:
         return """
         Right now, only gaussian (linear) family is supported!
-        Run:
-            
-        SELECT madlib.elastic_net_train(''gaussian'');   
-    
+        --
+        Run:  SELECT {schema_madlib}.elastic_net_train('gaussian');   
         to see more help.
-    
+        --
+        Run:  SELECT {schema_madlib}.elastic_net_train('usage');   
+        to see how to use.
+        --
+        Run:  SELECT {schema_madlib}.elastic_net_train('predict');   
+        to see how to predict.
+        """.format(schema_madlib = schema_madlib)
+
+    if family_or_optimizer.lower() == "usage":
+        return """
         Usage:
         SELECT {schema_madlib}.elastic_net_train (
             'tbl_source',     -- Data table
@@ -34,9 +41,9 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
             'col_dep_var',    -- Dependent variable, can be an expression or
                                     '*'
             'col_ind_var',    -- Independent variable, can be an expression
-            'regress_family', -- 'gaussian' (or 'linear'), 'binomial'
+            'regress_family', -- 'gaussian' (or 'linear'). 'binomial'
                                     (or 'logistic') will be supported
-            alpha,            -- Elastic net control parameter, value in [0, 1]  
+            alpha,            -- Elastic net control parameter, value in [0, 1]   
             lambda_value,     -- Regularization parameter, positive
             standardize,      -- Whether to normalize the data
             'grouping_col',   -- Group by which columns. Default: NULL
@@ -45,8 +52,50 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
             max_iter,         -- Maximum iteration number
             tolerance         -- Stopping criteria
         );
+        --
+        Ouput:
+        The output table (tbl_result in the above) has the following columns:
+        family            TEXT,       -- 'gaussian' or 'binomial'
+        features          TEXT[],     -- All feature column names
+        features_selected TEXT[],     -- Features with non-zero coefficients
+        coef_nonzero      DOUBLE PRECISION[], -- Non-zero coefficients
+        coef_all          DOUBLE PRECISION[], -- All coefficients
+        intercept         DOUBLE PRECISION,   -- Intercept of the linear fit
+        log_likelihood    DOUBLE PRECISION,   -- log-likelihood of the fit
+        standardize       BOOLEAN,    -- Whether the data was standardized
+                                         before fitting
+        iteration_run     INTEGER     -- How many iteration was actually run
+
+        If the independent variable is a column with type of array, features
+        and features_selected will output indices of the array.    
         """.format(schema_madlib = schema_madlib)
-    
+
+    if family_or_optimizer.lower() == "predict":
+        return """
+        Prediction:
+        SELECT {schema_madlib}.elastic_net_predict(
+            'regress_family', -- 'gaussian' (or 'linear'). 'binomial'
+                                  (or 'logistic') will be supported
+            coefficients,     -- Fitting coefficients as a double
+                                 array
+            intercept,
+            ind_var           -- independent variables
+        ) FROM tbl_result, tbl_new_source
+        LIMIT 10;
+        will calculate 10 fitting values
+
+        or
+
+        SELECT (schema_madlib).elastic_net_predict(
+            'tbl_model',      -- Result table of elastic_net_train
+            'tbl_new_source', -- New data source
+            'col_id',         -- Unique ID column
+            'tbl_predict'     -- Prediction result
+        );
+        will put all prediction results into a table. This can be
+        used together with cross_validation_general() function.
+        """.format(schema_madlib = schema_madlib)
+        
     if (family_or_optimizer.lower() == "gaussian" or
         family_or_optimizer == "linear"):
         return """
@@ -55,7 +104,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         (2) Fast iterative shrinkage thesholding algorithm ('fista')  
 
         For alpha = 0, Newton method ('newton') is also supported.
-
+        --
         Run:
         SELECT {schema_madlib}.elastic_net_train('optimizer');
         to see more help on each optimizer.
@@ -64,10 +113,12 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
     if family_or_optimizer.lower() == "igd":
         return """
         Incremental gradient descent (IGD) method
-
+        --
+        Right now, it supports linear models.
+        --
         In order to obtain sparse coefficients, a
         modified version of IGD is actually used.
-
+        --
         Parameters:
         stepsize         - default is 0.01
         threshold        - default is 1e-10. When a coefficient is really
@@ -82,7 +133,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
 
         When warmup is True and warmup_lambdas is NULL, a series
         of lambda values will be automatically generated and used.
-
+        --
         Reference:
         [1] Shai Shalev-Shwartz and Ambuj Tewari, Stochastic Methods for l1    
             Regularized Loss Minimization. Proceedings of the 26th Interna-   
@@ -93,22 +144,24 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         return """
         Fast iterative shrinkage thesholding algorithm
         with backtracking for stepsizes
-
+        --
+        Right now, it supports linear models.
+        --
         Parameters:
         max_stepsize     - default is 4.0
         eta              - default is 2, if stepsize does not work
                            stepsize/eta will be tried
         warmup           - default is False
-        warmup_lambdas   - default is Null
+        warmup_lambdas   - default is NULL
         warmup_lambda_no - default is 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas     
                            is not NULL
         use_active_set   - default is False. Whether to use active-set
                            method to speed up the computation.
 
-        When warmup is True and warmup_lambdas is NULL, a series
+        When warmup is True and warmup_lambdas is NULL, warmup_lambda_no
         of lambda values will be automatically generated and used.
-                
+        --
         Reference:
         [1] Beck, A. and M. Teboulle (2009), A fast iterative   
             shrinkage-thresholding algorothm for linear inverse   
@@ -203,13 +256,6 @@ def analyze_input_str(schema_madlib, tbl_source,
     @param excluded Which variables are excluded when col_ind_var == "*"
     """
     outstr_array = []
-
-    dimension = plpy.execute(
-        """
-        select array_upper({col_ind_var},1) as dimension
-        from {tbl_source} limit 1
-        """.format(tbl_source = tbl_source,
-                   col_ind_var = col_ind_var))[0]["dimension"]
     
     if col_ind_var == "*":
         cols = __get_cols(tbl_source, schema_madlib)
@@ -219,15 +265,13 @@ def analyze_input_str(schema_madlib, tbl_source,
             s = []
 
         col_ind_var_new = "array["
-        
         for i in range(len(cols)):
             if cols[i] not in s and cols[i] != col_dep_var:
                 col_ind_var_new += cols[i]
                 outstr_array.append(cols[i])
                 if i != len(cols) - 1:
                     col_ind_var_new += ", "
-                else:
-                    col_ind_var_new += "]"
+        col_ind_var_new += "]"
         return (col_ind_var_new, outstr_array)
 
     elif __is_col_exists(tbl_source, [col_ind_var], schema_madlib):
@@ -244,25 +288,32 @@ def analyze_input_str(schema_madlib, tbl_source,
         else:
             s = []
 
+        dimension = plpy.execute(
+            """
+            select array_upper({col_ind_var},1) as dimension
+            from {tbl_source} limit 1
+            """.format(tbl_source = tbl_source,
+                       col_ind_var = col_ind_var))[0]["dimension"]
+
         if excluded is None:
             col_ind_var_new = col_ind_var               
-            outstr_array = map(lambda x: str(x + 1), range(dimension))
+            outstr_array = map(lambda x: col_ind_var + "[" + str(x + 1) + "]",
+                               range(dimension))
         else:
             col_ind_var_new = "array["
             for i in range(dimension):
                 if i+1 not in s:
                     col_ind_var_new += col_ind_var + "[" + str(i+1) + "]"
-                    outstr_array.append(str(i+1))
+                    outstr_array.append(col_ind_var + "[" + str(i+1) + "]")
                     if i != dimension - 1:
                         col_ind_var_new += ", "
-                    else:
-                        col_ind_var_new += "]"
+            col_ind_var_new += "]"
                         
         return (col_ind_var_new, outstr_array)
             
     try:
-        matched = re.match(r"(?i)^array\[(.*)\]$", col_ind_var)
-        if matched is None:
+        matched = re.match(r"(?i)^array\[(.*)\]", col_ind_var)
+        if matched is None or len(matched.group(1)) == 0:
             plpy.error("Elastic Net error: Independent variable format is not quite right!")
         outstr_array = _string_to_array(matched.group(1))
     except:
@@ -271,8 +322,8 @@ def analyze_input_str(schema_madlib, tbl_source,
 
 # ========================================================================
 
-def elastic_net_predict(schema_madlib, regress_family, coefficients,
-                        intercept, ind_var, **kwargs):
+def elastic_net_predict (schema_madlib, regress_family, coefficients,
+                         intercept, ind_var, **kwargs):
     """
     Make predictions using the fitting coefficients
     """
@@ -284,7 +335,7 @@ def elastic_net_predict(schema_madlib, regress_family, coefficients,
 
 # ========================================================================
     
-def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
+def __elastic_net_gaussian_predict (coefficients, intercept, ind_var):
     """
     Prediction for linear models
     """
@@ -293,4 +344,80 @@ def __elastic_net_gaussian_predict(coefficients, intercept, ind_var):
         dot += coefficients[i] * ind_var[i]
     return dot
 
+# ========================================================================
+
+def elastic_net_predict_all (schema_madlib, tbl_model, tbl_new_source,
+                             col_id, tbl_predict, **kwargs):
+    """
+    Predict and put the result in a table. Useful for general CV
+    """
+    regress_family = plpy.execute(
+        """
+        select family from {tbl_model}
+        """.format(tbl_model = tbl_model))[0]["family"]
+
+    if regress_family.lower() == "gaussian" or regress_family.lower() == "linear":
+        return __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
+                                                  tbl_predict, col_id)
+
+    plpy.error("Not a supported response family!")
+    return None
+
+# ========================================================================
+
+def __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
+                                       tbl_predict, col_id):
+    """
+    Prediction for Gaussian model
+    """
+    old_msg_level = plpy.execute(
+        """
+        select setting from pg_settings
+        where name='client_min_messages'
+        """)[0]['setting']
+    plpy.execute("set client_min_messages to error")
     
+    if col_id is None:
+        col_id_str = "NULL"
+    else:
+        col_id_str = col_id
+    
+    dense_vars = plpy.execute(
+        """
+        select features_selected as fs
+        from {tbl_model}
+        """.format(tbl_model = tbl_model))[0]["fs"]
+    
+    dense_vars_str = "array["
+    for i in range(len(dense_vars)):
+        dense_vars_str += str(dense_vars[i])
+        if i != len(dense_vars) - 1:
+            dense_vars_str += ", "
+    dense_vars_str += "]"
+
+    # Must be careful to avoid possible name conflicts
+    plpy.execute(
+        """
+        drop table if exists {tbl_predict};
+        create table {tbl_predict} as
+            select
+                id,
+                {schema_madlib}.elastic_net_predict('gaussian', coef_nonzero,
+                                                    intercept, ind_var)
+                                 as prediction
+            from
+                {tbl_model} as tbl1,
+                (select
+                    {col_id} as id,
+                    {dense_vars_str} as ind_var
+                from
+                    {tbl_new_source}) tbl2
+        """.format(tbl_model = tbl_model,
+                   tbl_predict = tbl_predict,
+                   col_id = col_id_str,
+                   dense_vars_str = dense_vars_str,
+                   schema_madlib = schema_madlib,
+                   tbl_new_source = tbl_new_source))
+
+    plpy.execute("set client_min_messages to " + old_msg_level)
+    return None
