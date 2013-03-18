@@ -138,6 +138,7 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             FistaState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.dimension);
             state = pre_state;
+            state.numRows = 0;
         }
         else
         {

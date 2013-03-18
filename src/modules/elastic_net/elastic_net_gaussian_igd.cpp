@@ -96,6 +96,7 @@ gaussian_igd_transition::run (AnyType& args)
             IgdState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.dimension);
             state = pre_state;
+            state.numRows = 0;
         }
         else
         {
@@ -118,9 +119,7 @@ gaussian_igd_transition::run (AnyType& args)
             state.intercept = state.ymean - dot(state.coef, state.xmean);
         }
          
-        state.loss = 0.;
-        // state.incrCoef = state.coef;
-        // state.incrIntercept = state.intercept;
+        //state.loss = 0.;
         state.lambda = lambda;
     }
     
@@ -174,14 +173,6 @@ gaussian_igd_merge::run (AnyType& args)
     // of the states being the initial state
     if (state1.numRows == 0) { return state2; }
     else if (state2.numRows == 0) { return state1; }
-
-    // Merge states together
-    // double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
-    // state1.theta *= static_cast<double>(state1.numRows) /
-    //     static_cast<double>(state2.numRows);
-    // state1.theta += state2.theta;
-    // state1.theta *= static_cast<double>(state2.numRows) /
-    //     static_cast<double>(totalNumRows);
 
     double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
     state1.incrCoef *= static_cast<double>(state1.numRows) /

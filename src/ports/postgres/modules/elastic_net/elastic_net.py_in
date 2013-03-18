@@ -8,7 +8,7 @@ from utilities.utilities import _string_to_array
 
 # ========================================================================
 
-def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
+def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
     """
     Given a response family name or optimizer name, print out the related
     information.
@@ -18,6 +18,35 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
     
     If an optimizer name is given, print out the necessary parameters.
     """
+    if family_or_optimizer is None:
+        return """
+        Right now, only gaussian (linear) family is supported!
+        Run:
+            
+        SELECT madlib.elastic_net_train(''gaussian'');   
+    
+        to see more help.
+    
+        Usage:
+        SELECT {schema_madlib}.elastic_net_train (
+            'tbl_source',     -- Data table
+            'tbl_result',     -- Result table
+            'col_dep_var',    -- Dependent variable, can be an expression or
+                                    '*'
+            'col_ind_var',    -- Independent variable, can be an expression
+            'regress_family', -- 'gaussian' (or 'linear'), 'binomial'
+                                    (or 'logistic') will be supported
+            alpha,            -- Elastic net control parameter, value in [0, 1]  
+            lambda_value,     -- Regularization parameter, positive
+            standardize,      -- Whether to normalize the data
+            'grouping_col',   -- Group by which columns. Default: NULL
+            'optimizer',      -- Name of optimizer. Default: 'fista'
+            'excluded',       -- Column names excluded from '*'
+            max_iter,         -- Maximum iteration number
+            tolerance         -- Stopping criteria
+        );
+        """.format(schema_madlib = schema_madlib)
+    
     if (family_or_optimizer.lower() == "gaussian" or
         family_or_optimizer == "linear"):
         return """
@@ -40,12 +69,12 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
         modified version of IGD is actually used.
 
         Parameters:
-        stepsize         - default 0.01
-        threshold        - default 1e-10. When a coefficient is really
+        stepsize         - default is 0.01
+        threshold        - default is 1e-10. When a coefficient is really
                            small, set it to be 0
         warmup           - default is False
-        warmup_lambdas   - default in Null
-        warmup_lambda_no - default 15. How many lambda's are used in
+        warmup_lambdas   - default is Null
+        warmup_lambda_no - default is 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas   
                            is not NULL
 
@@ -65,13 +94,15 @@ def elastic_net_help(schema_madlib, family_or_optimizer, **kwargs):
 
         Parameters:
         max_stepsize     - default is 4.0
-        eta              - default 2, if stepsize does not work
+        eta              - default is 2, if stepsize does not work
                            stepsize/eta will be tried
         warmup           - default is False
-        warmup_lambdas   - default in Null
-        warmup_lambda_no - default 15. How many lambda's are used in
+        warmup_lambdas   - default is Null
+        warmup_lambda_no - default is 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas     
                            is not NULL
+        use_active_set   - default is False. Whether to use active-set
+                           method to speed up the computation.
 
         When warmup is True and warmup_lambdas is NULL, a series
         of lambda values will be automatically generated and used.
