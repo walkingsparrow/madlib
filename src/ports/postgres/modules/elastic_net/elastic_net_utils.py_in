@@ -356,8 +356,7 @@ class IterationControllerNoTableDrop (IterationController):
             
     def update(self, newState):
         """
-        Update state of calculation. In ridge case, the state is an
-        array of double precision[].
+        Update state of calculation. 
         """
         newState = newState.format(iteration = self.iteration, **self.kwargs)
         self.iteration += 1
@@ -428,8 +427,7 @@ class IterationControllerTableAppend (IterationControllerNoTableDrop):
             
     def update(self, newState):
         """
-        Update state of calculation. In ridge case, the state is an
-        array of double precision[].
+        Update state of calculation. 
         """
         newState = newState.format(iteration = self.iteration, **self.kwargs)
         self.iteration += 1

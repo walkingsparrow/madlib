@@ -107,8 +107,6 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         Supported optimizer:
         (1) Incremental gradient descent method ('igd')
         (2) Fast iterative shrinkage thesholding algorithm ('fista')  
-
-        For alpha = 0, Newton method ('newton') is also supported.
         --
         Run:
         SELECT {schema_madlib}.elastic_net_train('optimizer');
@@ -173,8 +171,8 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
             problems. SIAM J. on Imaging Sciences 2(1), 183-202.   
         """
         
-    if family_or_optimizer.lower() == "newton":
-        return "Newton method  "
+    # if family_or_optimizer.lower() == "newton":
+    #     return "Newton method  "
         
     return """
     Not a supported response family or optimizer  
@@ -213,21 +211,21 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
     # handle all special cases of col_ind_var
     (col_ind_var, outstr_array) = analyze_input_str(schema_madlib, tbl_source, col_ind_var, 
                                                     col_dep_var, excluded)
-    # Special case for ridge linear regression
-    if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
-        optimizer.lower() == "newton" and
-        alpha == 0):
-        plpy.execute("""select {schema_madlib}.ridge_newton_train(
-                            '{tbl_source}', '{col_ind_var}', '{col_dep_var}',
-                            '{tbl_result}', {lambda_value}, {standardize}
-        )""".format(schema_madlib = schema_madlib,
-                    tbl_source = tbl_source,
-                    col_ind_var = col_ind_var,
-                    col_dep_var = col_dep_var,
-                    tbl_result = tbl_result,
-                    lambda_value = lambda_value,
-                    standardize = standardize))
-        return None
+    # # Special case for ridge linear regression
+    # if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
+    #     optimizer.lower() == "newton" and
+    #     alpha == 0):
+    #     plpy.execute("""select {schema_madlib}.ridge_newton_train(
+    #                         '{tbl_source}', '{col_ind_var}', '{col_dep_var}',
+    #                         '{tbl_result}', {lambda_value}, {standardize}
+    #     )""".format(schema_madlib = schema_madlib,
+    #                 tbl_source = tbl_source,
+    #                 col_ind_var = col_ind_var,
+    #                 col_dep_var = col_dep_var,
+    #                 tbl_result = tbl_result,
+    #                 lambda_value = lambda_value,
+    #                 standardize = standardize))
+    #     return None
     
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "igd"):

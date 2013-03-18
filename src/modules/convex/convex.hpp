@@ -7,6 +7,6 @@
  * -------------------------------------------------------------------------- */
 
 #include "lmf_igd.hpp"
-#include "ridge_newton.hpp"
+//#include "ridge_newton.hpp"
 
 
