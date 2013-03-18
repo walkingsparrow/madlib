@@ -5,6 +5,11 @@ from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
 from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
 from utilities.validate_args import __is_col_exists
 from utilities.utilities import _string_to_array
+from utilities.validate_args import __get_cols
+from utilities import __mad_version
+
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 # ========================================================================
 
@@ -274,7 +279,7 @@ def analyze_input_str(schema_madlib, tbl_source,
         col_ind_var_new += "]"
         return (col_ind_var_new, outstr_array)
 
-    elif __is_col_exists(tbl_source, [col_ind_var], schema_madlib):
+    if __is_col_exists(tbl_source, [col_ind_var], schema_madlib):
         # a single column is independent variable
         # which means that it is an array
         # excluded must be a string contains integers
@@ -339,6 +344,8 @@ def __elastic_net_gaussian_predict (coefficients, intercept, ind_var):
     """
     Prediction for linear models
     """
+    coef = mad_vec(coefficients, text = False)
+    ind = mad_vec(ind_var, text = False)
     dot = intercept
     for i in range(len(coefficients)):
         dot += coefficients[i] * ind_var[i]
@@ -382,11 +389,11 @@ def __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
     else:
         col_id_str = col_id
     
-    dense_vars = plpy.execute(
+    dense_vars = mad_vec(plpy.execute(
         """
         select features_selected as fs
         from {tbl_model}
-        """.format(tbl_model = tbl_model))[0]["fs"]
+        """.format(tbl_model = tbl_model))[0]["fs"])
     
     dense_vars_str = "array["
     for i in range(len(dense_vars)):

@@ -4,6 +4,11 @@ from elastic_net_utils import __process_results
 from elastic_net_utils import __compute_log_likelihood
 from utilities.utilities import __mad_version
 from utilities.utilities import _array_to_string
+from utilities.utilities import __mad_version
+
+version_wrapper = __mad_version()
+array_agg = version_wrapper.select_array_agg(schema_madlib)
+mad_vec = version_wrapper.select_vecfunc()
 
 def __elastic_net_generate_result (optimizer, iteration_run, **args):
     """
@@ -46,13 +51,15 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
             iteration_run = iteration_run,
             **args))[0]
 
+    r_coef = mad_vec(result["coef"], text = False)
+
     if args["normalization"]:
         (ind_std, ind_avg, dep_std, dep_avg) = __obtain_scales(**args)
     
-        (coef, intercept) = __restore_scale(result["coef"], ind_std,
+        (coef, intercept) = __restore_scale(r_coef, ind_std,
                                             ind_avg, dep_std, dep_avg)
     else:
-        coef = result["coef"]
+        coef = r_coef
         intercept = result["intercept"]
 
     (features, features_selected, dense_coef, sparse_coef) = __process_results(coef, intercept,
@@ -60,11 +67,11 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
 
     # compute the likelihood
     if args["normalization"]:
-        coef_str = _array_to_string(result["coef"]) # use un-restored coef
+        coef_str = _array_to_string(r_coef) # use un-restored coef
     else:
         coef_str = sparse_coef
 
-    log_likelihood = __compute_log_likelihood(result["coef"], coef_str,
+    log_likelihood = __compute_log_likelihood(r_coef, coef_str,
                                               result["intercept"], **args)
 
     plpy.execute(
@@ -88,9 +95,6 @@ def __obtain_scales (**args):
     """
     extract scales of ind and dep
     """
-    version_wrapper = __mad_version()
-    array_agg = version_wrapper.select_array_agg(args["schema_madlib"])
-
     result_ind = plpy.execute(
         """
         select
@@ -104,7 +108,8 @@ def __obtain_scales (**args):
             dep_avg, dep_std
         from {tbl_dep_scale}
         """.format(**args))[0]
-    return (result_ind["ind_std"], result_ind["ind_avg"],
+    return (mad_vec(result_ind["ind_std"], text = False),
+            mad_vec(result_ind["ind_avg"], text = False),
             result_dep["dep_std"], result_dep["dep_avg"])    
 
 # ========================================================================

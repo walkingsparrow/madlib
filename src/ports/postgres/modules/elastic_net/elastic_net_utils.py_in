@@ -16,6 +16,10 @@ from utilities.validate_args import __is_tbl_exists_in_schema
 # from utilities.validate_args import __is_array_col_no_null
 from utilities.control import IterationController
 #from convex.lasso_igd import IterationControllerNoTableDrop
+from utilities import __mad_version
+
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 # ========================================================================
 
@@ -128,7 +132,7 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
             order_flag = ""
             order_flag1 = ""
             
-        sq = plpy.execute(
+        sq = mad_vec(plpy.execute(
             """
             select
                 array_agg(sq {order_flag}) as sq
@@ -146,7 +150,8 @@ def __compute_average_sq(tbl_source, col_ind_var, dimension,
                        col_ind_var = col_ind_var,
                        order_flag = order_flag,
                        order_flag1 = order_flag1,
-                       dimension = dimension))[0]["sq"]
+                       dimension = dimension))[0]["sq"],
+        text = False)
 
     return sq
     
@@ -278,7 +283,7 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
         xmean = [0] * dimension;
         ymean = 0
     else:
-        xmean = plpy.execute(
+        xmean = mad_vec(plpy.execute(
             """
              select
                  array_agg(mean order by idx) as mean
@@ -295,7 +300,7 @@ def __compute_means (tbl_source, col_ind_var, col_dep_var,
             """.format(
                 dimension = dimension,
                 col_ind_var = col_ind_var,
-                tbl_source = tbl_source))[0]["mean"]
+                tbl_source = tbl_source))[0]["mean"], text = False)
         
         ymean = plpy.execute(
             """
