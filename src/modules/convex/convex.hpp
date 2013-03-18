@@ -7,6 +7,7 @@
  * -------------------------------------------------------------------------- */
 
 #include "lmf_igd.hpp"
+#include "utils_regularization.hpp"
 //#include "ridge_newton.hpp"
 
 

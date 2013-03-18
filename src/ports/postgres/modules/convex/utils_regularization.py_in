@@ -93,7 +93,7 @@ def __utils_normalize_data(**kwargs):
     plpy.execute("""
         create temp table {tbl_data_scaled} as
             select
-                {array_agg}(val order by attr ) as {col_ind_var_norm_new},
+                {array_agg}(val order by attr) as {col_ind_var_norm_new},
                 max(dep_var) as {col_dep_var_norm_new}
             from (
                 select
@@ -128,116 +128,6 @@ def __utils_normalize_data(**kwargs):
             group by ids
     """.format(array_agg = array_agg, foos = foos, **kwargs))
     return None
-
-## ========================================================================
-    
-def __utils_restore_linear_coef_scales_sql(**kwargs):
-    """
-    The query string for restoring the fitting coefficients using the calculated mean's and std's
-    in __utils_ind_var_scales and __utils_dep_var_scale.
-
-    Only for linear fitting.
-    """
-    array_agg = version_wrapper.select_array_agg(kwargs["schema_madlib"])
-    subq2 = __unique_string()
-    query = """
-        select
-            subq1.coefficients as {col_coef},
-            subq1.intercept + subq1.dep_avg as intercept
-        from (
-            select
-                {array_agg}(val order by attr) as coefficients,
-                sum(intercept_tmp) as intercept,
-                max(dep_avg) as dep_avg
-            from (
-                select
-                    {subq2}.attr,
-                    (
-                        case when std = 0 then
-                            0.
-                        else
-                            coef * dep_std / (case when std = 0 then 1 else std end)
-                        end
-                    ) as val,
-                    (
-                        case when std = 0 then
-                            0.
-                        else
-                            - coef * dep_std * mean / std
-                        end
-                    ) as intercept_tmp,
-                    dep_avg
-                from
-                    {tbl_ind_scales},
-                    {tbl_dep_scale},
-                    (
-                        select
-                            generate_series(1, {dimension}) as attr,
-                            unnest({col_coef}) as coef
-                        from {tbl_coef}
-                    ) as {subq2}
-                where {tbl_ind_scales}.attr = {subq2}.attr
-            ) as subq3
-        ) as subq1
-    """.format(array_agg = array_agg, subq2 = subq2, **kwargs)
-    return query
-
-## ========================================================================
-    
-def __utils_restore_linear_coef_scales(**kwargs):
-    """
-    Restore the linear coefficients to the original scale.
-
-    This function is also used in lasso.
-    """
-    col_others_string = __cv_produce_col_name_string(kwargs["tbl_coef"], kwargs["col_others"])
-    foos = __unique_string()
-    goos = __unique_string()
-    sql_query = __utils_restore_linear_coef_scales_sql(**kwargs)
-    plpy.execute("drop table if exists {tbl_origin_coef}".format(**kwargs))
-    plpy.execute("""
-        create table {tbl_origin_coef} as
-            select
-                {foos}.{col_coef},
-                {foos}.intercept,
-                {col_others_string}
-            from
-                ({sql_query}) as {foos},
-                {tbl_coef}
-    """.format(col_others_string = col_others_string,
-               foos = foos, goos = goos,
-               sql_query = sql_query, **kwargs))
-    return None
-
-## ========================================================================
-    
-def __utils_normalization_cv_restore(coef_count, **kwargs):
-    """
-    Function used by both ridge and lasso cross validation functions:
-    
-    Restore the fitting coefficients to the original scales without using
-    extra table to avoid transaction lock limits.
-    """
-    sql_query = __utils_restore_linear_coef_scales_sql(
-        col_coef = "coef",
-        dimension = kwargs["dimension"],
-        tbl_ind_scales = kwargs["tbl_ind_scales"],
-        tbl_dep_scale = kwargs["tbl_dep_scale"],
-        tbl_coef = "{tbl_coef} where id = {coef_count}-1".format(
-            coef_count = coef_count,
-            **kwargs)
-    )                
-    plpy.execute("""
-        insert into {tbl_coef}
-            select
-                {coef_count},
-                coef,
-                intercept
-            from (
-                {sql_query}
-            ) t
-    """.format(coef_count = coef_count, sql_query = sql_query,
-               **kwargs))
 
 ## ========================================================================
     
