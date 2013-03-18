@@ -310,6 +310,12 @@ AnyType gaussian_fista_final::run (AnyType& args)
             state.backtracking++;
         }
     }
+
+    // numRows should be reset to 0
+    // This following line is necessary. Otherwise, GPDB
+    // will produce non-sense. Postgres can work without the
+    // following line.
+    state.numRows = 0;
     
     return state;
 }

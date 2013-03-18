@@ -220,6 +220,8 @@ gaussian_igd_final::run (AnyType& args)
     state.intercept = state.ymean - sparse_dot(state.coef, state.xmean);
 
     link_fn(state.coef, state.theta, state.q);
+
+    state.numRows = 0;
   
     return state;
 }
