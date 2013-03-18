@@ -26,9 +26,7 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
                           "warmup_lambda_no", "threshold", "parallel"])
     name_value = dict()
     # default values
-    name_value["parallel"] = False # This option is not exposed to user
-    # And is only used for development
-
+    name_value["parallel"] = True 
     name_value["stepsize"] = 0.01
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None

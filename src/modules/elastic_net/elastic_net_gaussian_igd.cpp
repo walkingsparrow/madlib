@@ -96,7 +96,6 @@ gaussian_igd_transition::run (AnyType& args)
             IgdState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.dimension);
             state = pre_state;
-            state.numRows = 0;
         }
         else
         {
@@ -121,6 +120,7 @@ gaussian_igd_transition::run (AnyType& args)
          
         //state.loss = 0.;
         state.lambda = lambda;
+        state.numRows = 0; // resetting
     }
     
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
@@ -211,8 +211,6 @@ gaussian_igd_final::run (AnyType& args)
     state.intercept = state.ymean - sparse_dot(state.coef, state.xmean);
 
     link_fn(state.coef, state.theta, state.q);
-
-    state.numRows = 0;
   
     return state;
 }

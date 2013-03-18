@@ -138,7 +138,6 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             FistaState<ArrayHandle<double> > pre_state = args[3];
             state.allocate(*this, pre_state.dimension);
             state = pre_state;
-            state.numRows = 0;
         }
         else
         {
@@ -185,6 +184,8 @@ AnyType gaussian_fista_transition::run (AnyType& args)
         // lambda is changing if warm-up is used
         // so needs to update it everytime
         state.lambda = lambda;
+
+        state.numRows = 0; // resetting
 
         state.is_active = args[14].getAs<int>();
     }
@@ -311,12 +312,6 @@ AnyType gaussian_fista_final::run (AnyType& args)
             state.backtracking++;
         }
     }
-
-    // numRows should be reset to 0
-    // This following line is necessary. Otherwise, GPDB
-    // will produce non-sense. Postgres can work without the
-    // following line.
-    state.numRows = 0;
     
     return state;
 }
