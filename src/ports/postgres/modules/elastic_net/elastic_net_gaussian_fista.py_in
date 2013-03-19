@@ -5,10 +5,10 @@
 import plpy
 import math
 from elastic_net_utils import __normalize_data
+from elastic_net_utils import __compute_data_scales
 from elastic_net_utils import __compute_means
 from elastic_net_utils import __tbl_dimension_rownum
 from utilities.utilities import __unique_string
-from convex.utils_regularization import __utils_restore_linear_coef_scales
 from elastic_net_gaussian_igd import __tbl_dimension_rownum
 from utilities.control import IterationController
 from elastic_net_utils import IterationControllerNoTableDrop
@@ -129,12 +129,8 @@ def __fista_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in FISTA iterations
     """
-    (xmean_str, ymean) = __compute_means(args["schema_madlib"], args["tbl_used"], args["col_ind_var_new"],
-                                         args["col_dep_var_new"], args["dimension"],
-                                         args["normalization"])
+    (xmean_str0, ymean) = __compute_means(**args)
     
-    tbl_fista_state = __unique_string()
-    tbl_fista_args = __unique_string()
     plpy.execute("""
                  drop table if exists {tbl_fista_args};       
                  create temp table {tbl_fista_args} (
@@ -153,11 +149,11 @@ def __fista_create_tbl_args(**args):
                  """.format(**args))
     plpy.execute("""
                  insert into {tbl_fista_args} values
-                     ({dimension}, '{warmup_lambdas}',
+                     ({dimension}, '{warmup_lambdas}'::double precision[],
                      {alpha}, {row_num}, {max_iter}, {tolerance},
-                     {xmean_str}, {ymean}, {max_stepsize}, {eta},
+                     '{xmean_str0}'::double precision[], {ymean}, {max_stepsize}, {eta},
                      {use_active_set});
-                 """.format(xmean_str = xmean_str, ymean = ymean,
+                 """.format(xmean_str0 = xmean_str0, ymean = ymean,
                             **args))
 
     return None
@@ -290,11 +286,12 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
 
     # use normalized data or not
     if normalization:
-        __normalize_data(**args)
+        __normalize_data(args)
         tbl_used = args["tbl_data_scaled"]
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
         args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
+        __compute_data_scales(args)
         tbl_used = tbl_source
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
@@ -308,8 +305,7 @@ def __elastic_net_gaussian_fista_train_compute (schema_madlib, tbl_source, col_i
     if args["warmup"] and args["warmup_lambdas"] is None:
         # average squares of each feature
         # used to estimate the largest lambda value
-        args["sq"] = __compute_average_sq(schema_madlib, tbl_used, args["col_ind_var_new"],
-                                          dimension, normalization) 
+        args["sq"] = __compute_average_sq(**args)
         args["warmup_lambdas"] = __generate_warmup_lambda_sequence(tbl_used, args["col_ind_var_new"],
                                                                    args["col_dep_var_new"],
                                                                    dimension, row_num, lambda_value, alpha,

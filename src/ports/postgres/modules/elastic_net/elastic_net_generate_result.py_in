@@ -53,10 +53,7 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
     r_coef = mad_vec(result["coef"], text = False)
 
     if args["normalization"]:
-        (ind_std, ind_avg, dep_std, dep_avg) = __obtain_scales(**args)
-    
-        (coef, intercept) = __restore_scale(r_coef, ind_std,
-                                            ind_avg, dep_std, dep_avg)
+        (coef, intercept) = __restore_scale(r_coef, args)
     else:
         coef = r_coef
         intercept = result["intercept"]
@@ -90,38 +87,14 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
 
 # ========================================================================
 
-def __obtain_scales (**args):
-    """
-    extract scales of ind and dep
-    """
-    array_agg = version_wrapper.select_array_agg(args["schema_madlib"])
-    result_ind = plpy.execute(
-        """
-        select
-            {array_agg}(mean order by attr) as ind_avg,
-            {array_agg}(std order by attr) as ind_std
-        from {tbl_ind_scales}
-        """.format(array_agg = array_agg, **args))[0]
-    result_dep = plpy.execute(
-        """
-        select
-            dep_avg, dep_std
-        from {tbl_dep_scale}
-        """.format(**args))[0]
-    return (mad_vec(result_ind["ind_std"], text = False),
-            mad_vec(result_ind["ind_avg"], text = False),
-            result_dep["dep_std"], result_dep["dep_avg"])    
-
-# ========================================================================
-
-def __restore_scale (coef, ind_std, ind_avg, dep_std, dep_avg):
+def __restore_scale (coef, args):
     """
     Restore the original scales
     """
     rcoef = [0] * len(coef)
-    rintercept = dep_avg
+    rintercept = args["y_scale"]["mean"]
     for i in range(len(coef)):
-        if ind_std[i] != 0:
-            rcoef[i] = coef[i] * dep_std / ind_std[i]
-            rintercept -= coef[i] * dep_std * ind_avg[i] / ind_std[i]
+        if args["x_scales"]["std"][i] != 0:
+            rcoef[i] = coef[i] / args["x_scales"]["std"][i]
+            rintercept -= coef[i] * args["x_scales"]["mean"][i] / args["x_scales"]["std"][i]
     return (rcoef, rintercept)

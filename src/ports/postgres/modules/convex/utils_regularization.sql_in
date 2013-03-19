@@ -54,10 +54,16 @@ CREATE AGGREGATE MADLIB_SCHEMA.utils_var_scales (
 
 ------------------------------------------------------------------------
 
+CREATE TYPE MADLIB_SCHEMA.__utils_scaled_data AS (
+    scaled      DOUBLE PRECISION[]
+);
+
+--
+
 CREATE FUNCTION MADLIB_SCHEMA.utils_normalize_data (
     x           DOUBLE PRECISION[],
     mean        DOUBLE PRECISION[],
     std         DOUBLE PRECISION[]
-) RETURNS DOUBLE PRECISION[] AS
+) RETURNS MADLIB_SCHEMA.__utils_scaled_data AS
 'MODULE_PATHNAME', 'utils_normalize_data'
 LANGUAGE C IMMUTABLE STRICT;

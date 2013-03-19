@@ -10,6 +10,7 @@ from validation.cv_utils import __cv_generate_random_id
 from utilities.utilities import __mad_version
 
 version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
     
@@ -22,23 +23,16 @@ def __utils_ind_var_scales(**kwargs):
 
     This function is also used in lasso.
     """
-    scale_factor = math.sqrt(1. - 1./float(kwargs["row_num"]))
-    plpy.execute("""
-        drop table if exists {tbl_scales};
-        create temp table {tbl_scales} as
-            select
-                attr,
-                avg(val) as mean,
-                stddev(val) * {scale_factor} as std
-            from (
-                select
-                    generate_series(1, {dimension}) as attr,
-                    unnest({col_ind_var}) as val
-                from {tbl_data}
-            ) t
-            group by attr
-    """.format(scale_factor = scale_factor, **kwargs))
-    return None
+    x_scales = plpy.execute(
+        """
+        select
+            (madlib.__utils_var_scales_result(madlib.utils_var_scales({col_ind_var}, {dimension}))).*
+        from
+            {tbl_data}
+        """.format(**kwargs))[0]
+    x_scales["mean"] = mad_vec(x_scales["mean"], text = False)
+    x_scales["std"] = mad_vec(x_scales["std"], text = False)
+    return x_scales
 
 ## ========================================================================
     
@@ -51,15 +45,14 @@ def __utils_dep_var_scale(**kwargs):
 
     This function is also used in lasso.
     """
-    plpy.execute("""
-        drop table if exists {tbl_scale};
-        create temp table {tbl_scale} as
-            select
-                avg({col_dep_var}) as dep_avg,
-                1 as dep_std
-            from {tbl_data}
-    """.format(**kwargs))
-    return None
+    y_scale = plpy.execute(
+        """
+        select
+            avg({col_dep_var}) as mean,
+            1 as std
+        from {tbl_data}
+        """.format(**kwargs))[0]
+    return y_scale
 
 ## ========================================================================
     
@@ -85,48 +78,19 @@ def __utils_normalize_data(**kwargs):
     tbl_data_scaled -- scaled data result
     col_ind_var_norm_new -- create a new name for the scaled array
                        to be compatible with array[...] expressions
-    """
-    # intermediate table name to avoid name conflicts
-    array_agg = version_wrapper.select_array_agg(kwargs["schema_madlib"])
-    foos = __unique_string()
-    plpy.execute("drop table if exists {tbl_data_scaled}".format(**kwargs))
-    plpy.execute("""
+    """    
+    plpy.execute(
+        """
         create temp table {tbl_data_scaled} as
             select
-                {array_agg}(val order by attr) as {col_ind_var_norm_new},
-                max(dep_var) as {col_dep_var_norm_new}
-            from (
-                select
-                    ids,
-                    {foos}.attr as attr,
-                    (dep_var - dep_avg) / dep_std as dep_var,
-                    (
-                        case when std = 0 then
-                            val - mean
-                        else
-                            (val - mean) / (case when std = 0 then 1 else std end)
-                        end
-                    ) as val
-                from
-                    {tbl_ind_scales},
-                    {tbl_dep_scale},
-                    (
-                        select
-                            ids,
-                            dep as dep_var,
-                            generate_series(1, {dimension}) as attr,
-                            unnest(vals) as val
-                        from (
-                            select
-                                row_number() over () as ids,
-                                {col_dep_var} as dep,
-                                {col_ind_var} as vals
-                            from {tbl_data}) t
-                    ) as {foos}
-                where {tbl_ind_scales}.attr = {foos}.attr
-            ) as t
-            group by ids
-    """.format(array_agg = array_agg, foos = foos, **kwargs))
+                (madlib.utils_normalize_data({col_ind_var},
+                                            '{x_mean_str}'::double precision[],
+                                            '{x_std_str}'::double precision[])).scaled
+                    as {col_ind_var_norm_new},
+                ({col_dep_var} - {y_mean})  as {col_dep_var_norm_new}
+            from {tbl_data}
+        """.format(**kwargs))
+    
     return None
 
 ## ========================================================================

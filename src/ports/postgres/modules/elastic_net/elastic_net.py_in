@@ -248,6 +248,21 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
 
 # ========================================================================
 
+def __check_args (tbl_source, col_ind_var, col_dep_var):
+    """
+    Check arguments before analyze_input_str
+    """
+    if (tbl_source is None or col_ind_var is None or col_dep_var is None):
+        plpy.error("Elastic Net error: You have unsupported NULL value(s) in the arguments!")
+    
+    if not __is_tbl_exists(tbl_source):
+        plpy.error("Elastic Net error: Data table " + tbl_source + " does not exist!")
+
+    if not __is_tbl_has_rows(tbl_source):
+        plpy.error("Elastic Net error: Data table " + tbl_source + " is empty!")
+    
+# ========================================================================
+    
 def analyze_input_str(schema_madlib, tbl_source,
                       col_ind_var, col_dep_var, excluded):
     """
@@ -388,20 +403,20 @@ def __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
         col_id_str = "NULL"
     else:
         col_id_str = col_id
-    
+ 
     dense_vars = mad_vec(plpy.execute(
         """
         select features_selected as fs
         from {tbl_model}
         """.format(tbl_model = tbl_model))[0]["fs"])
-    
+
     dense_vars_str = "array["
     for i in range(len(dense_vars)):
         dense_vars_str += str(dense_vars[i])
         if i != len(dense_vars) - 1:
             dense_vars_str += ", "
     dense_vars_str += "]"
-
+  
     # Must be careful to avoid possible name conflicts
     plpy.execute(
         """
@@ -425,6 +440,6 @@ def __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
                    dense_vars_str = dense_vars_str,
                    schema_madlib = schema_madlib,
                    tbl_new_source = tbl_new_source))
-
+ 
     plpy.execute("set client_min_messages to " + old_msg_level)
     return None
