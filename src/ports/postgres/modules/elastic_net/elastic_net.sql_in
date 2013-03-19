@@ -39,7 +39,7 @@ At the end of the calculation, the orginal scales will be restored and an interc
 
 Note that fitting after scaling is not equivalent to directly fitting.
 
-Right now, two optimizers are supported. The default one is FISTA, and the other is IGD.
+Right now, two optimizers are supported. The default one is FISTA, and the other is IGD. They have their own parameters, which can be specified in the <em>optimizer_params</em> as a text array. For example, '{max_stepsize = 0.1, warmup = t, "warmup_lambdas = [0.4, 0.3, 0.2]"}'::text[].
 
 <b>(1) FISTA</b>
 
@@ -79,6 +79,8 @@ Incremental Gradient Descent (IGD) or Stochastic Gradient Descent (SGD) has the 
                            multiple segments or not.
 
 Here, the <em>stepsize</em> is fixed, which is the most suitable choice for large data sets in SGD. Due to the stochastic nature of SGD, we can only obtain very small values for the fitting coefficients. Therefore, <em>threshold</em> is needed at the end of the computation to screen out those tiny values and just hard set them to be zeros. This is done as the following: (1) multiply each coefficient with the standard deviation of the corresponding feature (2) compute the average of absolute values of re-scaled coefficients (3) divide each rescaled coefficients with the average, and if the resulting absolute value is smaller than <em>threshold</em>, set the original coefficient to be zero.
+
+SGD is in nature a sequential algorithm, and when running in a distributed way, each segment of the data runs its own SGD model, and the models are averaged to get a model for each iteration. This average might slow down the convergence speed, although we acquire the ability to process large data set on multiple machines. So this algorithm provides an option <em>parallel</em> to let the user choose whether to do parallel computation.
 
 <b>Stopping Criteria</b> Both optimizers compute the average difference between the coefficients of two consecutive iterations, and if the difference is smaller than <em>tolerance</em> or the iteration number is larger than <em>max_iter</em>, the computation stops.
 
@@ -123,6 +125,7 @@ Null values are not expected.
             standardize,      -- Whether to normalize the data
             'grouping_col',   -- Group by which columns. Default: NULL
             'optimizer',      -- Name of optimizer. Default: 'fista'
+            'optimizer_params',-- Text array of optimizer parameters
             'excluded',       -- Column names excluded from '*'
             max_iter,         -- Maximum iteration number
             tolerance         -- Stopping criteria
@@ -133,9 +136,9 @@ If <em>col_ind_var</em> is '*', then all columns of <em>tbl_source</em> will be 
 
 The <em>excluded</em> string is a list of column names excluded from features delimited by comma. For example, 'col1, col2'. If it is NULL or an empty string '', no column is excluded.
 
-If <em>col_ind_var</em> is a single column name, which is the array type, one can still use <em>excluded</em>. For example, if <em>x</em> is a column name, which is an array of size 1000, and the user wants to exclude the 100-th, 200-th and 301-th elements of the array, he can set <em>excluded</em> to be '100, 200, 300'.
+If <em>col_ind_var</em> is a single column name, which is the array type, one can still use <em>excluded</em>. For example, if <em>x</em> is a column name, which is an array of size 1000, and the user wants to exclude the 100-th, 200-th and 301-th elements of the array, he can set <em>excluded</em> to be '100, 200, 301'.
 
-Both <em>col_dep_var</em> and <em>col_ind_var</em> can be valid Postgres expression. For example, <em>col_dep_var = 'log(y+1)'</em>, and <em>col_ind_var = 'array[exp(x[1]), x[2], 1/(1+x[2])]'</em>
+Both <em>col_dep_var</em> and <em>col_ind_var</em> can be valid Postgres expression. For example, <em>col_dep_var = 'log(y+1)'</em>, and <em>col_ind_var = 'array[exp(x[1]), x[2], 1/(1+x[3])]'</em> etc.
 
   Output:
   <pre> family | features | features_selected | coef_nonzero | coef_all | intercept | log_likelihood | standardize | iteration_run
