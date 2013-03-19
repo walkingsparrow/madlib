@@ -263,42 +263,14 @@ __gaussian_igd_result::run (AnyType& args)
     for (uint32_t i = 0; i < state.dimension; i++)
         if (fabs(state.coef(i)/avg) < threshold)
             state.coef(i) = 0;
-    
-    // double norm = 0;
-
-    // for (Index i = 0; i < state.coef.rows() - 1; i ++) {
-    //     double m = state.coef(i);
-    //     norm += state.alpha * std::abs(m) + (1 - state.alpha) * m * m * 0.5;
-    // }
-    // norm *= state.lambda;
         
     AnyType tuple;
     tuple << static_cast<double>(state.intercept)
           << state.coef
           << static_cast<double>(state.lambda);
-        //<< static_cast<double>(state.loss) + norm;// +
-        // (double)(GLMENRegularizer::loss(state.coef,
-        //                                 state.lambda,
-        //                                 state.alpha));
 
     return tuple;
 }
-
-// ------------------------------------------------------------------------
-
-// /**
-//  * @brief Compute w \dot x, where w is the vector of coefficients
-//  */
-// AnyType
-// gaussian_igd_predict::run (AnyType& args)
-// {
-//     using madlib::dbal::eigen_integration::MappedColumnVector;
-//     MappedColumnVector coef = args[0].getAs<MappedColumnVector>();
-//     double intercept = args[1].getAs<double>();
-//     MappedColumnVector indVar = args[2].getAs<MappedColumnVector>();
-
-//     return OLS<MappedColumnVector, GLMTuple>::predict(coef, intercept, indVar);
-// }
  
 } // namespace elastic_net 
 } // namespace modules

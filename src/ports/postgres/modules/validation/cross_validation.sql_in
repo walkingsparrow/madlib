@@ -312,62 +312,63 @@ $$ LANGUAGE plpgsql VOLATILE;
  * @param validation_result Table name to store the output of CV function, see the Output for format. It will be automatically created by CV function
  * @param fold_num How many fold cross-validation
  */
-
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
---     module_name         VARCHAR, -- module to be cross validated
---     func_args           VARCHAR[],
---     param_to_try        VARCHAR,
---     param_values        DOUBLE PRECISION[],
---     data_id             VARCHAR,
---     id_is_random        BOOLEAN,
---     validation_result   VARCHAR,
---     fold_num            INTEGER
--- ) RETURNS VOID AS $$
--- PythonFunction(validation, cross_validation, cross_validation)
--- $$ LANGUAGE plpythonu;
-
+/*
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
+    module_name         VARCHAR, -- module to be cross validated
+    func_args           VARCHAR[],
+    param_to_try        VARCHAR,
+    param_values        DOUBLE PRECISION[],
+    data_id             VARCHAR,
+    id_is_random        BOOLEAN,
+    validation_result   VARCHAR,
+    fold_num            INTEGER
+) RETURNS VOID AS $$
+PythonFunction(validation, cross_validation, cross_validation)
+$$ LANGUAGE plpythonu;
+*/
+-- ------------------------------------------------------------------------
+/*
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
+    module_name         VARCHAR,
+    func_args           VARCHAR[],
+    param_to_try        VARCHAR,
+    param_values        DOUBLE PRECISION[],
+    data_id             VARCHAR,
+    id_is_random        BOOLEAN,
+    validation_result   VARCHAR
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.cross_validation($1, $2, $3, $4, $5, $6, $7, 10);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+*/
 -- ------------------------------------------------------------------------
 
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(
---     module_name         VARCHAR,
---     func_args           VARCHAR[],
---     param_to_try        VARCHAR,
---     param_values        DOUBLE PRECISION[],
---     data_id             VARCHAR,
---     id_is_random        BOOLEAN,
---     validation_result   VARCHAR
--- ) RETURNS VOID AS $$
--- BEGIN
---     PERFORM MADLIB_SCHEMA.cross_validation($1, $2, $3, $4, $5, $6, $7, 10);
--- END;
--- $$ LANGUAGE plpgsql VOLATILE;
-
+/**
+ * @brief Print the help message for a given module's cross-validation.
+ */
+/*
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(module_name VARCHAR)
+RETURNS VARCHAR AS $$
+PythonFunction(validation, cross_validation, cross_validation_help)
+$$ LANGUAGE plpythonu;
+*/
 -- ------------------------------------------------------------------------
 
--- /**
---  * @brief Print the help message for a given module's cross-validation.
---  */
-
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation(module_name VARCHAR)
--- RETURNS VARCHAR AS $$
--- PythonFunction(validation, cross_validation, cross_validation_help)
--- $$ LANGUAGE plpythonu;
-
--- ------------------------------------------------------------------------
-
--- /**
---  * @brief Print the supported module names for cross_validation
---  */
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation()
--- RETURNS VARCHAR AS $$
--- DECLARE
---     msg     VARCHAR;
--- BEGIN
---     msg := 'cross_validation function now supports Ridge linear regression';
---     return msg;
--- END;
--- $$ LANGUAGE plpgsql STRICT;
-
+/**
+ * @brief Print the supported module names for cross_validation
+ */
+ /*
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cross_validation()
+RETURNS VARCHAR AS $$
+DECLARE
+    msg     VARCHAR;
+BEGIN
+    msg := 'cross_validation function now supports Ridge linear regression';
+    return msg;
+END;
+$$ LANGUAGE plpgsql STRICT;
+*/
 ------------------------------------------------------------------------
 
 /**
