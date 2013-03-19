@@ -111,7 +111,7 @@ def __is_col_array (tbl, col):
     elif len(names) == 2:
         schema = names[0]
         table = names[1]
-        schema_str = " and schema_name = '" + schema + "'"
+        schema_str = " and table_schema = '" + schema + "'"
     else:
         plpy.error("Format error: Table name strange!")
         

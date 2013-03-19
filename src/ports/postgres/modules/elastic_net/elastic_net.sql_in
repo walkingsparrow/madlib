@@ -57,7 +57,7 @@ Fast Iterative Shrinkage Thresholding Algorithm (FISTA) [2] has the following op
         use_active_set   - default is False. Whether to use active-set
                            method to speed up the computation.
 
-Here, backtracking for step size is used. At each iteration, we first try the <em>stepsize = max_stepsize</em>, and if it does not work out, we then try <em>stepsize = stepsize / eta</em>. At first sight, this seems to do repeated iterations for even one step, but it actually greatly increases the computation speed by using a larger step size and minimizes the total number of iterations. A careful choice of max_stepsize can decrease the computation time by more than 10 times.
+Here, backtracking for step size is used. At each iteration, we first try the <em>stepsize = max_stepsize</em>, and if it does not work out, we then try a smaller step size <em>stepsize = stepsize / eta</em>, where <em>eta</em> must be larger than 1. At first sight, this seems to do repeated iterations for even one step, but it actually greatly increases the computation speed by using a larger step size and minimizes the total number of iterations. A careful choice of max_stepsize can decrease the computation time by more than 10 times.
 
 If <em>warmup</em> is <em>True</em>, a series of lambda values, which is strictly descent and ends at the lambda value that the user wants to calculate, will be used. The larger lambda gives very sparse solution, and the sparse solution again is used as the initial guess for the next lambda's solution, which will speed up the computation for the next lambda. For larger data sets, this can sometimes accelerate the whole computation and might be faster than computation on only one lambda value.
 
