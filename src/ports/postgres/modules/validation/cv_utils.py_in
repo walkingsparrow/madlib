@@ -83,12 +83,15 @@ def __cv_summarize_result(tbl_accum_error, tbl_result, param_explored,
                   tbl_result = tbl_result,
                   param_explored = param_explored)
 
-    col_string = "{param_explored}, ".format(**kwargs)
+    ecols = []
     for i in range(len(cols)):
         if cols[i] != param_explored:
-            col_string += "avg({col}) as {col}_avg, stddev({col}) as {col}_stddev".format(col = cols[i])
-            if i != len(cols) - 1:
-                col_string += ", "
+            ecols.append(cols[i])
+    col_string = "{param_explored}, ".format(**kwargs)
+    for i in range(len(ecols)):
+        col_string += "avg({col}) as {col}_avg, stddev({col}) as {col}_stddev".format(col = ecols[i])
+        if i != len(ecols) - 1:
+            col_string += ", "
    
     plpy.execute("""
         drop table if exists {tbl_result};

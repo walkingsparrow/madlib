@@ -1,9 +1,9 @@
 
 import math
 import re
-from convex.ridge import __ridge_cv_args
-from convex.ridge import __ridge_newton_cv
-from convex.ridge import __ridge_newton_cv_help
+# from convex.ridge import __ridge_cv_args
+# from convex.ridge import __ridge_newton_cv
+# from convex.ridge import __ridge_newton_cv_help
 from utilities.utilities import __unique_string
 from validation.cv_utils import __cv_copy_data_with_id
 from validation.cv_utils import __cv_split_data_using_id_col
@@ -55,10 +55,10 @@ def cross_validation(schema_madlib, module_name, func_args, param_to_try,
 
     The output is a dict with all parameters and their values for ridge's CV function __ridge_newton_cv
     """
-    if module_name.lower() == "ridge":
-        args_string = __ridge_cv_args(schema_madlib, func_args, param_to_try, param_values, data_id, id_is_random, validation_result, fold_num)
-        __ridge_newton_cv(**args_string)
-        return None
+    # if module_name.lower() == "ridge":
+    #     args_string = __ridge_cv_args(schema_madlib, func_args, param_to_try, param_values, data_id, id_is_random, validation_result, fold_num)
+    #     __ridge_newton_cv(**args_string)
+    #     return None
 
     plpy.error("No module is named as {0}. Either it does not exist, or it is not supported by this function yet. You can try to use the function of cross_validation_general().\n".format(module_name));
     return None
@@ -70,8 +70,8 @@ def cross_validation_help(schema_madlib, module_name, **kwargs):
     Print out how to call this CV function for the module. Especially
     the necessary func_args will be print out.
     """
-    if module_name.lower() == "ridge":
-        return __ridge_newton_cv_help()
+    # if module_name.lower() == "ridge":
+    #     return __ridge_newton_cv_help()
 
     plpy.error("No module is named as {0}. Either it does not exist, or it is not supported by this function yet. You can try to use the function of cross_validation_general().\n".format(module_name));
     return None
