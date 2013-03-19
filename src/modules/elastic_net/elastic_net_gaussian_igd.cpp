@@ -256,7 +256,7 @@ __gaussian_igd_result::run (AnyType& args)
     for (uint32_t i = 0; i < state.dimension; i++)
     {
         norm_coef(i) = state.coef(i) * sqrt(x2(i) - state.xmean(i) * state.xmean(i));
-        avg += norm_coef(i);
+        avg += fabs(norm_coef(i));
     }
     avg /= state.dimension;
 

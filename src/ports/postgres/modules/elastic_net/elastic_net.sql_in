@@ -39,6 +39,60 @@ At the end of the calculation, the orginal scales will be restored and an interc
 
 Note that fitting after scaling is not equivalent to directly fitting.
 
+Right now, two optimizers are supported. The default one is FISTA, and the other is IGD.
+
+<b>(1) FISTA</b>
+
+Fast Iterative Shrinkage Thresholding Algorithm (FISTA) has the following optimizer-specific parameters:
+
+        max_stepsize     - default is 4.0
+        eta              - default is 2, if stepsize does not work
+                           stepsize/eta will be tried
+        warmup           - default is False
+        warmup_lambdas   - default is NULL, which means that lambda
+                           values will be automatically generated
+        warmup_lambda_no - default is 15. How many lambda's are used in
+                           warm-up, will be overridden if warmup_lambdas     
+                           is not NULL
+        use_active_set   - default is False. Whether to use active-set
+                           method to speed up the computation.
+
+Here, backtracking for step size is used. At each iteration, we first try the <em>stepsize = max_stepsize</em>, and if it does not work out, we then try <em>stepsize = stepsize / eta</em>. At first sight, this seems to do repeated iterations for even one step, but it actually greatly increases the computation speed by using a larger step size and minimizes the total number of iterations. A careful choice of max_stepsize can decrease the computation time by more than 10 times.
+
+If <em>warmup</em> is <em>True</em>, a series of lambda values, which is strictly descent and ends at the lambda value that the user wants to calculate, will be used. The larger lambda gives very sparse solution, and the sparse solution again is used as the initial guess for the next lambda's solution, which will speed up the computation for the next lambda. For larger data sets, this can sometimes accelerate the whole computation and might be faster than computation on only one lambda value.
+
+If <em>use_active_set</em> is <em>True</em>, active-set method will be used to speed up the computation. Considerable speedup is obtained by organizing the iterations around the active set of features— those with nonzero coefficients. After a complete cycle through all the variables, we iterate on only the active set till convergence. If another complete cycle does not change the active set, we are done, otherwise the process is repeated.
+
+<b>(2) IGD</b>
+
+Incremental Gradient Descent (IGD) or Stochastic Gradient Descent (SGD) has the following optimizer-specific parameters:
+
+        stepsize         - default is 0.01
+        threshold        - default is 1e-10. When a coefficient is really
+                           small, set it to be 0
+        warmup           - default is False
+        warmup_lambdas   - default is Null
+        warmup_lambda_no - default is 15. How many lambda's are used in
+                           warm-up, will be overridden if warmup_lambdas   
+                           is not NULL
+        parallel         - default is True. Run the computation on
+                           multiple segments or not.
+
+Here, the <em>stepsize</em> is fixed, which is the most suitable choice for large data sets in SGD. Due to the stochastic nature of SGD, we can only obtain very small values for the fitting coefficients. Therefore, <em>threshold</em> is needed at the end of the computation to screen out those tiny values and just hard set them to be zeros. This is done as the following: (1) multiply each coefficient with the standard deviation of the corresponding feature (2) compute the average of absolute values of re-scaled coefficients (3) divide each rescaled coefficients with the average, and if the resulting absolute value is smaller than <em>threshold</em>, set the original coefficient to be zero.
+
+<b>Stopping Criteria</b> Both optimizers compute the average difference between the coefficients of two consecutive iterations, and if the difference is smaller than <em>tolerance</em> or the iteration number is larger than <em>max_iter</em>, the computation stops.
+
+<b>Online Help</b> The user can read short help messages by using any one of the following
+\code
+SELECT madlib.elastic_net_train();
+SELECT madlib.elastic_net_train('usage');
+SELECT madlib.elastic_net_train('predict');
+SELECT madlib.elastic_net_train('gaussian');
+SELECT madlib.elastic_net_train('linear');
+SELECT madlib.elastic_net_train('fista');
+SELECT madlib.elastic_net_train('igd');
+\endcode
+
 @input
 
 The <b>training examples</b> is expected to be of the following form:
@@ -55,18 +109,24 @@ Null values are not expected.
 
 - Get the fitting coefficients for a linear model:
 
-<pre>SELECT madlib.elastic_net_train(
-    '<em>tbl_source</em>',  -- Name of data table
-    '<em>col_ind_var</em>', -- Name of independent variable column
-    '<em>col_dep_var</em>', -- Name of dependent variable column
-    '<em>tbl_result</em>', -- Name of the table to store the fitting result
-    '<em>lambda_value</em>', -- Value of the regularization parameter
-    '<em>alpha</em>',    -- Value of the elastic net controlling parameter
-    '<em>normalization</em>', -- Whether to normalize the variables
-    '<em>regress_family</em>', -- Response type, 'gaussian' ('linear') or 'binomial' ('logistic')
-    '<em>optimizer</em>', --  The optimization algorithm, for example 'igd'
-    '<em>optimizer_params</em>' -- Parameters of the above optimizer, the format is '{arg = value, ...}'::varchar[]
-);
+<pre>
+       SELECT {schema_madlib}.elastic_net_train (
+            'tbl_source',     -- Data table
+            'tbl_result',     -- Result table
+            'col_dep_var',    -- Dependent variable, can be an expression or
+                                    '*'
+            'col_ind_var',    -- Independent variable, can be an expression
+            'regress_family', -- 'gaussian' (or 'linear'). 'binomial'
+                                    (or 'logistic') will be supported
+            alpha,            -- Elastic net control parameter, value in [0, 1]   
+            lambda_value,     -- Regularization parameter, positive
+            standardize,      -- Whether to normalize the data
+            'grouping_col',   -- Group by which columns. Default: NULL
+            'optimizer',      -- Name of optimizer. Default: 'fista'
+            'excluded',       -- Column names excluded from '*'
+            max_iter,         -- Maximum iteration number
+            tolerance         -- Stopping criteria
+        );
 </pre>
 
 If <em>normalization</em> = False, the output has the following format
