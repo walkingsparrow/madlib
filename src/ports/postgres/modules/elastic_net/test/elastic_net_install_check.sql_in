@@ -529,13 +529,15 @@ begin
         True,
         NULL,
         'fista',
-        '{eta = 2, max_stepsize = 2, use_active_set = t}',
+        '{eta = 2, max_stepsize = 0.5, use_active_set = f}',
         NULL,
         2000,
         1e-6
     );
 
-    
+    perform assert(relative_error(log_likelihood, -14.41122) < 0.000001,
+        'Elastic Net: error mismatch!'
+    ) from house_en;
 end;
 $$ language plpgsql volatile;
 
