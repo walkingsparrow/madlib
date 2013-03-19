@@ -3,6 +3,9 @@ import plpy
 import re
 from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
 from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
+from utilities.validate_args import __is_col_array
+from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_tbl_has_rows
 from utilities.validate_args import __is_col_exists
 from utilities.utilities import _string_to_array
 from utilities.validate_args import __get_cols
@@ -177,7 +180,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
     #     return "Newton method  "
         
     return """
-    Not a supported response family or optimizer  
+    Elastic Net error: Not a supported response family or optimizer  
     """
         
 
@@ -210,6 +213,22 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
     @param excluded          Which variables are excluded when
                              col_ind_var == "*"
     """
+    if regress_family is None:
+        plpy.error("""
+                   Elastic Net error: Please enter a valid response family name!
+                   Run:
+                   SELECT {schema_madlib}.elastic_net_train();
+                   for supported response family.
+                   """.format(schema_madlib = schema_madlib))
+
+    if optimizer is None:
+        plpy.error("""
+                   Elastic Net error: Please enter a valid optimizer name!
+                   Run:
+                   SELECT {schema_madlib}.elastic_net_train('gaussian');
+                   for supported optimizers.
+                   """.format(schema_madlib = schema_madlib))
+        
     # handle all special cases of col_ind_var
     (col_ind_var, outstr_array) = analyze_input_str(schema_madlib, tbl_source, col_ind_var, 
                                                     col_dep_var, excluded)
@@ -245,7 +264,12 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
                                            tolerance, outstr_array, **kwargs)
         return None
 
-    plpy.error("Not a supported response family or supported optimizer of the given response family!")
+    plpy.error("""
+               Elastic Net error: Not a supported response family or supported optimizer of the given response family!
+               Run:
+               SELECT {schema_madlib}.elastic_net_train();
+               for help.
+               """.format(schema_madlib = schema_madlib))
     return None
 
 # ========================================================================
@@ -302,6 +326,9 @@ def analyze_input_str(schema_madlib, tbl_source,
         # a single column is independent variable
         # which means that it is an array
         # excluded must be a string contains integers
+        if not __is_col_array(tbl_source, col_ind_var):
+            plpy.error("Elastic Net error: The independent variable must be an array!")
+        
         if excluded is not None:
             s = _string_to_array(excluded)
             try:
