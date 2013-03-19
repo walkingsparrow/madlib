@@ -274,6 +274,8 @@ def analyze_input_str(schema_madlib, tbl_source,
     @param col_dep_var Dependent variables
     @param excluded Which variables are excluded when col_ind_var == "*"
     """
+    __check_args(tbl_source, col_ind_var, col_dep_var)
+    
     outstr_array = []
     
     if col_ind_var == "*":
