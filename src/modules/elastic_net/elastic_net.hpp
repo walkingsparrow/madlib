@@ -8,3 +8,4 @@
 
 #include "elastic_net_gaussian_igd.hpp"
 #include "elastic_net_gaussian_fista.hpp"
+#include "elastic_net_utils.hpp"

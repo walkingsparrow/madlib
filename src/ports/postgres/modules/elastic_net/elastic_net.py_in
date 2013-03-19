@@ -342,32 +342,6 @@ def analyze_input_str(schema_madlib, tbl_source,
 
 # ========================================================================
 
-def elastic_net_predict (schema_madlib, regress_family, coefficients,
-                         intercept, ind_var, **kwargs):
-    """
-    Make predictions using the fitting coefficients
-    """
-    if regress_family.lower() == "gaussian" or regress_family.lower() == "linear":
-        return __elastic_net_gaussian_predict(coefficients, intercept, ind_var)
-
-    plpy.error("Not a supported response family!")
-    return None
-
-# ========================================================================
-    
-def __elastic_net_gaussian_predict (coefficients, intercept, ind_var):
-    """
-    Prediction for linear models
-    """
-    coef = mad_vec(coefficients, text = False)
-    ind = mad_vec(ind_var, text = False)
-    dot = intercept
-    for i in range(len(coef)):
-        dot += coef[i] * ind[i]
-    return dot
-
-# ========================================================================
-
 def elastic_net_predict_all (schema_madlib, tbl_model, tbl_new_source,
                              col_id, tbl_predict, **kwargs):
     """
@@ -424,8 +398,8 @@ def __elastic_net_gaussian_predict_all(schema_madlib, tbl_model, tbl_new_source,
         create table {tbl_predict} as
             select
                 id,
-                {schema_madlib}.elastic_net_predict('gaussian', coef_nonzero,
-                                                    intercept, ind_var)
+                {schema_madlib}.__elastic_net_gaussian_predict(coef_nonzero,
+                                                                intercept, ind_var)
                                  as prediction
             from
                 {tbl_model} as tbl1,

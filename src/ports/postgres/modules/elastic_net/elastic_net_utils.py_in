@@ -137,7 +137,7 @@ def __compute_log_likelihood (coef, coef_str, intercept, **args):
     loss = plpy.execute(
         """
         select
-            avg(({col_dep_var_new} - {schema_madlib}.elastic_net_predict('gaussian',
+            avg(({col_dep_var_new} - {schema_madlib}.__elastic_net_gaussian_predict(
                                                                     '{coefficients}'::double precision[],
                                                                     {intercept},
                                                                     {col_ind_var_new}))^2) / 2.

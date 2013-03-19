@@ -338,8 +338,25 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
     intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS $$
-PythonFunction(elastic_net, elastic_net, elastic_net_predict)
-$$ LANGUAGE plpythonu STRICT;
+DECLARE
+    family_name     TEXT;
+BEGIN
+    family_name := lower(regress_family);
+    IF family_name = 'gaussian' OR family_name = 'linear' THEN
+        RETURN MADLIB_SCHEMA.__elastic_net_gaussian_predict(coefficients, intercept, ind_var);
+    END IF;
+
+    RAISE EXCEPTION 'This regression family is not supported!';
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__elastic_net_gaussian_predict (
+    coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
+    ind_var         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', '__elastic_net_gaussian_predict'
+LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
 -- Compute the solution for just one step ------------------------------
