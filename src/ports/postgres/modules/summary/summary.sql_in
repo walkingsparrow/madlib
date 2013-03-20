@@ -1,0 +1,56 @@
+/* ----------------------------------------------------------------------- *//** 
+ *
+ * @file summary.sql_in
+ *
+ * @brief Summary function for descriptive statistics
+ * @date Mar 2013
+ *
+ *//* ------------------------------------------------------------------------*/
+
+m4_include(`SQLCommon.m4')
+
+/**
+
+@addtogroup grp_summary
+
+@about
+
+*/
+
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename       TEXT, 
+    outputtable     TEXT, 
+    grouping_cols   TEXT,   --comma separated column names 
+    distinctify     TEXT, 
+    ntileify        TEXT
+)
+RETURNS TEXT AS $$
+    PythonFunctionBodyOnly(`summary', `summary')
+    return summary.summary(schema_madlib, tablename, outputtable, grouping_cols, distinctify, ntileify)
+$$ LANGUAGE plpythonu STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename       TEXT, 
+    outputtable     TEXT, 
+    grouping_cols   TEXT 
+)
+RETURNS TEXT AS $$
+    PythonFunctionBodyOnly(`summary', `summary')
+    return summary.summary(schema_madlib, tablename, outputtable, grouping_cols, 'Estimated', 'None')
+$$ LANGUAGE plpythonu STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename       TEXT, 
+    outputtable     TEXT 
+)
+RETURNS TEXT AS $$
+    PythonFunctionBodyOnly(`summary', `summary')
+    return summary.summary(schema_madlib, tablename, outputtable, '', 'Estimated', 'None')
+$$ LANGUAGE plpythonu STRICT;
