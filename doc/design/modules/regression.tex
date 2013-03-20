@@ -111,10 +111,52 @@ limitations. Consider the following three scenarios:
 
 These scenarios make lasso an inappropriate variable selection method in some situations. 
 
-Hui Zou and Trevor Hastie~\cite{zou2005} introduce a new regularization 
+Hui Zou and Trevor Hastie [41] introduce a new regularization 
 technique called the 'elastic net'. Similar to the lasso, the elastic net 
 simultaneously does automatic variable selection and continuous
 shrinkage, and it can select groups of correlated variables. It is like a 
-stretchable fishing net that retains `all the big fish'.  
+stretchable fishing net that retains `all the big fish'.
+
+The elastic net regularization minimizes the following target function
+\begin{equation}
+\min_{\vec{w} \in R^N}L(\vec{w}) + \lambda \left[\frac{1-\alpha}{2}\|\vec{w}\|_2^2 +
+  \lambda\alpha \|\vec{w}\|_1\right]\ ,
+\end{equation}  
+where $\|\vec{w}\|_1 = \sum_{i=1}^N|w_i|$ and $N$ is the number of features.
+
+For the elastic net regularization on linear models, 
+\begin{equation}
+L(\vec{w}) = \frac{1}{2M}\sum_{m=1}^M\left(y_m - w_0 - \vec{w} \cdot
+  \vec{x}_m\right)^2\ ,
+\end{equation}
+where the sum is over all observations and $M$ is the total number of
+observation.
+
+For the elastic net regularization on logistic models,
+\begin{equation}
+L(\vec{w}) = \sum_{m=1}^M\left[y_m \log\left(1 + e^{-(w_0 +
+      \vec{w}\cdot\vec{x}_m)}\right) + (1-y_m) \log\left(1 + e^{w_0 +
+      \vec{w}\cdot\vec{x}_m}\right)\right]\ ,
+\end{equation}
+where $y_m \in \{0,1\}$.
+
+\subsection{Optimizer Algorithms}
+Right now, we support two algorithms for optimizer. The default one is
+FISTA, and the other is IGD.
+
+\subsubsection{FISTA}
+
+Fast Iterative Shrinkage Thresholding Algorithm (FISTA):
+
+{\bf Step 0}: Choose $\Delta>0$ and $\eta > 1$, and
+$\vec{w}^{(0)} \in R^N$. Set $\vec{v}^{(1)}=\vec{w}^{(0)}$ and
+$t_1=1$.
+
+{\bf Step $k$}: ($k \ge 1$) Find the smallest nonnegative integers
+$i_k$ such that 
+
+
+\subsubsection{IGD}
+
 % subsubsection elastic_net_regularization (end)
 % subsection regularization (end)

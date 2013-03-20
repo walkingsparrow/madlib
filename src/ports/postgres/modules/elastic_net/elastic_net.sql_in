@@ -26,7 +26,7 @@ and \f$ lambda \geq 0 \f$. If \f$alpha = 0\f$, we have the ridge regularization 
 
 For the Gaussian response family (or linear model), we have
 \f[\min_{w \in R^N, w_{0}} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w^{t} x_m + w_{0} - y_m)^2 \right]
-+ \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
++ \lambda \left(\frac{1-\alpha}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 
 To get better convergence, one can rescale the value of each element of x
 \f[ x' \leftarrow \frac{x - \bar{x}}{\sigma_x} \f]
@@ -34,7 +34,7 @@ and
 \f[y' \leftarrow y - \bar{y} \f]
 and then fit 
 \f[\min_{w' \in R^N} \frac{1}{2}\left[\frac{1}{M} \sum_{m=1}^M (w'^{t} x'_m - y'_m)^2 \right]
-+ \lambda \left(\frac{(1-\alpha)}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
++ \lambda \left(\frac{1-\alpha}{2} \|w\|_2^2 + \alpha \|w\|_1 \right)\f]
 At the end of the calculation, the orginal scales will be restored and an intercept term will be obtained at the same time as a by-product.
 
 Note that fitting after scaling is not equivalent to directly fitting.

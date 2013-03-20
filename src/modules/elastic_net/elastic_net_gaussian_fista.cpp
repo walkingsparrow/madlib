@@ -171,6 +171,7 @@ AnyType gaussian_fista_transition::run (AnyType& args)
             
             state.intercept = ymean;
             state.intercept_y = ymean;
+            state.stepsize = state.max_stepsize;
         }
 
         if (state.backtracking == 0)
@@ -263,7 +264,8 @@ AnyType gaussian_fista_final::run (AnyType& args)
                 state.gradient(i) += la * state.coef_y(i);
 
         // compute the first set of coef for backtracking
-        state.stepsize = state.max_stepsize;
+        //state.stepsize = state.max_stepsize;
+        state.stepsize = state.stepsize * state.eta;
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
         proxy(state.coef_y, state.gradient, state.b_coef, 
               state.stepsize, effective_lambda);

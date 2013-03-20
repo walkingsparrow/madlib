@@ -95,7 +95,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
 
         or
 
-        SELECT (schema_madlib).elastic_net_predict(
+        SELECT {schema_madlib}.elastic_net_predict(
             'tbl_model',      -- Result table of elastic_net_train
             'tbl_new_source', -- New data source
             'col_id',         -- Unique ID column
