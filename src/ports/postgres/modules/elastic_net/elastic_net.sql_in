@@ -125,14 +125,14 @@ Null values are not expected.
             standardize,      -- Whether to normalize the data
             'grouping_col',   -- Group by which columns. Default: NULL
             'optimizer',      -- Name of optimizer. Default: 'fista'
-            'optimizer_params',-- Text array of optimizer parameters
+            'optimizer_params',-- Optimizer parameters, delimited by comma
             'excluded',       -- Column names excluded from '*'
             max_iter,         -- Maximum iteration number
             tolerance         -- Stopping criteria
         );
 </pre>
 
-If <em>col_ind_var</em> is '*', then all columns of <em>tbl_source</em> will be used as features except those listed in the <em>excluded</em> string.
+If <em>col_ind_var</em> is '*', then all columns of <em>tbl_source</em> will be used as features except those listed in the <em>excluded</em> string. If the dependent variable is a column name, it is then automatically excluded from the features. However, if the dependent variable is a valid Postgres expression, then the column names inside this expression are not excluded unless explicitly put into the <em>excluded</em> list. So it is a good idea to put all column names involved in the dependent variable expression into the <em>excluded</em> string.
 
 The <em>excluded</em> string is a list of column names excluded from features delimited by comma. For example, 'col1, col2'. If it is NULL or an empty string '', no column is excluded.
 
@@ -189,12 +189,12 @@ mydb=# INSERT INTO lasso_data values ({0.15, -1.3}, -1.3);
 -# learn coefficients, e.g.:  
 \code
 mydb=# SELECT madlib.elastic_net_train('en_data', 'en_model', 'ind_var', 'dep_var', 0.5, 0.1,
-                                        True, 'linear', 'igd', '{stepsize = 0.1, warmup = t,
+                                        True, 'linear', 'igd', 'stepsize = 0.1, warmup = t,
                                         warmup_lambda_no=3, "warmup_lambdas = [0.4, 0.3, 0.2, 0.1]",
-                                        parallel=t}'::varchar[], '1', 10000, 1e-6);
+                                        parallel=t', '1', 10000, 1e-6);
 \endcode
 \code
-mydb=# select madlib.elastic_net_predict('gaussian', coefficients, intercept, ind_var)
+mydb=# select madlib.elastic_net_predict(family, coef_all, intercept, ind_var)
 mydb-# from en_data, en_model;
 \endcode
 
@@ -230,18 +230,18 @@ mydb-# from en_data, en_model;
                                 (default value of 100)
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_dep_var         VARCHAR,
-    col_ind_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_dep_var         TEXT,
+    col_ind_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardize         BOOLEAN,
-    grouping_col        VARCHAR,
-    optimizer           VARCHAR,
-    optimizer_params    VARCHAR[],
-    excluded            VARCHAR,
+    grouping_col        TEXT,
+    optimizer           TEXT,
+    optimizer_params    TEXT,
+    excluded            TEXT,
     max_iter            INTEGER,
     tolerance           DOUBLE PRECISION
 ) RETURNS VOID AS $$
@@ -251,18 +251,18 @@ $$ LANGUAGE plpythonu;
 ------------------------------------------------------------------------
 -- Overloaded functions
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN,
-    grouping_columns    VARCHAR,
-    optimizer           VARCHAR,
-    optimizer_params    VARCHAR[],
-    excluded            VARCHAR,
+    grouping_columns    TEXT,
+    optimizer           TEXT,
+    optimizer_params    TEXT,
+    excluded            TEXT,
     max_iter            INTEGER
 ) RETURNS VOID AS $$
 BEGIN
@@ -272,18 +272,18 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN,
-    grouping_columns    VARCHAR,
-    optimizer           VARCHAR,
-    optimizer_params    VARCHAR[],
-    excluded            VARCHAR
+    grouping_columns    TEXT,
+    optimizer           TEXT,
+    optimizer_params    TEXT,
+    excluded            TEXT
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
@@ -292,17 +292,17 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN,
-    grouping_columns    VARCHAR,
-    optimizer           VARCHAR,
-    optimizer_params    VARCHAR[]
+    grouping_columns    TEXT,
+    optimizer           TEXT,
+    optimizer_params    TEXT
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
@@ -311,33 +311,33 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN,
-    grouping_columns    VARCHAR,
-    optimizer           VARCHAR
+    grouping_columns    TEXT,
+    optimizer           TEXT
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
-        $9, $10, NULL::VARCHAR[]);
+        $9, $10, NULL::TEXT[]);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN,
-    grouping_columns    VARCHAR
+    grouping_columns    TEXT
 ) RETURNS VOID AS $$
 BEGIN
     PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, $8, 
@@ -346,11 +346,11 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    tbl_source          VARCHAR,
-    tbl_result          VARCHAR,
-    col_ind_var         VARCHAR,
-    col_dep_var         VARCHAR,
-    regress_family      VARCHAR,
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
     alpha               DOUBLE PRECISION,
     lambda_value        DOUBLE PRECISION,
     standardization     BOOLEAN
@@ -366,7 +366,7 @@ $$ LANGUAGE plpgsql VOLATILE;
  * @brief Help function, to print out the supported families
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train ()
-RETURNS VARCHAR AS $$
+RETURNS TEXT AS $$
 PythonFunction(elastic_net, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
 
@@ -380,8 +380,8 @@ $$ LANGUAGE plpythonu;
  * optimizer type
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
-    family_or_optimizer  VARCHAR
-) RETURNS VARCHAR AS $$
+    family_or_optimizer  TEXT
+) RETURNS TEXT AS $$
 PythonFunction(elastic_net, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
 
@@ -412,7 +412,7 @@ $$ LANGUAGE plpythonu;
  * @param ind_var           Features (independent variables)
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
-    regress_family  VARCHAR,
+    regress_family  TEXT,
     coefficients    DOUBLE PRECISION[],
     intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[]
