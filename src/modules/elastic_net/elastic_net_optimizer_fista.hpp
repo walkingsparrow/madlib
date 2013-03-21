@@ -7,6 +7,10 @@
 #include "state/fista.hpp"
 #include "share/shared_utils.hpp"
 
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+
 namespace madlib {
 namespace modules {
 namespace elastic_net {
@@ -83,6 +87,13 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
             state.backtracking = 0; // the first iteration is always non-backtracking
             state.max_stepsize = args[11].getAs<double>();
             state.eta = args[12].getAs<double>();
+
+            //dev/ --------------------------------------------------------
+            // how to adaptively update stepsize
+            srand48 (time(NULL));
+            state.stepsize_sum = 0;
+            state.iter = 0;
+            //dev/ --------------------------------------------------------
 
             // whether to use active-set method
             // 1 is yes, 0 is no
@@ -184,9 +195,19 @@ AnyType Fista<Model>::fista_final (AnyType& args)
             if (state.coef_y(i) != 0)
                 state.gradient(i) += la * state.coef_y(i);
 
-        // compute the first set of coef for backtracking
-        //state.stepsize = state.max_stepsize;
-        state.stepsize = state.stepsize * state.eta;
+        //dev/ --------------------------------------------------------
+        // How to adaptively update stepsize
+        // set the initial value for backtracking stepsize
+        double stepsize_avg;
+        if (state.iter == 0) stepsize_avg = 0;
+        else stepsize_avg = state.stepsize_sum / state.iter;
+
+        double p = 1. / (1 + exp(0.5 * (log(state.stepsize/state.max_stepsize) - stepsize_avg) / log(state.eta)));
+        double r = drand48();
+
+        // there is a non-zero probability to increase stepsize
+        if (r < p) state.stepsize = state.stepsize * state.eta;
+        //dev/ -------------------------------------------------------- 
         
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
         proxy(state.coef_y, state.gradient, state.b_coef, 
@@ -224,6 +245,12 @@ AnyType Fista<Model>::fista_final (AnyType& args)
             state.intercept_y = state.ymean - sparse_dot(state.coef_y, state.xmean);
             
             state.backtracking = 0; // stop backtracking
+
+            //dev/ --------------------------------------------------------
+            // how to adaptively update stepsize
+            state.stepsize_sum += log(state.stepsize) - log(state.max_stepsize);
+            state.iter++;
+            //dev/ --------------------------------------------------------
         }
         else
         {

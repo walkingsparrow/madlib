@@ -156,7 +156,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         --
         Parameters:
         max_stepsize     - default is 4.0
-        eta              - default is 2, if stepsize does not work
+        eta              - default is 1.2, if stepsize does not work
                            stepsize/eta will be tried
         warmup           - default is False
         warmup_lambdas   - default is NULL, which means that lambda
