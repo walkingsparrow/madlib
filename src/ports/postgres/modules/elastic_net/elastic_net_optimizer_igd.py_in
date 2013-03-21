@@ -156,14 +156,17 @@ def __igd_create_tbl_args(**args):
     
 ## ========================================================================
 
-def __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var,
+def __igd_construct_dict(schema_madlib, family, tbl_source,
+                         col_ind_var, col_dep_var,
                          tbl_result, dimension, row_num, lambda_value, alpha,
                          normalization, max_iter, tolerance, outstr_array,
                          optimizer_params_dict):
     """
     Construct the dict used by a series of SQL queries in IGD optimizer.
     """
-    args = dict(schema_madlib = schema_madlib, tbl_source = tbl_source,
+    args = dict(schema_madlib = schema_madlib,
+                family = family,
+                tbl_source = tbl_source,
                 tbl_data = tbl_source, # argument name used in normalization
                 col_ind_var = col_ind_var, col_dep_var = col_dep_var,
                 col_ind_var_norm_new = __unique_string(), # for normalization usage
@@ -229,24 +232,30 @@ def __igd_cleanup_temp_tbls(**args):
 
 ## ========================================================================
 
-def __elastic_net_gaussian_igd_train(schema_madlib, tbl_source, col_ind_var,
-                                     col_dep_var, tbl_result, lambda_value, alpha,
-                                     normalization, optimizer_params, max_iter,
-                                     tolerance, outstr_array, **kwargs):
+def __elastic_net_igd_train(schema_madlib, func_step_aggregate,
+                            func_state_diff, family,
+                            tbl_source, col_ind_var,
+                            col_dep_var, tbl_result, lambda_value, alpha,
+                            normalization, optimizer_params, max_iter,
+                            tolerance, outstr_array, **kwargs):
     __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var, tbl_result, 
                                 lambda_value, alpha, normalization, max_iter, tolerance)
     
-    return __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_var,
-                                                    col_dep_var, tbl_result, lambda_value, alpha,
-                                                    normalization, optimizer_params, max_iter,
-                                                    tolerance, outstr_array, **kwargs)
+    return __elastic_net_igd_train_compute(schema_madlib, func_step_aggregate,
+                                           func_state_diff, family,
+                                           tbl_source, col_ind_var,
+                                           col_dep_var, tbl_result, lambda_value, alpha,
+                                           normalization, optimizer_params, max_iter,
+                                           tolerance, outstr_array, **kwargs)
     
 ## ========================================================================
     
-def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_var,
-                                             col_dep_var, tbl_result, lambda_value, alpha,
-                                             normalization, optimizer_params, max_iter,
-                                             tolerance, outstr_array, **kwargs):
+def __elastic_net_igd_train_compute(schema_madlib, func_step_aggregate,
+                                    func_state_diff, family,
+                                    tbl_source, col_ind_var,
+                                    col_dep_var, tbl_result, lambda_value, alpha,
+                                    normalization, optimizer_params, max_iter,
+                                    tolerance, outstr_array, **kwargs):
     """
     Fit linear model with elastic net regularization using IGD optimization.
 
@@ -273,7 +282,8 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
 
     # generate a full dict to ease the following string format
     # including several temporary table names
-    args = __igd_construct_dict(schema_madlib, tbl_source, col_ind_var, col_dep_var, tbl_result,
+    args = __igd_construct_dict(schema_madlib, family, tbl_source, col_ind_var,
+                                col_dep_var, tbl_result,
                                 dimension, row_num, lambda_value, alpha, normalization,
                                 max_iter, tolerance, outstr_array,
                                 __igd_params_parser(optimizer_params, lambda_value, schema_madlib))
@@ -315,24 +325,27 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
     __igd_create_tbl_args(**args)
 
     # perform the actual calculation
-    iteration_run = __compute_gaussian_igd(schema_madlib, args["tbl_igd_args"],
-                                           args["tbl_igd_state"], args["tbl_used"],
-                                           args["col_ind_var_new"], args["col_dep_var_new"],
-                                           True,
-                                           max_iter = args["max_iter"],
-                                           warm_no = args["warm_no"],
-                                           parallel = args["parallel"],
-                                           col_ind_var_new = args["col_ind_var_new"],
-                                           col_dep_var_new = args["col_dep_var_new"],
-                                           dimension_name = args["dimension_name"],
-                                           stepsize_name = args["stepsize_name"],
-                                           lambda_name = args["lambda_name"],
-                                           alpha_name = args["alpha_name"],
-                                           total_rows_name = args["total_rows_name"],
-                                           max_iter_name = args["max_iter_name"],
-                                           tolerance_name = args["tolerance_name"],
-                                           xmean_name = args["xmean_name"],
-                                           ymean_name = args["ymean_name"])
+    iteration_run = __compute_igd(schema_madlib,
+                                  func_step_aggregate,
+                                  func_state_diff,
+                                  args["tbl_igd_args"],
+                                  args["tbl_igd_state"], args["tbl_used"],
+                                  args["col_ind_var_new"], args["col_dep_var_new"],
+                                  True,
+                                  max_iter = args["max_iter"],
+                                  warm_no = args["warm_no"],
+                                  parallel = args["parallel"],
+                                  col_ind_var_new = args["col_ind_var_new"],
+                                  col_dep_var_new = args["col_dep_var_new"],
+                                  dimension_name = args["dimension_name"],
+                                  stepsize_name = args["stepsize_name"],
+                                  lambda_name = args["lambda_name"],
+                                  alpha_name = args["alpha_name"],
+                                  total_rows_name = args["total_rows_name"],
+                                  max_iter_name = args["max_iter_name"],
+                                  tolerance_name = args["tolerance_name"],
+                                  xmean_name = args["xmean_name"],
+                                  ymean_name = args["ymean_name"])
 
     __elastic_net_generate_result("igd", iteration_run, **args)
   
@@ -343,8 +356,9 @@ def __elastic_net_gaussian_igd_train_compute(schema_madlib, tbl_source, col_ind_
 
 ## ========================================================================
 
-def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
-                           col_ind_var, col_dep_var, drop_table, **kwargs):
+def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
+                  tbl_args, tbl_state, tbl_source,
+                  col_ind_var, col_dep_var, drop_table, **kwargs):
     """
     Driver function for elastic net with Gaussian response using IGD
 
@@ -368,6 +382,8 @@ def __compute_gaussian_igd(schema_madlib, tbl_args, tbl_state, tbl_source,
     """
     if drop_table:
         iterationCtrl = IterationController(
+            func_step_aggregate = func_step_aggregate,
+            func_state_diff = func_state_diff,
             rel_args = tbl_args,
             rel_state = tbl_state,
             stateType = "double precision[]",

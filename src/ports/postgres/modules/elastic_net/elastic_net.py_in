@@ -1,8 +1,8 @@
 
 import plpy
 import re
-from elastic_net_gaussian_igd import __elastic_net_gaussian_igd_train
-from elastic_net_gaussian_fista import __elastic_net_gaussian_fista_train
+from elastic_net_models import __elastic_net_gaussian_igd_train
+from elastic_net_models import __elastic_net_gaussian_fista_train
 from utilities.validate_args import __is_col_array
 from utilities.validate_args import __is_tbl_exists
 from utilities.validate_args import __is_tbl_has_rows

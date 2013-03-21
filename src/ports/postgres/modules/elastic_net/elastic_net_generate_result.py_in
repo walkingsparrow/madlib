@@ -73,7 +73,7 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
     plpy.execute(
         """
         insert into {tbl_result} values
-            ('gaussian', '{features}'::text[], '{features_selected}'::text[],
+            ('{family}', '{features}'::text[], '{features_selected}'::text[],
             '{dense_coef}'::double precision[], '{sparse_coef}'::double precision[],
             {intercept}, {log_likelihood}, {standardize_flag}, {iteration})
         """.format(
