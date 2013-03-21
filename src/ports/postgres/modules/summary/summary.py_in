@@ -8,8 +8,12 @@
 import plpy
 from time import time
 
+###### Rahul: distinctify and ntileify have a different context in this story 
+######        we will need to change to make them boolean and add distinct cols
+#####         only when distinctify=true and quartiles if  ntileify = true
 class Summarizer:
-    def __init__(self, schema_madlib, tablename, outputtable, grouping_cols, distinctify, ntileify):
+    def __init__(self, schema_madlib, tablename, outputtable, target_cols , 
+                 grouping_cols, distinctify, ntileify):
         self.schema_madlib = schema_madlib
         self.distinctify = distinctify
         self.ntileify = ntileify
@@ -44,7 +48,11 @@ class Summarizer:
             if col is not None and col not in col_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
-            plpy.error("ERROR: column(s) %s not exist" % (str(non_exist_cols)[1:-1]))
+            plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
+
+    ######### Rahul: I really like the check_grouping_cols you added. Let's add 
+    #########         another function check_target_cols to ensure target 
+    ####              cols are in table
 
     def build_subquery(self, groupVar):
         d = {'tablename': self.tablename}
