@@ -24,16 +24,39 @@ MADLIB_SCHEMA.summary
     outputtable             TEXT,       -- output table name
     target_cols             TEXT,       -- comma separated list of output cols
     grouping_cols           TEXT,       -- comma separated names of grouping cols 
-    to_compute_distinct     BOOLEAN,    -- is distinct values required
-    to_compute_quartiles    BOOLEAN,    -- are quartiles required
-    ntile_array             FLOAT8[]    -- N-tile array
+    get_distinct            BOOLEAN,    -- Are distinct values required
+    get_quartiles           BOOLEAN,    -- Are quartiles required
+    ntile_array             FLOAT8[],   -- Array of quantiles to compute
+    how_many_mfv            INTEGER,    -- How many most frequent values to compute?
+    get_estimates           BOOLEAN     -- Should we produce exact or estimated 
+                                        --      values for distinct computation
 )
 RETURNS TEXT AS $$
     PythonFunctionBodyOnly(`summary', `summary')
     return summary.summary(
         schema_madlib, tablename, outputtable, target_cols, grouping_cols,
-        to_compute_distinct, to_compute_quartiles, ntile_array)
+        get_distinct, get_quartiles, ntile_array, how_many_mfv, get_estimates)
 $$ LANGUAGE plpythonu;
+
+-----------------------------------------------------------------------
+--- Overloaded functions to support optional parameters
+-----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename               TEXT, 
+    outputtable             TEXT, 
+    target_cols             TEXT,
+    grouping_cols           TEXT,
+    get_distinct            BOOLEAN,  
+    get_quartiles           BOOLEAN,  
+    ntile_array             FLOAT8[], 
+    how_many_mfv            INTEGER
+)
+RETURNS TEXT AS $$
+    SELECT MADLIB_SCHEMA.summary(
+        $1, $2, $3, $4, $5, $6, $7, $8, True)
+$$ LANGUAGE sql STRICT;
 
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
@@ -41,32 +64,90 @@ MADLIB_SCHEMA.summary
     tablename               TEXT, 
     outputtable             TEXT, 
     target_cols             TEXT,
-    grouping_cols           TEXT 
+    grouping_cols           TEXT,
+    get_distinct            BOOLEAN,  
+    get_quartiles           BOOLEAN,  
+    ntile_array             FLOAT8[]
 )
 RETURNS TEXT AS $$
     SELECT MADLIB_SCHEMA.summary(
-        $1, $2, $3, $4, True, True, NULL)
+        $1, $2, $3, $4, $5, $6, $7, 10, True)
 $$ LANGUAGE sql STRICT;
 
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
     tablename               TEXT, 
-    outputtable             TEXT,
+    outputtable             TEXT, 
+    target_cols             TEXT,
+    grouping_cols           TEXT,
+    get_distinct            BOOLEAN,  
+    get_quartiles           BOOLEAN
+)
+RETURNS TEXT AS $$
+    SELECT MADLIB_SCHEMA.summary(
+        $1, $2, $3, $4, $5, $6, NULL, 10, True)
+$$ LANGUAGE sql STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename               TEXT, 
+    outputtable             TEXT, 
+    target_cols             TEXT,
+    grouping_cols           TEXT,
+    get_distinct            BOOLEAN
+)
+RETURNS TEXT AS $$
+    SELECT MADLIB_SCHEMA.summary(
+        $1, $2, $3, $4, $5, True, NULL, 10, True)
+$$ LANGUAGE sql STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename               TEXT, 
+    outputtable             TEXT, 
+    target_cols             TEXT,
+    grouping_cols           TEXT
+)
+RETURNS TEXT AS $$
+    SELECT MADLIB_SCHEMA.summary(
+        $1, $2, $3, $4, True, True, NULL, 10, True)
+$$ LANGUAGE sql STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename               TEXT, 
+    outputtable             TEXT, 
     target_cols             TEXT
 )
 RETURNS TEXT AS $$
     SELECT MADLIB_SCHEMA.summary(
-        $1, $2, $3, NULL, True, True, NULL)
+        $1, $2, $3, NULL, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
 
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
     tablename               TEXT, 
-    outputtable             TEXT 
+    outputtable             TEXT, 
+    target_cols             TEXT
 )
 RETURNS TEXT AS $$
     SELECT MADLIB_SCHEMA.summary(
-        $1, $2, NULL, NULL, True, True, NULL)
+        $1, $2, $3, NULL, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
+
+CREATE OR REPLACE FUNCTION
+MADLIB_SCHEMA.summary
+(
+    tablename               TEXT, 
+    outputtable             TEXT
+)
+RETURNS TEXT AS $$
+    SELECT MADLIB_SCHEMA.summary(
+        $1, $2, NULL, NULL, True, True, NULL, 10, True)
+$$ LANGUAGE sql STRICT;
+-----------------------------------------------------------------------

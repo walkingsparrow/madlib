@@ -11,59 +11,60 @@ from time import time
 class Summarizer:
     def __init__(self, schema_madlib, tablename, outputtable, target_cols , 
                  grouping_cols, distinctify, ntileify, ntile_array):
-        self.schema_madlib = schema_madlib
-        self.tablename = tablename
-        self.outputtable = outputtable
-        self.grouping_cols = grouping_cols
-        self.target_cols = target_cols
-        self.distinctify = distinctify
-        self.ntileify = ntileify
-        self.ntile_array = ntile_array
-        self.tableoid = None
-        self.columns = None
-        self.column_names = None
+        self._schema_madlib = schema_madlib
+        self._tablename = tablename
+        self._outputtable = outputtable
+        self._grouping_cols = grouping_cols
+        self._target_cols = target_cols
+        self._distinctify = distinctify
+        self._ntileify = ntileify
+        self._ntile_array = ntile_array
+        self._tableoid = None
+        self._columns = None
+        self._column_names = None
 
-    def get_columns(self):
+    def _get_columns(self):
         try:
-            self.tableoid = plpy.execute("""
+            self._tableoid = plpy.execute("""
               SELECT '{tablename}'::regclass::oid
-              """.format(tablename=self.tablename))[0]['oid']
+              """.format(tablename=self._tablename))[0]['oid']
         except:
-            plpy.error("ERROR: table '{tablename}' does not exist".format(tablename=self.tablename))
+            plpy.error("ERROR: table '{tablename}' \
+                            does not exist".format(tablename=self._tablename))
 
-        self.columns = plpy.execute("""
+        self._columns = plpy.execute("""
               SELECT attname, typname, attnum 
               FROM pg_attribute a join pg_type t on (a.atttypid=t.oid) 
               WHERE attrelid = {tableoid}::regclass and attnum > 0 and not attisdropped
               ORDER BY attnum
-              """.format(tableoid=self.tableoid))
+              """.format(tableoid=self._tableoid))
 
-        self.column_names = []
-        for col in self.columns:
-            self.column_names.append(col['attname'])
+        self._column_names = []
+        for col in self._columns:
+            self._column_names.append(col['attname'])
 
-    def check_grouping_cols(self):
+    def _check_grouping_cols(self):
         non_exist_cols = []
-        for col in self.grouping_cols:
-            if col is not None and col not in self.column_names:
+        for col in self._grouping_cols:
+            if col is not None and col not in self._column_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
             plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
-    def check_target_cols(self):
+    def _check_target_cols(self):
         non_exist_cols = []
-        if self.target_cols is None:
+        if self._target_cols is None:
             return
-        for col in self.target_cols:
-            if col not in self.column_names:
+        for col in self._target_cols:
+            if col not in self._column_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
             plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
-    def build_subquery(self, groupVar):
+    def _build_subquery(self, groupVar):
         d = {'tablename': self.tablename}
         # Exclude the grouping_cols variable from the list of columns to report statistics on
-        cols = filter(lambda x: x['attname'] != groupVar, self.columns)
+        cols = filter(lambda x: x['attname'] != groupVar, self._columns)
     
         if groupVar is not None:
             d['groupVal']  = "{schema_madlib}.__to_char(%s)" % groupVar
@@ -77,9 +78,9 @@ class Summarizer:
         d['column_names'] = ','.join(["'%s'" % c['attname'] for c in cols])
         d['column_types'] = ','.join(["'%s'" % c['typname'] for c in cols])
         d['column_number'] = ','.join([str(c['attnum']) for c in cols])
-        if self.distinctify is 'Estimated':
+        if self._distinctify is 'Estimated':
             d['distinct_columns'] = ','.join(["{schema_madlib}.fmsketch_dcount(%s)" % c['attname'] for c in cols])
-        elif self.distinctify is 'Exact':
+        elif self._distinctify is 'Exact':
             d['distinct_columns'] = ','.join(["count(distinct %s)" % c['attname'] for c in cols])
         else:
             d['distinct_columns'] = ','.join(["NULL" for c in cols])
@@ -98,10 +99,10 @@ class Summarizer:
             return "NULL"
     
         def quant_type(ntile, c):
-            if self.ntileify is 'Exact':
+            if self._ntileify is 'Exact':
                 if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
                     return "percentile_cont(%s) WITHIN GROUP (ORDER BY %s)" % (ntile, c['attname'])
-            if self.ntileify is 'Estimated':
+            if self._ntileify is 'Estimated':
                 return "NULL"  # NOT YET IMPLEMENTED
             return "NULL"
     
@@ -114,10 +115,10 @@ class Summarizer:
         d['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
         
         d['ntile_columns'] = "array_to_string(array[NULL], ',')"
-        if self.ntile_array is not None:
+        if self._ntile_array is not None:
             d['ntile_columns'] = ",".join([
                 "array_to_string(array[" +
-                ",".join([quant_type(ntile, c) for ntile in self.ntile_array])
+                ",".join([quant_type(ntile, c) for ntile in self._ntile_array])
                 + "], ',')" for c in cols])
 
         return """
@@ -142,8 +143,8 @@ class Summarizer:
          """.format(**d).format(schema_madlib = self.schema_madlib)
 
     def build_query(self):
-        subquery = """  UNION ALL""".join([self.build_subquery(g) for g in self.grouping_cols])
-        plpy.execute("DROP TABLE IF EXISTS {outtablename};".format(outtablename =  self.outputtable))
+        subquery = """  UNION ALL""".join([self.build_subquery(g) for g in self._grouping_cols])
+        plpy.execute("DROP TABLE IF EXISTS {outtablename};".format(outtablename =  self._outputtable))
         query = """
             CREATE TABLE {outtablename} AS
             SELECT
@@ -209,28 +210,28 @@ class Summarizer:
                 ) q2
             ) q3
             m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
-        """.format(subquery=subquery, outtablename = self.outputtable)
+        """.format(subquery=subquery, outtablename = self._outputtable)
         return query
 
-    def adjust_cols(self):
-        tcols = self.target_cols
+    def _adjust_cols(self):
+        tcols = self._target_cols
         if tcols is None:
-            tcols = self.column_names
+            tcols = self._column_names
 
         # if #tcols == 1, then it should not appear in the grouping_cols
-        if len(tcols) == 1 and tcols[0] in self.grouping_cols:
-            self.grouping_cols.remove(tcols[0])
+        if len(tcols) == 1 and tcols[0] in self._grouping_cols:
+            self._grouping_cols.remove(tcols[0])
 
-        if self.target_cols is not None:
-            self.columns = filter(
-                lambda r: r['attname'] in self.target_cols, self.columns)
+        if self._target_cols is not None:
+            self._columns = filter(
+                lambda r: r['attname'] in self._target_cols, self._columns)
 
     def run(self):
-        self.get_columns()
-        self.check_target_cols()
-        self.check_grouping_cols()
-        self.adjust_cols()
-        results = plpy.execute(self.build_query())
+        self._get_columns()
+        self._check_target_cols()
+        self._check_grouping_cols()
+        self._adjust_cols()
+        results = plpy.execute(self._build_query())
  
 def summary(
     schema_madlib, tablename, outputtable, target_cols, grouping_cols,
@@ -277,4 +278,5 @@ def summary(
     summarizer.run()
     end = time()
 
-    return "output written to table: %s, duration: %s" % (outputtable, end - start)
+    return "Output written to table: {0} in {1} ms".format(outputtable, 
+                                                                end - start)
