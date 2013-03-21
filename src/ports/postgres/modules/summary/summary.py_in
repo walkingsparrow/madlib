@@ -8,20 +8,20 @@
 import plpy
 from time import time
 
-###### Rahul: distinctify and ntileify have a different context in this story 
-######        we will need to change to make them boolean and add distinct cols
-#####         only when distinctify=true and quartiles if  ntileify = true
 class Summarizer:
     def __init__(self, schema_madlib, tablename, outputtable, target_cols , 
-                 grouping_cols, distinctify, ntileify):
+                 grouping_cols, distinctify, ntileify, ntile_array):
         self.schema_madlib = schema_madlib
-        self.distinctify = distinctify
-        self.ntileify = ntileify
         self.tablename = tablename
         self.outputtable = outputtable
         self.grouping_cols = grouping_cols
+        self.target_cols = target_cols
+        self.distinctify = distinctify
+        self.ntileify = ntileify
+        self.ntile_array = ntile_array
         self.tableoid = None
         self.columns = None
+        self.column_names = None
 
     def get_columns(self):
         try:
@@ -38,21 +38,27 @@ class Summarizer:
               ORDER BY attnum
               """.format(tableoid=self.tableoid))
 
-    def check_grouping_cols(self):
-        col_names = []
+        self.column_names = []
         for col in self.columns:
-            col_names.append(col['attname'])
+            self.column_names.append(col['attname'])
 
+    def check_grouping_cols(self):
         non_exist_cols = []
         for col in self.grouping_cols:
-            if col is not None and col not in col_names:
+            if col is not None and col not in self.column_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
             plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
-    ######### Rahul: I really like the check_grouping_cols you added. Let's add 
-    #########         another function check_target_cols to ensure target 
-    ####              cols are in table
+    def check_target_cols(self):
+        non_exist_cols = []
+        if self.target_cols is None:
+            return
+        for col in self.target_cols:
+            if col not in self.column_names:
+                non_exist_cols.append(col)
+        if len(non_exist_cols) > 0:
+            plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
     def build_subquery(self, groupVar):
         d = {'tablename': self.tablename}
@@ -106,96 +112,168 @@ class Summarizer:
         d['q2_columns'] = ','.join([quant_type('0.50',c) for c in cols])
         d['q3_columns'] = ','.join([quant_type('0.75',c) for c in cols])
         d['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
-    
+        
+        d['ntile_columns'] = "array_to_string(array[NULL], ',')"
+        if self.ntile_array is not None:
+            d['ntile_columns'] = ",".join([
+                "array_to_string(array[" +
+                ",".join([quant_type(ntile, c) for ntile in self.ntile_array])
+                + "], ',')" for c in cols])
+
         return """
-           SELECT 
-             {groupVar}::text as group_by,
-             {groupVal}::text as group_by_value, 
-             array[{column_names}]::text[] as target_column,
-             array[{column_types}]::text[] as datatype,
-             array[{column_number}]::integer[] as colnum,
-             count(*)::bigint as rowcount,
-             array[{mean_columns}]::float8[] as mean,
-             array[{var_columns}]::float8[] as variance,
-             array[{distinct_columns}]::bigint[] as distinct_values,
-             array[{missing_columns}]::bigint[] as missing_values,
-             array[{min_columns}]::float8[] as min,
-             array[{q1_columns}]::float8[] as first_quartile,
-             array[{q2_columns}]::float8[] as median,
-             array[{q3_columns}]::float8[] as third_quartile,
-             array[{max_columns}]::float8[] as max
-           FROM {tablename}{groupExpr}
+                SELECT 
+                    {groupVar}::text as group_by,
+                    {groupVal}::text as group_by_value, 
+                    array[{column_names}]::text[] as target_column,
+                    array[{column_types}]::text[] as datatype,
+                    array[{column_number}]::integer[] as colnum,
+                    count(*)::bigint as rowcount,
+                    array[{mean_columns}]::float8[] as mean,
+                    array[{var_columns}]::float8[] as variance,
+                    array[{distinct_columns}]::bigint[] as distinct_values,
+                    array[{missing_columns}]::bigint[] as missing_values,
+                    array[{min_columns}]::float8[] as min,
+                    array[{q1_columns}]::float8[] as first_quartile,
+                    array[{q2_columns}]::float8[] as median,
+                    array[{q3_columns}]::float8[] as third_quartile,
+                    array[{ntile_columns}]::text[] as ntiles,
+                    array[{max_columns}]::float8[] as max
+                FROM {tablename}{groupExpr}
          """.format(**d).format(schema_madlib = self.schema_madlib)
 
     def build_query(self):
         subquery = """  UNION ALL""".join([self.build_subquery(g) for g in self.grouping_cols])
         plpy.execute("DROP TABLE IF EXISTS {outtablename};".format(outtablename =  self.outputtable))
         query = """
-          CREATE TABLE {outtablename} AS
-          SELECT
-            group_by,
-            group_by_value,
-            target_column,
-            datatype,
-            colnum,
-            rowcount,
-            distinct_values,
-            missing_values,
-            distinct_values::float8 / rowcount as fraction_distinct_values,
-            missing_values::float8 / rowcount as fraction_missing_values,
-            mean,
-            variance,
-            min,
-            first_quartile,
-            median,
-            third_quartile,
-            max
-          FROM (
-            SELECT 
-              group_by,
-              group_by_value,
-              unnest(target_column) AS target_column,
-              unnest(datatype) AS datatype,
-              unnest(colnum) AS colnum,
-              rowcount,
-              unnest(distinct_values) as distinct_values,
-              unnest(missing_values) as missing_values,
-              unnest(mean) as mean,
-              unnest(variance) as variance,
-              unnest(min) as min,
-              unnest(first_quartile) as first_quartile,
-              unnest(median) as median,
-              unnest(third_quartile) as third_quartile,
-              unnest(max) as max
-            FROM ({subquery}) q1
-          ) q2
-          m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
+            CREATE TABLE {outtablename} AS
+            SELECT
+                    group_by,
+                    group_by_value,
+                    target_column,
+                    datatype,
+                    colnum,
+                    rowcount,
+                    distinct_values,
+                    missing_values,
+                    distinct_values::float8 / rowcount as fraction_distinct_values,
+                    missing_values::float8 / rowcount as fraction_missing_values,
+                    mean,
+                    variance,
+                    min,
+                    first_quartile,
+                    median,
+                    third_quartile,
+                    ntiles::float8[],
+                    max
+            FROM
+            (
+                SELECT
+                    group_by,
+                    group_by_value,
+                    target_column,
+                    datatype,
+                    colnum,
+                    rowcount,
+                    distinct_values,
+                    missing_values,
+                    distinct_values::float8 / rowcount as fraction_distinct_values,
+                    missing_values::float8 / rowcount as fraction_missing_values,
+                    mean,
+                    variance,
+                    min,
+                    first_quartile,
+                    median,
+                    third_quartile,
+                    ntiles,
+                    max
+                FROM 
+                (
+                    SELECT 
+                        group_by,
+                        group_by_value,
+                        unnest(target_column) AS target_column,
+                        unnest(datatype) AS datatype,
+                        unnest(colnum) AS colnum,
+                        rowcount,
+                        unnest(distinct_values) as distinct_values,
+                        unnest(missing_values) as missing_values,
+                        unnest(mean) as mean,
+                        unnest(variance) as variance,
+                        unnest(min) as min,
+                        unnest(first_quartile) as first_quartile,
+                        unnest(median) as median,
+                        unnest(third_quartile) as third_quartile,
+                        string_to_array(unnest(ntiles), ',') as ntiles,
+                        unnest(max) as max
+                    FROM ({subquery}) q1
+                ) q2
+            ) q3
+            m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
         """.format(subquery=subquery, outtablename = self.outputtable)
         return query
 
+    def adjust_cols(self):
+        tcols = self.target_cols
+        if tcols is None:
+            tcols = self.column_names
+
+        # if #tcols == 1, then it should not appear in the grouping_cols
+        if len(tcols) == 1 and tcols[0] in self.grouping_cols:
+            self.grouping_cols.remove(tcols[0])
+
+        if self.target_cols is not None:
+            self.columns = filter(
+                lambda r: r['attname'] in self.target_cols, self.columns)
+
     def run(self):
         self.get_columns()
+        self.check_target_cols()
         self.check_grouping_cols()
+        self.adjust_cols()
         results = plpy.execute(self.build_query())
  
-def summary(schema_madlib, tablename, outputtable, grouping_cols, distinctify, ntileify):
-    if distinctify not in ['Estimated', 'Exact', 'None']:
-        plpy.error("Invalid parameter: distinctify must be in ['Estimated', 'Exact', 'None']")
+def summary(
+    schema_madlib, tablename, outputtable, target_cols, grouping_cols,
+    to_compute_distinct, to_compute_quartiles, ntile_array):
 
-    if ntileify not in ['Estimated', 'Exact', 'None']:
-        plpy.error("Invalid paramter: ntileify must be in ['Estimated', 'Exact', 'None']")
+    # distinctify can be one of the following values: 'Estimated', 'Exact', and
+    # 'None'.
+    distinctify = 'Estimated'
+
+    # ntileify can take one of the following values: 'Estimated', 'Exact', and
+    # 'None', but currently "Estimated" is not supported.
+    ntileify = 'Exact'
      
-    if outputtable == "":
+    if outputtable is None or outputtable.strip() == '':
         plpy.error("Invalid parameter: outputtable should be a non-empty string")
 
-    if grouping_cols.strip() == '':
+    if target_cols is None or target_cols.strip() == '':
+        target_cols = None
+    else:
+        target_cols = target_cols.replace(' ', '').split(',')
+
+    if grouping_cols is None or grouping_cols.strip() == '':
         grouping_cols = [None]
     else:
         grouping_cols = grouping_cols.replace(' ', '').split(',')
         grouping_cols.append(None)
 
+    if not to_compute_distinct:
+        distinctify = 'None'
+    if not to_compute_quartiles:
+        ntileify = 'None'
+        
+    if ntile_array is not None:
+        for ntile in ntile_array:
+            if ntile < 0 or ntile > 1.0:
+                plpy.error(
+                    """Invalid parameter: values in ntile_array should be in the
+                    range of [0.0, 1.0]""")
+
     start = time()
-    summarizer = Summarizer(schema_madlib, tablename, outputtable, grouping_cols, distinctify, ntileify)
+    summarizer = Summarizer(
+        schema_madlib, tablename, outputtable, target_cols, grouping_cols,
+        distinctify, ntileify, ntile_array)
     summarizer.run()
     end = time()
 

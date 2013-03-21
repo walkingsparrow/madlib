@@ -26,7 +26,8 @@ overcast, 81, 75, false, Play
 rain, 71, 80, true, Don't Play
 \.
 
-SELECT MADLib.summary('dt_golf', 'dt_golf_summary');
-SELECT MADLib.summary('dt_golf', 'dt_golf_summary', 'windy');
-SELECT MADLib.summary('dt_golf', 'dt_golf_summary', 'windy,humidity');
-SELECT MADLib.summary('dt_golf', 'dt_golf_summary', 'windy, humidity');
+SELECT summary('dt_golf', 'dt_golf_summary');
+SELECT summary('dt_golf', 'dt_golf_summary', 'windy');
+SELECT summary('dt_golf', 'dt_golf_summary', 'windy,humidity');
+SELECT summary('dt_golf', 'dt_golf_summary', 'id', 'windy');
+SELECT summary('dt_golf', 'dt_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3]);
