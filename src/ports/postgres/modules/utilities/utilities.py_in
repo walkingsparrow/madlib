@@ -140,3 +140,8 @@ class __mad_version:
             return True
         else:
             return False
+
+    def is_pg (self):
+        if re.search(r"PostgreSQL", self.version) and not re.search(r"Greenplum Database", self.version): 
+            return True
+        return False

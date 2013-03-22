@@ -268,6 +268,10 @@ def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
         @param get_estimates    Should the summmary information be estimated or exact?
 
     """
+    if version_wrapper.is_pg():
+        plpy.notice("This function is currently not supported by PostgreSQL.")
+        return None
+
     # distinctify can be one of the following values: 'Estimated', 'Exact', and
     # 'None'.
     distinctify = 'Exact'
