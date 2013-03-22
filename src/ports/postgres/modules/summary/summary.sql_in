@@ -17,6 +17,14 @@ m4_include(`SQLCommon.m4')
 
 */
 
+DROP TYPE IF EXISTS MADLIB_SCHEMA.summary_result;
+CREATE TYPE MADLIB_SCHEMA.summary_result AS
+(
+    ouputtable  TEXT,
+    count       INT4,
+    duration    FLOAT8
+);
+
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
@@ -31,7 +39,7 @@ MADLIB_SCHEMA.summary
     get_estimates           BOOLEAN     -- Should we produce exact or estimated 
                                         --      values for distinct computation
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     PythonFunctionBodyOnly(`summary', `summary')
     return summary.summary(
         schema_madlib, tablename, outputtable, target_cols, grouping_cols,
@@ -53,7 +61,7 @@ MADLIB_SCHEMA.summary
     ntile_array             FLOAT8[], 
     how_many_mfv            INTEGER
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, $4, $5, $6, $7, $8, True)
 $$ LANGUAGE sql STRICT;
@@ -69,7 +77,7 @@ MADLIB_SCHEMA.summary
     get_quartiles           BOOLEAN,  
     ntile_array             FLOAT8[]
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, $4, $5, $6, $7, 10, True)
 $$ LANGUAGE sql STRICT;
@@ -84,7 +92,7 @@ MADLIB_SCHEMA.summary
     get_distinct            BOOLEAN,  
     get_quartiles           BOOLEAN
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, $4, $5, $6, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
@@ -98,7 +106,7 @@ MADLIB_SCHEMA.summary
     grouping_cols           TEXT,
     get_distinct            BOOLEAN
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, $4, $5, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
@@ -111,7 +119,7 @@ MADLIB_SCHEMA.summary
     target_cols             TEXT,
     grouping_cols           TEXT
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, $4, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
@@ -123,7 +131,7 @@ MADLIB_SCHEMA.summary
     outputtable             TEXT, 
     target_cols             TEXT
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, $3, NULL, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
@@ -134,7 +142,7 @@ MADLIB_SCHEMA.summary
     tablename               TEXT, 
     outputtable             TEXT
 )
-RETURNS TEXT AS $$
+RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, NULL, NULL, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;

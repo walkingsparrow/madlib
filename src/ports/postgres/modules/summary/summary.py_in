@@ -304,5 +304,7 @@ def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
     summarizer.run()
     end = time()
 
-    return "Output written to table: {0} in {1} ms".format(
-        outputtable, end - start)
+    count = plpy.execute(
+        "SELECT count(*) FROM {outputtable}".format(
+            outputtable = outputtable))[0]['count']
+    return (outputtable, count, end - start)
