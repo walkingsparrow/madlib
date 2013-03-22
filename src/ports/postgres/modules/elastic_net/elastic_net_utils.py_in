@@ -175,6 +175,7 @@ def __compute_log_likelihood (coef, coef_str, intercept, **args):
                                     {intercept},
                                     {col_dep_var_new},
                                     {col_ind_var_new}))
+                    as loss
             from {tbl_used}
             """.format(coefficients = coef_str,
                        intercept = intercept,
@@ -238,8 +239,11 @@ def __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var,
 def __compute_data_scales (args):
     args["x_scales"] = __utils_ind_var_scales(tbl_data = args["tbl_source"], col_ind_var = args["col_ind_var"],
                                               dimension = args["dimension"])
-    
-    args["y_scale"] = __utils_dep_var_scale (tbl_data = args["tbl_source"], col_dep_var = args["col_dep_var"])
+   
+    if args["family"] == "binomial":
+        args["y_scale"] = dict(mean = 1, std = 1)
+    else:
+        args["y_scale"] = __utils_dep_var_scale (tbl_data = args["tbl_source"], col_dep_var = args["col_dep_var"])
 
     args["xmean_str"] = _array_to_string(args["x_scales"]["mean"])
 

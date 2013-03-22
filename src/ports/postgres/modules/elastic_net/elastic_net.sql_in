@@ -480,6 +480,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__elastic_net_binomial_loglikelihood (
     coefficients    DOUBLE PRECISION[],
     intercept       DOUBLE PRECISION,
+    dep_var         BOOLEAN,
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
 'MODULE_PATHNAME', '__elastic_net_binomial_loglikelihood'
@@ -687,7 +688,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION MADLIB_SCHEMA.__binomial_igd_transition (
     state               DOUBLE PRECISION[],
     ind_var             DOUBLE PRECISION[],
-    dep_var             DOUBLE PRECISION,
+    dep_var             BOOLEAN,
     pre_state           DOUBLE PRECISION[],
     lambda              DOUBLE PRECISION,
     alpha               DOUBLE PRECISION,
@@ -723,7 +724,7 @@ LANGUAGE C IMMUTABLE STRICT;
  */
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step(
     /* ind_var */           DOUBLE PRECISION[],
-    /* dep_var */           DOUBLE PRECISION,
+    /* dep_var */           BOOLEAN,
     /* pre_state */         DOUBLE PRECISION[],
     /* lambda  */           DOUBLE PRECISION,
     /* alpha */             DOUBLE PRECISION,
@@ -742,7 +743,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step(
 
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
     /* ind_var */           DOUBLE PRECISION[],
-    /* dep_var */           DOUBLE PRECISION,
+    /* dep_var */           BOOLEAN,
     /* pre_state */         DOUBLE PRECISION[],
     /* lambda  */           DOUBLE PRECISION,
     /* alpha */             DOUBLE PRECISION,
@@ -785,7 +786,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION MADLIB_SCHEMA.__binomial_fista_transition (
     state               DOUBLE PRECISION[],
     ind_var             DOUBLE PRECISION[],
-    dep_var             DOUBLE PRECISION,
+    dep_var             BOOLEAN,
     pre_state           DOUBLE PRECISION[],
     lambda              DOUBLE PRECISION,
     alpha               DOUBLE PRECISION,
@@ -825,7 +826,7 @@ LANGUAGE C IMMUTABLE STRICT;
  */
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_fista_step(
     /* ind_var      */  DOUBLE PRECISION[],
-    /* dep_var      */  DOUBLE PRECISION,
+    /* dep_var      */  BOOLEAN,
     /* pre_state    */  DOUBLE PRECISION[],
     /* lambda       */  DOUBLE PRECISION,
     /* alpha        */  DOUBLE PRECISION,

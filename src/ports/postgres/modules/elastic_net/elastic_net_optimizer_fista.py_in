@@ -420,7 +420,7 @@ def __compute_fista(schema_madlib, func_step_aggregate, func_state_diff,
                       select
                           {schema_madlib}.{func_step_aggregate}(
                               ({col_ind_var})::double precision[],
-                              ({col_dep_var})::double precision,
+                              ({col_dep_var}),
                               (select _state from {rel_state}
                                   where _iteration = {iteration}),
                               (_args.{lambda_name}[{lambda_count}])::double precision,

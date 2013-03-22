@@ -79,7 +79,7 @@ def __utils_normalize_data(y_decenter = True, **kwargs):
     col_ind_var_norm_new -- create a new name for the scaled array
                        to be compatible with array[...] expressions
     """
-    ydecenter_str = "- {y_mean}".formay(**kwargs) if y_decenter else ""
+    ydecenter_str = "- {y_mean}".format(**kwargs) if y_decenter else ""
     plpy.execute(
         """
         create temp table {tbl_data_scaled} as

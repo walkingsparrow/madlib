@@ -63,8 +63,8 @@ AnyType __elastic_net_binomial_loglikelihood::run (AnyType& args)
 {
     MappedColumnVector coef = args[0].getAs<MappedColumnVector>();
     double intercept = args[1].getAs<double>();
-    MappedColumnVector x = args[2].getAs<MappedColumnVector>();
-    double y = args[3].getAs<bool>() ? 1. : -1.;
+    MappedColumnVector x = args[3].getAs<MappedColumnVector>();
+    double y = args[2].getAs<bool>() ? 1. : -1.;
 
     double r = intercept + sparse_dot(coef, x);
 

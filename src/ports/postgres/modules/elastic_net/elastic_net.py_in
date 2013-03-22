@@ -3,6 +3,8 @@ import plpy
 import re
 from elastic_net_models import __elastic_net_gaussian_igd_train
 from elastic_net_models import __elastic_net_gaussian_fista_train
+from elastic_net_models import __elastic_net_binomial_fista_train
+from elastic_net_models import __elastic_net_binomial_igd_train
 from utilities.validate_args import __is_col_array
 from utilities.validate_args import __is_tbl_exists
 from utilities.validate_args import __is_tbl_has_rows
@@ -28,9 +30,13 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
     """
     if family_or_optimizer is None:
         return """
-        Right now, only gaussian (linear) family is supported!
+        Right now, gaussian (linear) and binomial (logistic) families  
+        are supported!
         --
-        Run:  SELECT {schema_madlib}.elastic_net_train('gaussian');   
+        Run:
+        SELECT {schema_madlib}.elastic_net_train('gaussian');
+        or
+        SELECT {schema_madlib}.elastic_net_train('binomial');   
         to see more help.
         --
         Run:  SELECT {schema_madlib}.elastic_net_train('usage');   
@@ -61,7 +67,7 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
             max_iter,          -- Maximum iteration number
             tolerance          -- Stopping criteria
         );
-        --
+        -----------------------------------------------------------------
         Ouput:
         The output table (tbl_result in the above) has the following columns:
         family            TEXT,       -- 'gaussian' or 'binomial'
@@ -97,19 +103,25 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         if the predicted result is True, and 0 if the prediction is
         False.
 
-        OR
+        OR ----------------------------------------------------
 
-        SELECT {schema_madlib}.elastic_net_gaussian_predict (
-            coefficients, intercept, ind_var
-        ) FROM tbl_result, tbl_new_source LIMIT 10;
+        (1) SELECT {schema_madlib}.elastic_net_gaussian_predict (
+                coefficients, intercept, ind_var
+            ) FROM tbl_result, tbl_new_source LIMIT 10;
 
-        SELECT {schema_madlib}.elastic_net_binomial_predict (
-            coefficients, intercept, ind_var
-        ) FROM tbl_result, tbl_new_source LIMIT 10;
+        (2) SELECT {schema_madlib}.elastic_net_binomial_predict (
+                coefficients, intercept, ind_var
+            ) FROM tbl_result, tbl_new_source LIMIT 10;
 
-        The second one returns a BOOLEAN value.
+            This returns 10 BOOLEAN values.
 
-        OR
+        (3) SELECT {schema_madlib}.elastic_net_binomial_prob (
+                coefficients, intercept, ind_var
+            ) FROM tbl_result, tbl_new_source LIMIT 10;
+
+            This returns 10 probability values for True class.
+
+        OR ----------------------------------------------------
 
         SELECT {schema_madlib}.elastic_net_predict(
             'tbl_model',      -- Result table of elastic_net_train
@@ -296,6 +308,22 @@ def elastic_net_train(schema_madlib, tbl_source, tbl_result, col_dep_var,
     if ((regress_family.lower() == "gaussian" or regress_family.lower() == "linear") and
         optimizer.lower() == "fista"):
         __elastic_net_gaussian_fista_train(schema_madlib, tbl_source, col_ind_var,
+                                           col_dep_var, tbl_result, lambda_value, alpha,
+                                           standardize, optimizer_params, max_iter,
+                                           tolerance, outstr_array, **kwargs)
+        return None
+
+    if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
+        optimizer.lower() == "igd"):
+        __elastic_net_binomial_igd_train(schema_madlib, tbl_source, col_ind_var,
+                                         col_dep_var, tbl_result, lambda_value, alpha,
+                                         standardize, optimizer_params, max_iter,
+                                         tolerance, outstr_array, **kwargs)
+        return None
+
+    if ((regress_family.lower() == "binomial" or regress_family.lower() == "logistic") and
+        optimizer.lower() == "fista"):
+        __elastic_net_binomial_fista_train(schema_madlib, tbl_source, col_ind_var,
                                            col_dep_var, tbl_result, lambda_value, alpha,
                                            standardize, optimizer_params, max_iter,
                                            tolerance, outstr_array, **kwargs)
