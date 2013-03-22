@@ -61,34 +61,34 @@ class Summarizer:
         if len(non_exist_cols) > 0:
             plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
-    def _build_subquery(self, groupVar):
-        d = {'tablename': self.tablename}
+    def _build_subquery(self, group_var):
+        args = {'tablename': self.tablename}
         # Exclude the grouping_cols variable from the list of columns to report statistics on
-        cols = filter(lambda x: x['attname'] != groupVar, self._columns)
+        cols = filter(lambda x: x['attname'] != group_var, self._columns)
     
-        if groupVar is not None:
-            d['groupVal']  = "{schema_madlib}.__to_char(%s)" % groupVar
-            d['groupVar']  = "'%s'" % groupVar
-            d['groupExpr'] = "\n       GROUP BY %s" % groupVar
+        if group_var is not None:
+            args['group_value']  = "{schema_madlib}.__to_char(%s)" % group_var
+            args['group_var']  = "'%s'" % group_var
+            args['group_expr'] = "\n       GROUP BY %s" % group_var
         else:
-            d['groupVal'] = "NULL"
-            d['groupVar']  = "NULL"
-            d['groupExpr'] = ""
+            args['group_value'] = "NULL"
+            args['group_var']  = "NULL"
+            args['group_expr'] = ""
     
-        d['column_names'] = ','.join(["'%s'" % c['attname'] for c in cols])
-        d['column_types'] = ','.join(["'%s'" % c['typname'] for c in cols])
-        d['column_number'] = ','.join([str(c['attnum']) for c in cols])
+        args['column_names'] = ','.join(["'%s'" % c['attname'] for c in cols])
+        args['column_types'] = ','.join(["'%s'" % c['typname'] for c in cols])
+        args['column_number'] = ','.join([str(c['attnum']) for c in cols])
         if self._distinctify is 'Estimated':
-            d['distinct_columns'] = ','.join(["{schema_madlib}.fmsketch_dcount(%s)" % c['attname'] for c in cols])
+            args['distinct_columns'] = ','.join(["{schema_madlib}.fmsketch_dcount(%s)" % c['attname'] for c in cols])
         elif self._distinctify is 'Exact':
-            d['distinct_columns'] = ','.join(["count(distinct %s)" % c['attname'] for c in cols])
+            args['distinct_columns'] = ','.join(["count(distinct %s)" % c['attname'] for c in cols])
         else:
-            d['distinct_columns'] = ','.join(["NULL" for c in cols])
-        d['missing_columns'] = ','.join(["count(%s) filter (where %s is null)" % (c['attname'],c['attname']) for c in cols])
+            args['distinct_columns'] = ','.join(["NULL" for c in cols])
+        args['missing_columns'] = ','.join(["count(%s) filter (where %s is null)" % (c['attname'],c['attname']) for c in cols])
     
-        def numeric_type(operator, c):
-            if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
-                return '%s(%s)' % (operator, c['attname'])
+        def numeric_type(operator, datatype):
+            if datatype['typname'] in ('int2','int4','int8','float4','float8','numeric'):
+                return '%s(%s)' % (operator, datatype['attname'])
             return "NULL"
     
         def minmax_type(minmax, c):
@@ -106,25 +106,25 @@ class Summarizer:
                 return "NULL"  # NOT YET IMPLEMENTED
             return "NULL"
     
-        d['mean_columns'] = ','.join([numeric_type('avg',c) for c in cols])
-        d['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
-        d['min_columns'] = ','.join([minmax_type('min',c) for c in cols])
-        d['q1_columns'] = ','.join([quant_type('0.25',c) for c in cols])
-        d['q2_columns'] = ','.join([quant_type('0.50',c) for c in cols])
-        d['q3_columns'] = ','.join([quant_type('0.75',c) for c in cols])
-        d['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
+        args['mean_columns'] = ','.join([numeric_type('avg', c) for c in cols])
+        args['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
+        args['min_columns'] = ','.join([minmax_type('min',c) for c in cols])
+        args['q1_columns'] = ','.join([quant_type('0.25',c) for c in cols])
+        args['q2_columns'] = ','.join([quant_type('0.50',c) for c in cols])
+        args['q3_columns'] = ','.join([quant_type('0.75',c) for c in cols])
+        args['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
         
-        d['ntile_columns'] = "array_to_string(array[NULL], ',')"
+        args['ntile_columns'] = "array_to_string(array[NULL], ',')"
         if self._ntile_array is not None:
-            d['ntile_columns'] = ",".join([
+            args['ntile_columns'] = ",".join([
                 "array_to_string(array[" +
                 ",".join([quant_type(ntile, c) for ntile in self._ntile_array])
                 + "], ',')" for c in cols])
 
         return """
                 SELECT 
-                    {groupVar}::text as group_by,
-                    {groupVal}::text as group_by_value, 
+                    {group_var}::text as group_by,
+                    {group_value}::text as group_by_value, 
                     array[{column_names}]::text[] as target_column,
                     array[{column_types}]::text[] as datatype,
                     array[{column_number}]::integer[] as colnum,
@@ -139,11 +139,12 @@ class Summarizer:
                     array[{q3_columns}]::float8[] as third_quartile,
                     array[{ntile_columns}]::text[] as ntiles,
                     array[{max_columns}]::float8[] as max
-                FROM {tablename}{groupExpr}
-         """.format(**d).format(schema_madlib = self.schema_madlib)
+                FROM {tablename}{group_expr}
+         """.format(**args).format(schema_madlib = self.schema_madlib)
 
     def build_query(self):
-        subquery = """  UNION ALL""".join([self.build_subquery(g) for g in self._grouping_cols])
+        subquery = """  UNION ALL""".join([self.build_subquery(g) 
+                                                for g in self._grouping_cols])
         plpy.execute("DROP TABLE IF EXISTS {outtablename};".format(outtablename =  self._outputtable))
         query = """
             CREATE TABLE {outtablename} AS
@@ -231,12 +232,28 @@ class Summarizer:
         self._check_target_cols()
         self._check_grouping_cols()
         self._adjust_cols()
-        results = plpy.execute(self._build_query())
+        plpy.execute(self._build_query())
  
-def summary(
-    schema_madlib, tablename, outputtable, target_cols, grouping_cols,
-    to_compute_distinct, to_compute_quartiles, ntile_array):
+def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
+    get_distinct, get_quartiles, ntile_array, how_many_mfv, get_estimates):
+    """
+        Main summary function that is called by SQL to execute summary 
+        statistics on a table. 
 
+        @param schema_madlib    Madlib Schema namespace
+        @param tablename        Name of input table
+        @param outputtable      Name of output table
+        @param target_cols      Names of specific columns for which to get summary
+        @param grouping_cols    Names of columns on which to group-by 
+                                    (these columns are ignored from summary)
+        @param get_distinct     Should summary include distinct count
+        @param get_quartiles    Should summary include quartile information
+        @param ntile_array      Array for quantiles to include in summary
+                                    (each element should be in [0, 1])
+        @param how_many_mfv     How many frequent values to output?
+        @param get_estimates    Should the summmary information be estimated or exact?
+
+    """
     # distinctify can be one of the following values: 'Estimated', 'Exact', and
     # 'None'.
     distinctify = 'Estimated'
@@ -245,6 +262,7 @@ def summary(
     # 'None', but currently "Estimated" is not supported.
     ntileify = 'Exact'
      
+    ####### Need to move all argument validation to another function 
     if outputtable is None or outputtable.strip() == '':
         plpy.error("Invalid parameter: outputtable should be a non-empty string")
 
@@ -259,17 +277,18 @@ def summary(
         grouping_cols = grouping_cols.replace(' ', '').split(',')
         grouping_cols.append(None)
 
-    if not to_compute_distinct:
-        distinctify = 'None'
-    if not to_compute_quartiles:
-        ntileify = 'None'
-        
     if ntile_array is not None:
         for ntile in ntile_array:
             if ntile < 0 or ntile > 1.0:
                 plpy.error(
                     """Invalid parameter: values in ntile_array should be in the
                     range of [0.0, 1.0]""")
+    ####### Need to move all argument validation to another function
+
+    if not get_distinct:
+        distinctify = 'None'
+    if not get_quartiles:
+        ntileify = 'None'
 
     start = time()
     summarizer = Summarizer(
