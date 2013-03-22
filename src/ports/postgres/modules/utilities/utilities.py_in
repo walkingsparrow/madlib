@@ -132,3 +132,11 @@ class __mad_version:
         if re.search(r"Greenplum Database 4\.1\.", self.version):
             return True
         return False
+
+    def is_gp422_and_up (self):
+        p = re.compile('Greenplum\s+Database\s+([0-9.]+)\s+build', re.IGNORECASE)
+        version = p.findall(self.version)
+        if len(version) > 0 and int(version[0].replace('.', '')) >= 4220:
+            return True
+        else:
+            return False

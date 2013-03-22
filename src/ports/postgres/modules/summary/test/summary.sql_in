@@ -31,3 +31,5 @@ SELECT summary('dt_golf', 'dt_golf_summary', 'windy');
 SELECT summary('dt_golf', 'dt_golf_summary', 'windy,humidity');
 SELECT summary('dt_golf', 'dt_golf_summary', 'id', 'windy');
 SELECT summary('dt_golf', 'dt_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3]);
+SELECT summary('dt_golf', 'dt_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL);
+SELECT summary('dt_golf', 'dt_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL, False);

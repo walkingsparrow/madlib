@@ -7,6 +7,9 @@
 """
 import plpy
 from time import time
+from utilities.utilities import __mad_version
+
+version_wrapper = __mad_version()
 
 class Summarizer:
     def __init__(self, schema_madlib, tablename, outputtable, target_cols , 
@@ -62,7 +65,7 @@ class Summarizer:
             plpy.error("ERROR: column(s) %s do not exist" % (str(non_exist_cols)[1:-1]))
 
     def _build_subquery(self, group_var):
-        args = {'tablename': self.tablename}
+        args = {'tablename': self._tablename}
         # Exclude the grouping_cols variable from the list of columns to report statistics on
         cols = filter(lambda x: x['attname'] != group_var, self._columns)
     
@@ -140,10 +143,10 @@ class Summarizer:
                     array[{ntile_columns}]::text[] as ntiles,
                     array[{max_columns}]::float8[] as max
                 FROM {tablename}{group_expr}
-         """.format(**args).format(schema_madlib = self.schema_madlib)
+         """.format(**args).format(schema_madlib = self._schema_madlib)
 
-    def build_query(self):
-        subquery = """  UNION ALL""".join([self.build_subquery(g) 
+    def _build_query(self):
+        subquery = """  UNION ALL""".join([self._build_subquery(g) 
                                                 for g in self._grouping_cols])
         plpy.execute("DROP TABLE IF EXISTS {outtablename};".format(outtablename =  self._outputtable))
         query = """
@@ -234,6 +237,17 @@ class Summarizer:
         self._adjust_cols()
         plpy.execute(self._build_query())
  
+def check_params(outputtable, ntile_array):
+    if outputtable is None or outputtable.strip() == '':
+        plpy.error("Invalid parameter: outputtable should be a non-empty string")
+
+    if ntile_array is not None:
+        for ntile in ntile_array:
+            if ntile < 0 or ntile > 1.0:
+                plpy.error(
+                    """Invalid parameter: values in ntile_array should be in the
+                    range of [0.0, 1.0]""")
+
 def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
     get_distinct, get_quartiles, ntile_array, how_many_mfv, get_estimates):
     """
@@ -256,16 +270,22 @@ def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
     """
     # distinctify can be one of the following values: 'Estimated', 'Exact', and
     # 'None'.
-    distinctify = 'Estimated'
+    distinctify = 'Exact'
+    if get_estimates:
+        distinctify = 'Estimated'
 
     # ntileify can take one of the following values: 'Estimated', 'Exact', and
     # 'None', but currently "Estimated" is not supported.
     ntileify = 'Exact'
-     
-    ####### Need to move all argument validation to another function 
-    if outputtable is None or outputtable.strip() == '':
-        plpy.error("Invalid parameter: outputtable should be a non-empty string")
 
+    if not get_distinct:
+        distinctify = 'None'
+    if not get_quartiles:
+        ntileify = 'None'
+    if not version_wrapper.is_gp422_and_up():
+        ntileify = 'None'
+
+    check_params(outputtable, ntile_array)
     if target_cols is None or target_cols.strip() == '':
         target_cols = None
     else:
@@ -277,19 +297,6 @@ def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
         grouping_cols = grouping_cols.replace(' ', '').split(',')
         grouping_cols.append(None)
 
-    if ntile_array is not None:
-        for ntile in ntile_array:
-            if ntile < 0 or ntile > 1.0:
-                plpy.error(
-                    """Invalid parameter: values in ntile_array should be in the
-                    range of [0.0, 1.0]""")
-    ####### Need to move all argument validation to another function
-
-    if not get_distinct:
-        distinctify = 'None'
-    if not get_quartiles:
-        ntileify = 'None'
-
     start = time()
     summarizer = Summarizer(
         schema_madlib, tablename, outputtable, target_cols, grouping_cols,
@@ -297,5 +304,5 @@ def summary(schema_madlib, tablename, outputtable, target_cols, grouping_cols,
     summarizer.run()
     end = time()
 
-    return "Output written to table: {0} in {1} ms".format(outputtable, 
-                                                                end - start)
+    return "Output written to table: {0} in {1} ms".format(
+        outputtable, end - start)

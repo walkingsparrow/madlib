@@ -132,18 +132,6 @@ CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
     tablename               TEXT, 
-    outputtable             TEXT, 
-    target_cols             TEXT
-)
-RETURNS TEXT AS $$
-    SELECT MADLIB_SCHEMA.summary(
-        $1, $2, $3, NULL, True, True, NULL, 10, True)
-$$ LANGUAGE sql STRICT;
-
-CREATE OR REPLACE FUNCTION
-MADLIB_SCHEMA.summary
-(
-    tablename               TEXT, 
     outputtable             TEXT
 )
 RETURNS TEXT AS $$
