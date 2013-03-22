@@ -203,18 +203,22 @@ AnyType Fista<Model>::fista_final (AnyType& args)
                 state.gradient(i) += la * state.coef_y(i);
 
         //dev/ --------------------------------------------------------
+        //state.stepsize = state.max_stepsize;
+        
         // How to adaptively update stepsize
         // set the initial value for backtracking stepsize
         
-        double stepsize_avg;
-        if (state.iter == 0) stepsize_avg = 0;
-        else stepsize_avg = state.stepsize_sum / state.iter;
+        // double stepsize_avg;
+        // if (state.iter == 0) stepsize_avg = 0;
+        // else stepsize_avg = state.stepsize_sum / state.iter;
 
-        double p = 1. / (1 + exp(0.5 * (log(state.stepsize/state.max_stepsize) - stepsize_avg) / log(state.eta)));
-        double r = drand48();
+        // double p = 1. / (1 + exp(0.5 * (log(state.stepsize/state.max_stepsize) - stepsize_avg) / log(state.eta)));
+        // double r = drand48();
 
-        // there is a non-zero probability to increase stepsize
-        if (r < p) state.stepsize = state.stepsize * state.eta;
+        // // there is a non-zero probability to increase stepsize
+        // if (r < p && state.stepsize < state.max_stepsize)
+        //     state.stepsize = state.stepsize * state.eta;
+        
         //dev/ -------------------------------------------------------- 
         
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
@@ -256,9 +260,14 @@ AnyType Fista<Model>::fista_final (AnyType& args)
             state.backtracking = 0; // stop backtracking
 
             //dev/ --------------------------------------------------------
-            // how to adaptively update stepsize
-            state.stepsize_sum += log(state.stepsize) - log(state.max_stepsize);
-            state.iter++;
+            // // how to adaptively update stepsize
+            // state.stepsize_sum += log(state.stepsize) - log(state.max_stepsize);
+            // state.iter++;
+
+            // std::ofstream of;
+            // of.open("/Users/qianh1/workspace/tests/feature_ElasticNet/stepsize.txt", std::ios::app);
+            // of << state.stepsize << std::endl;
+            // of.close();
             //dev/ --------------------------------------------------------
         }
         else
