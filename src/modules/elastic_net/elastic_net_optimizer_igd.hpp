@@ -77,7 +77,9 @@ AnyType Igd<Model>::igd_transition (AnyType& args, const Allocator& inAllocator)
     }
     
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
-    double y = args[2].getAs<double>();
+    double y;
+
+    Model::get_y(y, args);
 
     ColumnVector gradient(state.dimension); // gradient for coef only, not for intercept
     Model::compute_gradient(gradient, state, x, y);

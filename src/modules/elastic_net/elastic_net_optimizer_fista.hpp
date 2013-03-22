@@ -105,7 +105,10 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
         }
 
         if (state.backtracking == 0)
+        {
             state.gradient.setZero();
+            state.gradient_intercept = 0;
+        }
         else
         {
             state.fn = 0;
@@ -122,7 +125,9 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
     }
 
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
-    double y = args[2].getAs<double>();
+    double y;
+
+    Model::get_y(y, args);
 
     if (state.use_active_set == 1 && state.is_active == 1)
         Model::active_transition(state, x, y);
@@ -212,7 +217,7 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
         proxy(state.coef_y, state.gradient, state.b_coef, 
               state.stepsize, effective_lambda);
-        state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
+        Model::update_b_intercept(state);
 
         state.backtracking = 1; // will do backtracking
     }
@@ -230,19 +235,20 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         double extra_Q = sparse_dot(r, state.gradient) + 0.5 * sparse_dot(r, r) / state.stepsize;
         
         if (state.fn <= state.Qfn + extra_Q) { // use last backtracking coef
-            // update coef and intercept
-            ColumnVector old_coef = state.coef;
-            state.coef = state.b_coef;
-            state.intercept = state.b_intercept;
-
             // update tk
             double old_tk = state.tk;
             state.tk = 0.5 * (1 + sqrt(1 + 4 * old_tk * old_tk));
 
             // update coef_y and intercept_y
-            state.coef_y = state.coef + (old_tk - 1) * (state.coef - old_coef)
+            state.coef_y = state.b_coef + (old_tk - 1) * (state.b_coef - state.coef)
                 / state.tk;
-            state.intercept_y = state.ymean - sparse_dot(state.coef_y, state.xmean);
+            Model::update_y_intercept(state, old_tk);
+
+            // this must behind Model::update_y_intercept,
+            // because in binomial case, state.intercept is
+            // the old value
+            state.coef = state.b_coef;
+            state.intercept = state.b_intercept;
             
             state.backtracking = 0; // stop backtracking
 
@@ -258,8 +264,8 @@ AnyType Fista<Model>::fista_final (AnyType& args)
             double effective_lambda = state.lambda * state.alpha * state.stepsize;
             proxy(state.coef_y, state.gradient, state.b_coef, 
                   state.stepsize, effective_lambda);
-            state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
-
+            Model::update_b_intercept(state);
+            
             state.backtracking++;
         }
     }

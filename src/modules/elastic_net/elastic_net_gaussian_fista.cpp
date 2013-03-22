@@ -16,15 +16,46 @@ class GaussianFista
 {
   public:
     static void initialize (FistaState<MutableArrayHandle<double> >& state, AnyType& args);
+    static void get_y (double& y, AnyType& args);
     static void normal_transition (FistaState<MutableArrayHandle<double> >& state,
                                    MappedColumnVector& x, double y);
     static void active_transition (FistaState<MutableArrayHandle<double> >& state,
                                    MappedColumnVector& x, double y);
 
+    // update the backtracking coef
+    static void update_b_intercept (FistaState<MutableArrayHandle<double> >& state);
+
+    // update the proxy coef
+    static void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
+                                    double old_tk);
+
   private:
     static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                          MappedColumnVector& x, double y);
 };
+
+// ------------------------------------------------------------------------
+// extract dependent variable from args
+inline void GaussianFista::get_y (double& y, AnyType& args)
+{
+    y = args[2].getAs<double>();
+}
+
+// ------------------------------------------------------------------------
+
+inline void GaussianFista::update_b_intercept (FistaState<MutableArrayHandle<double> >& state)
+{
+    state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
+}
+
+// ------------------------------------------------------------------------
+
+inline void GaussianFista::update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
+                                               double old_tk)
+{
+    (void)old_tk;
+    state.intercept_y = state.ymean - sparse_dot(state.coef_y, state.xmean);
+}
 
 // ------------------------------------------------------------------------
 // initialize state values for the first iteration only
@@ -48,7 +79,7 @@ inline void GaussianFista::initialize (FistaState<MutableArrayHandle<double> >& 
 }
 
 // ------------------------------------------------------------------------
-
+// just compute fn and Qfn
 inline void GaussianFista::backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                                     MappedColumnVector& x, double y)
 {
@@ -73,10 +104,9 @@ inline void GaussianFista::normal_transition (FistaState<MutableArrayHandle<doub
 {
     if (state.backtracking == 0)
     {
-        state.gradient += - (x - state.xmean) * (y - state.intercept_y);
-        for (uint32_t j = 0; j < state.dimension; j++)
-            state.gradient(j) += (x(j) - state.xmean(j)) *
-                sparse_dot(state.coef_y, x);
+        double r = y - state.intercept_y - sparse_dot(state.coef_y, x);
+        for (uint32_t i = 0; i < state.dimension; i++)
+            state.gradient(i) += - (x(i) - state.xmean(i)) * r;
     }
     else 
         backtracking_transition(state, x, y);
@@ -91,10 +121,10 @@ inline void GaussianFista::active_transition (FistaState<MutableArrayHandle<doub
                                               MappedColumnVector& x, double y)
 {
     if (state.backtracking == 0) {
+        double r = y - state.intercept_y - sparse_dot(state.coef_y, x);
         for (uint32_t i = 0; i < state.dimension; i++)
             if (state.coef_y(i) != 0)
-                state.gradient(i) += - (x(i) - state.xmean(i)) *
-                    (y - state.intercept_y - sparse_dot(state.coef_y, x));
+                state.gradient(i) += - (x(i) - state.xmean(i)) * r;
     } else 
         backtracking_transition(state, x, y);
 }

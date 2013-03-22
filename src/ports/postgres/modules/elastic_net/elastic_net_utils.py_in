@@ -226,6 +226,8 @@ def __compute_data_scales (args):
 
     args["xmean_str"] = _array_to_string(args["x_scales"]["mean"])
 
+## ========================================================================
+    
 def __normalize_data(args):
     """
     Compute the scaling factors for independent and dependent
@@ -235,7 +237,11 @@ def __normalize_data(args):
     """
     __compute_data_scales(args)
 
-    __utils_normalize_data(tbl_data = args["tbl_source"], col_ind_var = args["col_ind_var"],
+    y_decenter = True if args["family"] == "gaussian" else False;
+    
+    __utils_normalize_data(y_decenter = y_decenter,
+                           tbl_data = args["tbl_source"],
+                           col_ind_var = args["col_ind_var"],
                            col_dep_var = args["col_dep_var"],
                            tbl_data_scaled = args["tbl_data_scaled"],
                            col_ind_var_norm_new = args["col_ind_var_norm_new"],

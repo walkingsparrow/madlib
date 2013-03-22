@@ -74,7 +74,7 @@ class FistaState
     */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 20 + 5 * inDimension;
+        return 21 + 5 * inDimension;
     }
 
   protected:
@@ -104,7 +104,8 @@ class FistaState
         use_active_set.rebind(&mStorage[16 + 5 * dimension]);
         iter.rebind(&mStorage[17 + 5 * dimension]);
         stepsize_sum.rebind(&mStorage[18 + 5 * dimension]);
-        backtracking.rebind(&mStorage[19 + 5 * dimension]);
+        gradient_intercept.rebind(&mStorage[19 + 5 * dimension]);
+        backtracking.rebind(&mStorage[20 + 5 * dimension]);
     }
 
     Handle mStorage;
@@ -135,6 +136,7 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToUInt32 iter; // how many effective iteration run
     typename HandleTraits<Handle>::ReferenceToDouble stepsize_sum; // sum of step size so far
     typename HandleTraits<Handle>::ReferenceToUInt32 is_active; // is using active-set now?
+    typename HandleTraits<Handle>::ReferenceToDouble gradient_intercept; // gradient element for intercept
 };
 
 }
