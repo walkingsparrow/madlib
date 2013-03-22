@@ -150,25 +150,42 @@ def __compute_log_likelihood (coef, coef_str, intercept, **args):
     """
     Compute the log-likelihood at the end of calculation
     """
-    loss = plpy.execute(
-        """
-        select
-            avg(({col_dep_var_new} - {schema_madlib}.__elastic_net_gaussian_predict(
+    if args["family"] == "gaussian": # linear models
+        loss = plpy.execute(
+            """
+            select
+                avg(({col_dep_var_new} - {schema_madlib}.elastic_net_gaussian_predict(
                                                                     '{coefficients}'::double precision[],
                                                                     {intercept},
                                                                     {col_ind_var_new}))^2) / 2.
-                                                                    as loss
-        from
-            {tbl_used}
-        """.format(coefficients = coef_str,
-                   intercept = intercept,
-                   **args))[0]["loss"]
+                    as loss
+            from
+                {tbl_used}
+            """.format(coefficients = coef_str,
+                       intercept = intercept,
+                       **args))[0]["loss"]
+    
 
+    elif args["family"] == "binomial": # logistic models
+        loss = plpy.execute(
+            """
+            select
+                avg({schema_madlib}.__elastic_net_binomial_loglikelihood(
+                                    '{coefficients}'::double precision[],
+                                    {intercept},
+                                    {col_dep_var_new},
+                                    {col_ind_var_new}))
+            from {tbl_used}
+            """.format(coefficients = coef_str,
+                       intercept = intercept,
+                       **args))[0]["loss"]
+        
     module_1 = sum(x*x for x in coef)
     module_2 = sum(map(abs, coef))
-
+    
     log_likelihood = -(loss + args["lambda_value"] * ((1 - args["alpha"]) \
-                    * module_1 / 2. + args["alpha"] * module_2))
+                        * module_1 / 2. + args["alpha"] * module_2))
+    
     return log_likelihood
 
 # ========================================================================

@@ -22,8 +22,8 @@ class BinomialFista
     static void active_transition (FistaState<MutableArrayHandle<double> >& state,
                                    MappedColumnVector& x, double y);
 
-    void update_b_intercept (FistaState<MutableArrayHandle<double> >& state);
-    void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
+    static void update_b_intercept (FistaState<MutableArrayHandle<double> >& state);
+    static void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
                              double old_tk);
 
   private:
@@ -70,9 +70,9 @@ inline void BinomialFista::normal_transition (FistaState<MutableArrayHandle<doub
         double u;
         
         if (y > 0)
-            u = - 1. / (1. + exp(r));
+            u = - 1. / (1. + std::exp(r));
         else
-            u = 1. / (1. + exp(-r));
+            u = 1. / (1. + std::exp(-r));
         
         for (uint32_t i = 0; i < state.dimension; i++)
             state.gradient(i) += x(i) * u;
@@ -95,9 +95,9 @@ inline void BinomialFista::active_transition (FistaState<MutableArrayHandle<doub
         double u;
         
         if (y > 0)
-            u = - 1. / (1. + exp(r));
+            u = - 1. / (1. + std::exp(r));
         else
-            u = 1. / (1. + exp(-r));
+            u = 1. / (1. + std::exp(-r));
         
         for (uint32_t i = 0; i < state.dimension; i++)
             if (state.coef_y(i) != 0)
@@ -119,18 +119,18 @@ inline void BinomialFista::backtracking_transition (FistaState<MutableArrayHandl
     double r = state.b_intercept + sparse_dot(state.b_coef, x);
 
     if (y > 0)
-        state.fn += log(1 + exp(-r));
+        state.fn += std::log(1 + std::exp(-r));
     else
-        state.fn += log(1 + exp(r));
+        state.fn += std::log(1 + std::exp(r));
 
     // Qfn only need to be calculated once in each backtracking
     if (state.backtracking == 1)
     {
         r = state.intercept_y + sparse_dot(state.coef_y, x);
         if (y > 0)
-            state.Qfn += log(1 + exp(-r));
+            state.Qfn += std::log(1 + std::exp(-r));
         else
-            state.Qfn += log(1 + exp(r));
+            state.Qfn += std::log(1 + std::exp(r));
     }
 }
 

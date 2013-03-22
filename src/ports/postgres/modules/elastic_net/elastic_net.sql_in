@@ -386,6 +386,9 @@ PythonFunction(elastic_net, elastic_net, elastic_net_help)
 $$ LANGUAGE plpythonu;
 
 ------------------------------------------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
 /**
  * @brief Prediction and put the result in a table
  *        can be used together with General-CV
@@ -403,6 +406,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
 PythonFunction(elastic_net, elastic_net, elastic_net_predict_all)
 $$ LANGUAGE plpythonu;
 
+------------------------------------------------------------------------
+
 /**
  * @brief Prediction use learned coefficients for a given example
  *
@@ -419,22 +424,65 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_predict (
 ) RETURNS DOUBLE PRECISION AS $$
 DECLARE
     family_name     TEXT;
+    binomial_result BOOLEAN;
 BEGIN
     family_name := lower(regress_family);
+
     IF family_name = 'gaussian' OR family_name = 'linear' THEN
         RETURN MADLIB_SCHEMA.__elastic_net_gaussian_predict(coefficients, intercept, ind_var);
+    END IF;
+
+    IF family_name = 'binomial' OR family_name = 'logistic' THEN
+        binomial_result := MADLIB_SCHEMA.__elastic_net_binomial_predict(coefficients, intercept, ind_var);
+        IF binomial_result THEN
+            return 1;
+        ELSE
+            return 0;
+        END IF;
     END IF;
 
     RAISE EXCEPTION 'This regression family is not supported!';
 END;
 $$ LANGUAGE plpgsql IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__elastic_net_gaussian_predict (
+------------------------------------------------------------------------
+/* Prediction for Gaussian models */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_gaussian_predict (
     coefficients    DOUBLE PRECISION[],
     intercept       DOUBLE PRECISION,
     ind_var         DOUBLE PRECISION[]
 ) RETURNS DOUBLE PRECISION AS
 'MODULE_PATHNAME', '__elastic_net_gaussian_predict'
+LANGUAGE C IMMUTABLE STRICT;
+
+------------------------------------------------------------------------
+/* Prediction for Binomial models */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_binomial_predict (
+    coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
+    ind_var         DOUBLE PRECISION[]
+) RETURNS BOOLEAN AS
+'MODULE_PATHNAME', '__elastic_net_binomial_predict'
+LANGUAGE C IMMUTABLE STRICT;
+
+------------------------------------------------------------------------
+/* Compute the probability for True class  */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_binomial_prob (
+    coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
+    ind_var         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', '__elastic_net_binomial_prob'
+LANGUAGE C IMMUTABLE STRICT;
+
+------------------------------------------------------------------------
+/* Compute the log-likelihood for one data point */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__elastic_net_binomial_loglikelihood (
+    coefficients    DOUBLE PRECISION[],
+    intercept       DOUBLE PRECISION,
+    ind_var         DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', '__elastic_net_binomial_loglikelihood'
 LANGUAGE C IMMUTABLE STRICT;
 
 ------------------------------------------------------------------------
@@ -628,6 +676,191 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_fista_result (
     in_state        DOUBLE PRECISION[]
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
 'MODULE_PATHNAME', '__gaussian_fista_result'
+LANGUAGE C IMMUTABLE STRICT;
+
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
+/* Binomial IGD */
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_igd_transition (
+    state               DOUBLE PRECISION[],
+    ind_var             DOUBLE PRECISION[],
+    dep_var             DOUBLE PRECISION,
+    pre_state           DOUBLE PRECISION[],
+    lambda              DOUBLE PRECISION,
+    alpha               DOUBLE PRECISION,
+    dimension           INTEGER,
+    stepsize            DOUBLE PRECISION,
+    total_rows          INTEGER,
+    xmean               DOUBLE PRECISION[],
+    ymean               DOUBLE PRECISION
+) RETURNS DOUBLE PRECISION[]
+AS 'MODULE_PATHNAME', 'binomial_igd_transition'
+LANGUAGE C IMMUTABLE;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_igd_merge (
+    state1              DOUBLE PRECISION[],
+    state2              DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'binomial_igd_merge'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_igd_final (
+    state               DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'binomial_igd_final'
+LANGUAGE C IMMUTABLE STRICT;
+
+/**
+ * @internal
+ * @brief Perform one iteration step of IGD for linear models
+ */
+CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step(
+    /* ind_var */           DOUBLE PRECISION[],
+    /* dep_var */           DOUBLE PRECISION,
+    /* pre_state */         DOUBLE PRECISION[],
+    /* lambda  */           DOUBLE PRECISION,
+    /* alpha */             DOUBLE PRECISION,
+    /* dimension */         INTEGER,
+    /* stepsize */          DOUBLE PRECISION,
+    /* total_rows */        INTEGER,
+    /* xmeans */            DOUBLE PRECISION[],
+    /* ymean */             DOUBLE PRECISION
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
+    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
+    FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+);
+
+CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
+    /* ind_var */           DOUBLE PRECISION[],
+    /* dep_var */           DOUBLE PRECISION,
+    /* pre_state */         DOUBLE PRECISION[],
+    /* lambda  */           DOUBLE PRECISION,
+    /* alpha */             DOUBLE PRECISION,
+    /* dimension */         INTEGER,
+    /* stepsize */          DOUBLE PRECISION,
+    /* total_rows */        INTEGER,
+    /* xmeans */            DOUBLE PRECISION[],
+    /* ymean */             DOUBLE PRECISION
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
+    -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
+    FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+);
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__binomial_igd_state_diff (
+    state1          DOUBLE PRECISION[],
+    state2          DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', '__binomial_igd_state_diff'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__binomial_igd_result (
+    in_state        DOUBLE PRECISION[],
+    feature_sq      DOUBLE PRECISION[],
+    threshold       DOUBLE PRECISION
+) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
+'MODULE_PATHNAME', '__binomial_igd_result'
+LANGUAGE C IMMUTABLE STRICT;
+
+------------------------------------------------------------------------
+
+/* Binomial FISTA */
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_fista_transition (
+    state               DOUBLE PRECISION[],
+    ind_var             DOUBLE PRECISION[],
+    dep_var             DOUBLE PRECISION,
+    pre_state           DOUBLE PRECISION[],
+    lambda              DOUBLE PRECISION,
+    alpha               DOUBLE PRECISION,
+    dimension           INTEGER,
+    xmean               DOUBLE PRECISION[],
+    ymean               DOUBLE PRECISION,
+    tk                  DOUBLE PRECISION,
+    total_rows          INTEGER,
+    L0                  DOUBLE PRECISION,
+    eta                 DOUBLE PRECISION,
+    use_active_set      INTEGER,
+    is_active           INTEGER
+) RETURNS DOUBLE PRECISION[]
+AS 'MODULE_PATHNAME', 'binomial_fista_transition'
+LANGUAGE C IMMUTABLE;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_fista_merge (
+    state1              DOUBLE PRECISION[],
+    state2              DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'binomial_fista_merge'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE FUNCTION MADLIB_SCHEMA.__binomial_fista_final (
+    state               DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION[] AS
+'MODULE_PATHNAME', 'binomial_fista_final'
+LANGUAGE C IMMUTABLE STRICT;
+
+/**
+ * @internal
+ * @brief Perform one iteration step of FISTA for linear models
+ */
+CREATE AGGREGATE MADLIB_SCHEMA.__binomial_fista_step(
+    /* ind_var      */  DOUBLE PRECISION[],
+    /* dep_var      */  DOUBLE PRECISION,
+    /* pre_state    */  DOUBLE PRECISION[],
+    /* lambda       */  DOUBLE PRECISION,
+    /* alpha        */  DOUBLE PRECISION,
+    /* dimension    */  INTEGER,
+    /* mean x       */  DOUBLE PRECISION[],
+    /* mean y       */  DOUBLE PRECISION,
+    /* tk           */  DOUBLE PRECISION,
+    /* total_rows   */  INTEGER,
+    /* L0           */  DOUBLE PRECISION,
+    /* eta          */  DOUBLE PRECISION,
+    /* use_active_set */INTEGER,
+    /* is_active */     INTEGER
+) (
+    SType = DOUBLE PRECISION[],
+    SFunc = MADLIB_SCHEMA.__binomial_fista_transition,
+    m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_fista_merge,')
+    FinalFunc = MADLIB_SCHEMA.__binomial_fista_final,
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+);
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__binomial_fista_state_diff (
+    state1          DOUBLE PRECISION[],
+    state2          DOUBLE PRECISION[]
+) RETURNS DOUBLE PRECISION AS
+'MODULE_PATHNAME', '__binomial_fista_state_diff'
+LANGUAGE C IMMUTABLE STRICT;
+
+--
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__binomial_fista_result (
+    in_state        DOUBLE PRECISION[]
+) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
+'MODULE_PATHNAME', '__binomial_fista_result'
 LANGUAGE C IMMUTABLE STRICT;
 
 

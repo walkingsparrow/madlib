@@ -41,7 +41,7 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
     warmup_lambdas = None
     warmup_lambda_no = None
 
-    if optimizer_params is None:
+    if optimizer_params is None or len(optimizer_params) == 0:
         return name_value
     
     for s in __preprocess_optimizer_params(optimizer_params):
@@ -411,9 +411,9 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
         it.iteration = 0
 
         if it.kwargs["parallel"]:
-            it.kwargs["parallel_step_func"] = "__gaussian_igd_step"
+            it.kwargs["parallel_step_func"] = func_step_aggregate
         else:
-            it.kwargs["parallel_step_func"] = "__gaussian_igd_step_single_seg"
+            it.kwargs["parallel_step_func"] = func_step_aggregate + "_single_seg"
         
         while True:
             # manually add the intercept term
@@ -436,7 +436,7 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
 
             if it.test("""
                        {iteration} > _args.{max_iter_name} or
-                       {schema_madlib}.__gaussian_igd_state_diff(
+                       {schema_madlib}.{func_state_diff}(
                             (select _state from {rel_state}
                                 where _iteration = {iteration} - 1),
                             (select _state from {rel_state}

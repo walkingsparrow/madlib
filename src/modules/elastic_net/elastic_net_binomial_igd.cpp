@@ -53,9 +53,9 @@ inline void BinomialIgd::compute_gradient (ColumnVector& gradient,
     double u;
 
     if (y > 0)
-        u = - 1. / (1. + exp(r));
+        u = - 1. / (1. + std::exp(r));
     else
-        u = 1. / (1. + exp(-r));
+        u = 1. / (1. + std::exp(-r));
 
     for (uint32_t i = 0; i < state.dimension; i++)
         gradient(i) = x(i) * u;
@@ -70,9 +70,9 @@ inline void BinomialIgd::update_intercept (IgdState<MutableArrayHandle<double> >
     double u;
 
     if (y > 0)
-        u = - 1. / (1. + exp(r));
+        u = - 1. / (1. + std::exp(r));
     else
-        u = 1. / (1. + exp(-r));
+        u = 1. / (1. + std::exp(-r));
     
     state.intercept -= state.stepsize * u;
 }
@@ -84,10 +84,10 @@ inline void BinomialIgd::merge_intercept  (IgdState<MutableArrayHandle<double> >
                                            IgdState<ArrayHandle<double> >& state2)
 {
     double totalNumRows = static_cast<double>(state1.numRows + state2.numRows);
-    state1.intercept *= static_cast<double>(state1.numRows) /
+    state1.intercept = state1.intercept * static_cast<double>(state1.numRows) /
         static_cast<double>(state2.numRows);
     state1.intercept += state2.intercept;
-    state1.intercept *= static_cast<double>(state2.numRows) /
+    state1.intercept = state1.intercept * static_cast<double>(state2.numRows) /
         static_cast<double>(totalNumRows);
 }
 

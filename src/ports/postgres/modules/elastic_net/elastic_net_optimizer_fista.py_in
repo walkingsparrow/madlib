@@ -44,7 +44,7 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     warmup_lambdas = None
     warmup_lambda_no = None
 
-    if optimizer_params is None:
+    if optimizer_params is None or len(optimizer_params) == 0:
         return name_value
     
     for s in __preprocess_optimizer_params(optimizer_params):

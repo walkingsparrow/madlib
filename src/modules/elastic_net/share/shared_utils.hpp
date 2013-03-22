@@ -12,9 +12,9 @@ namespace madlib {
 namespace modules {
 namespace elastic_net {
 
-typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandleMap CVector;
-
 using namespace madlib::dbal::eigen_integration;
+
+typedef HandleTraits<MutableArrayHandle<double> >::ColumnVectorTransparentHandleMap CVector;
 
 namespace {
 
@@ -29,6 +29,8 @@ inline double sparse_dot (CVector& coef, MappedColumnVector& x)
     return sum;
 }
 
+// ------------------------------------------------------------------------
+
 inline double sparse_dot (CVector& coef, CVector& x)
 {
     double sum = 0;
@@ -36,6 +38,8 @@ inline double sparse_dot (CVector& coef, CVector& x)
         if (coef(i) != 0) sum += coef(i) * x(i);
     return sum;
 }
+
+// ------------------------------------------------------------------------
 
 inline double sparse_dot (ColumnVector& coef, CVector& x)
 {
@@ -45,7 +49,19 @@ inline double sparse_dot (ColumnVector& coef, CVector& x)
     return sum;
 }
 
+// ------------------------------------------------------------------------
+
 inline double sparse_dot (ColumnVector& coef, ColumnVector& x)
+{
+    double sum = 0;
+    for (int i = 0; i < x.size(); i++)
+        if (coef(i) != 0) sum += coef(i) * x(i);
+    return sum;
+}
+
+// ------------------------------------------------------------------------
+
+inline double sparse_dot (MappedColumnVector& coef, MappedColumnVector& x)
 {
     double sum = 0;
     for (int i = 0; i < x.size(); i++)
