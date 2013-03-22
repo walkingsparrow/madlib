@@ -29,10 +29,22 @@ class GaussianFista
     static void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
                                     double old_tk);
 
+    static void merge_intercept (FistaState<MutableArrayHandle<double> >& state1,
+                                 FistaState<ArrayHandle<double> >& state2);
+
   private:
     static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                          MappedColumnVector& x, double y);
 };
+
+// ------------------------------------------------------------------------
+
+inline void GaussianFista::merge_intercept (FistaState<MutableArrayHandle<double> >& state1,
+                                            FistaState<ArrayHandle<double> >& state2)
+{
+    (void)state1;
+    (void)state2;
+}
 
 // ------------------------------------------------------------------------
 // extract dependent variable from args
