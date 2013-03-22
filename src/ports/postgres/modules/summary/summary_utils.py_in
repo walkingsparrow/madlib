@@ -1,0 +1,91 @@
+import plpy
+import math
+import re
+from utilities.utilities import _string_to_array
+from utilities.utilities import _array_to_string
+from convex.utils_regularization import __utils_ind_var_scales
+from convex.utils_regularization import __utils_dep_var_scale
+from convex.utils_regularization import __utils_normalize_data
+from utilities.validate_args import __is_tbl_exists
+from utilities.validate_args import __is_tbl_has_rows
+# from utilities.validate_args import __is_col_exists
+from utilities.validate_args import __is_tbl_exists_in_schema
+# from utilities.validate_args import __is_scalar_col_no_null
+# from utilities.validate_args import __is_array_col_same_dimension
+# from utilities.validate_args import __is_array_col_no_null
+from utilities.control import IterationController
+#from convex.lasso_igd import IterationControllerNoTableDrop
+from utilities.utilities import __mad_version
+
+version_wrapper = __mad_version()
+mad_vec = version_wrapper.select_vecfunc()
+
+# -----------------------------------------------------------------------
+# Help messages
+# -----------------------------------------------------------------------
+def summary_help_message(schema_madlib, message=None, **kwargs):
+    """
+    Given a help string, provide helpful information
+    """
+    if message is None:
+        return """
+         'summary' is a generic function used to produce summary statistics 
+         of any data table.  The function invokes particular 'methods' from 
+         the MADlib library to provide an overview of the data.
+        --
+        For an overview on usage, run: 
+            SELECT {schema_madlib}.summary('usage');   
+        --
+        For extensive examples, run: 
+            SELECT {schema_madlib}.summary('examples')
+        """.format(schema_madlib = schema_madlib)
+
+    if message.lower() in ("usage", "usg", "use", "help", "?"):
+        return """
+        Usage:
+        -----------------------------------------------------------------------
+        SELECT {schema_madlib}.summary
+        (
+            source_table            TEXT,       -- Source table name (Required)
+            output_table            TEXT,       -- Output table name (Required)
+            target_cols             TEXT,       -- Comma separated columns for which summary is desired
+                                                --      (Default: NULL - produces result for all columns)
+            grouping_cols           TEXT,       -- Comma separated columns on which to group results
+                                                --      (Default: NULL - provides summary on complete table)
+            get_distinct            BOOLEAN,    -- Are distinct values required?
+                                                --      (Default: True)
+            get_quartiles           BOOLEAN,    -- Are quartiles required?
+                                                --      (Default: True)
+            ntile_array             FLOAT8[],   -- Array of quantile values to compute
+                                                --      (Default: NULL - Quantile array is not included in result)
+            how_many_mfv            INTEGER,    -- How many most-frequent-values to compute?
+                                                --      (Default: 10)
+            get_estimates           BOOLEAN     -- Should we produce exact or estimated values for distincts 
+        )                                       --      (Default: True)
+        -----------------------------------------------------------------------
+        Ouput table will be in following format:
+            - GroupByColumn     : Group-by column names (NULL if none provided)
+            - GroupByValue      : Values of the Group-by column (NULL if no grouping)
+            - TargetColumn      : Targeted column values for which summary is requested
+            - TargetColumnNumber: Physical column number for the target column, as described in pg_attribute
+            - DataType          : Data type of target column. Standard GPDB descriptors will be displayed
+            - RowCount          : Number of rows for the target column
+            - DistinctValues    : Number of distinct values in the target column
+            - MissingValues     : Number of missing values in the target column
+- BlankValues: number of blank values (blanks are defined by the regular expression '^\w*$')
+            - FractionMissing   : Percentage of total rows that are missing. Will be expressed as a decimal (e.g. 0.3)
+            - FractionBlank     : Percentage of total rows that are blank. Will be expressed as a decimal (e.g. 0.3) 
+            - Mean              : Mean value of target column (if target is numeric, else NULL)
+            - Median            : Median value of target column (if target is numeric, else NULL)
+            - Min               : Min value of target column (for strings this is the length of the shortest string)
+            - Max               : Max value of target column (for strings this is the length of the longest string)
+            - Variance          : Variance of target columns (if target is numeric, else NULL for strings)
+            - Quartile-1        : First quartile (25th percentile, only for numeric columns)
+            - Quartile-3        : Third quartile (25th percentile, only for numeric columns)
+            - QuantileArray     : Percentile values corresponding to ntile_array
+            - MostFrequentValues: Most frequent values 
+            - MFVFrequencies    : Frequency of the most frequent values
+        """.format(schema_madlib = schema_madlib)
+
+# -----------------------------------------------------------------------
+

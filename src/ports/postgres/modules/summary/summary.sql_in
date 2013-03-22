@@ -28,8 +28,8 @@ CREATE TYPE MADLIB_SCHEMA.summary_result AS
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT,       -- source table name
-    outputtable             TEXT,       -- output table name
+    source_table            TEXT,       -- source table name
+    output_table            TEXT,       -- output table name
     target_cols             TEXT,       -- comma separated list of output cols
     grouping_cols           TEXT,       -- comma separated names of grouping cols 
     get_distinct            BOOLEAN,    -- Are distinct values required
