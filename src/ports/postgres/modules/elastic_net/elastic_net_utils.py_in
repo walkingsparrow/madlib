@@ -140,7 +140,7 @@ def __compute_average_sq(**args):
     sq = [1] * args["dimension"]
     if args["normalization"] is False:
         for i in range(args["dimension"]):
-            sq[i] = args["x_scales"]["std"][i]^2 + args["x_scales"]["mean"][i]^2
+            sq[i] = (args["x_scales"]["std"][i])**2 + (args["x_scales"]["mean"][i])**2
 
     return sq
     
