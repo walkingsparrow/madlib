@@ -53,19 +53,9 @@ inline void BinomialFista::merge_intercept (FistaState<MutableArrayHandle<double
 
 inline void BinomialFista::initialize (FistaState<MutableArrayHandle<double> >& state, AnyType& args)
 {
-    MappedColumnVector xmean = args[7].getAs<MappedColumnVector>();
-    double ymean = args[8].getAs<double>();
-
-    state.ymean = ymean;
-    
-    for (uint32_t i = 0; i < state.dimension; i++)
-    {
-        // initial values
-        state.coef(i) = 0;
-        state.coef_y(i) = 0;
-        state.xmean(i) = xmean(i);
-    }
-            
+    (void)args;
+    state.coef.setZero();
+    state.coef_y.setZero();
     state.intercept = 0;
     state.intercept_y = 0;
 }

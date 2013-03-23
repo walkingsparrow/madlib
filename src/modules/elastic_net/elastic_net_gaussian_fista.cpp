@@ -43,7 +43,7 @@ class GaussianFista
 
 inline void GaussianFista::update_y_intercept_final (FistaState<MutableArrayHandle<double> >& state)
 {
-    (void)state;
+    state.gradient_intercept = state.gradient_intercept / state.totalRows;
 }
 
 // ------------------------------------------------------------------------
@@ -51,8 +51,7 @@ inline void GaussianFista::update_y_intercept_final (FistaState<MutableArrayHand
 inline void GaussianFista::merge_intercept (FistaState<MutableArrayHandle<double> >& state1,
                                             FistaState<ArrayHandle<double> >& state2)
 {
-    (void)state1;
-    (void)state2;
+    state1.gradient_intercept += state2.gradient_intercept;
 }
 
 // ------------------------------------------------------------------------
@@ -66,7 +65,7 @@ inline void GaussianFista::get_y (double& y, AnyType& args)
 
 inline void GaussianFista::update_b_intercept (FistaState<MutableArrayHandle<double> >& state)
 {
-    state.b_intercept = state.ymean - sparse_dot(state.b_coef, state.xmean);
+    state.b_intercept = state.intercept_y - state.stepsize * state.gradient_intercept;
 }
 
 // ------------------------------------------------------------------------
@@ -74,29 +73,19 @@ inline void GaussianFista::update_b_intercept (FistaState<MutableArrayHandle<dou
 inline void GaussianFista::update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
                                                double old_tk)
 {
-    (void)old_tk;
-    state.intercept_y = state.ymean - sparse_dot(state.coef_y, state.xmean);
+    state.intercept_y = state.b_intercept + (old_tk - 1) * (state.b_intercept - state.intercept)
+        / state.tk;
 }
 
 // ------------------------------------------------------------------------
 // initialize state values for the first iteration only
 inline void GaussianFista::initialize (FistaState<MutableArrayHandle<double> >& state, AnyType& args)
 {
-    MappedColumnVector xmean = args[7].getAs<MappedColumnVector>();
-    double ymean = args[8].getAs<double>();
-
-    state.ymean = ymean;
-    
-    for (uint32_t i = 0; i < state.dimension; i++)
-    {
-        // initial values
-        state.coef(i) = 0;
-        state.coef_y(i) = 0;
-        state.xmean(i) = xmean(i);
-    }
-            
-    state.intercept = ymean;
-    state.intercept_y = ymean;
+    (void)args;
+    state.coef.setZero();
+    state.coef_y.setZero();
+    state.intercept = 0;
+    state.intercept_y = 0;
 }
 
 // ------------------------------------------------------------------------
@@ -127,7 +116,10 @@ inline void GaussianFista::normal_transition (FistaState<MutableArrayHandle<doub
     {
         double r = y - state.intercept_y - sparse_dot(state.coef_y, x);
         for (uint32_t i = 0; i < state.dimension; i++)
-            state.gradient(i) += - (x(i) - state.xmean(i)) * r;
+            state.gradient(i) += - x(i) * r;
+
+        // update gradient
+        state.gradient_intercept += - r;
     }
     else 
         backtracking_transition(state, x, y);
@@ -145,7 +137,9 @@ inline void GaussianFista::active_transition (FistaState<MutableArrayHandle<doub
         double r = y - state.intercept_y - sparse_dot(state.coef_y, x);
         for (uint32_t i = 0; i < state.dimension; i++)
             if (state.coef_y(i) != 0)
-                state.gradient(i) += - (x(i) - state.xmean(i)) * r;
+                state.gradient(i) += - x(i) * r;
+
+        state.gradient_intercept += - r;
     } else 
         backtracking_transition(state, x, y);
 }

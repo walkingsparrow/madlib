@@ -77,16 +77,15 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
         {
             double alpha = args[5].getAs<double>();
             uint32_t dimension = args[6].getAs<uint32_t>();
-            double tk = args[9].getAs<double>();
-            int totalRows = args[10].getAs<int>();
+            int totalRows = args[7].getAs<int>();
             
             state.allocate(inAllocator, dimension);
             state.alpha = alpha;
             state.totalRows = totalRows;
-            state.tk = tk;
+            state.tk = 1;
             state.backtracking = 0; // the first iteration is always non-backtracking
-            state.max_stepsize = args[11].getAs<double>();
-            state.eta = args[12].getAs<double>();
+            state.max_stepsize = args[8].getAs<double>();
+            state.eta = args[9].getAs<double>();
 
             //dev/ --------------------------------------------------------
             // how to adaptively update stepsize
@@ -97,7 +96,7 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
 
             // whether to use active-set method
             // 1 is yes, 0 is no
-            state.use_active_set = args[13].getAs<int>();
+            state.use_active_set = args[10].getAs<int>();
 
             Model::initialize(state, args);
             
@@ -132,7 +131,7 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
 
         state.numRows = 0; // resetting
 
-        state.is_active = args[14].getAs<int>();
+        state.is_active = args[11].getAs<int>();
     }
 
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
@@ -266,8 +265,8 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         double extra_Q = sparse_dot(r, state.gradient) + 0.5 * sparse_dot(r, r) / state.stepsize;
         if (state.gradient_intercept != 0)
             extra_Q += - 0.5 * state.gradient_intercept * state.gradient_intercept * state.stepsize;
-
-        if (state.fn < state.Qfn + extra_Q) { // use last backtracking coef
+     
+        if (state.fn <= state.Qfn + extra_Q) { // use last backtracking coef
             // update tk
             double old_tk = state.tk;
             state.tk = 0.5 * (1 + sqrt(1 + 4 * old_tk * old_tk));

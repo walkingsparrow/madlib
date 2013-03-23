@@ -129,8 +129,6 @@ def __fista_create_tbl_args(**args):
     """
     create the temporary schema and argument table used in FISTA iterations
     """
-    (xmean_str0, ymean) = __compute_means(**args)
-    
     plpy.execute("""
                  drop table if exists {tbl_fista_args};       
                  create temp table {tbl_fista_args} (
@@ -140,8 +138,6 @@ def __fista_create_tbl_args(**args):
                      {total_rows_name}      integer,
                      {max_iter_name}        integer,
                      {tolerance_name}       double precision,
-                     {xmean_name}           double precision[],
-                     {ymean_name}           double precision,
                      {max_stepsize_name}    double precision,
                      {eta_name}             double precision,
                      {activeset_name}       integer
@@ -151,10 +147,9 @@ def __fista_create_tbl_args(**args):
                  insert into {tbl_fista_args} values
                      ({dimension}, '{warmup_lambdas}'::double precision[],
                      {alpha}, {row_num}, {max_iter}, {tolerance},
-                     '{xmean_str0}'::double precision[], {ymean}, {max_stepsize}, {eta},
+                     {max_stepsize}, {eta},
                      {use_active_set});
-                 """.format(xmean_str0 = xmean_str0, ymean = ymean,
-                            **args))
+                 """.format(**args))
 
     return None
     
@@ -209,8 +204,6 @@ def __fista_construct_dict(schema_madlib, family, tbl_source, col_ind_var, col_d
     args["total_rows_name"] = __unique_string()
     args["max_iter_name"] = __unique_string()
     args["tolerance_name"] = __unique_string()
-    args["xmean_name"] = __unique_string()
-    args["ymean_name"] = __unique_string()
     args["max_stepsize_name"] = __unique_string()
     args["eta_name"] = __unique_string()
     args["activeset_name"] = __unique_string()
@@ -311,7 +304,6 @@ def __elastic_net_fista_train_compute (schema_madlib, func_step_aggregate,
         args["col_ind_var_new"] = args["col_ind_var_norm_new"]
         args["col_dep_var_new"] = args["col_dep_var_norm_new"]
     else:
-        __compute_data_scales(args)
         tbl_used = tbl_source
         args["col_ind_var_new"] = col_ind_var
         args["col_dep_var_new"] = col_dep_var
@@ -355,8 +347,6 @@ def __elastic_net_fista_train_compute (schema_madlib, func_step_aggregate,
                                     alpha_name = args["alpha_name"],
                                     total_rows_name = args["total_rows_name"],
                                     max_iter_name = args["max_iter_name"],
-                                    xmean_name = args["xmean_name"],
-                                    ymean_name = args["ymean_name"],
                                     max_stepsize_name = args["max_stepsize_name"],
                                     eta_name = args["eta_name"],
                                     activeset_name = args["activeset_name"],
@@ -426,9 +416,6 @@ def __compute_fista(schema_madlib, func_step_aggregate, func_state_diff,
                               (_args.{lambda_name}[{lambda_count}])::double precision,
                               (_args.{alpha_name})::double precision,
                               (_args.{dimension_name})::integer,
-                              (_args.{xmean_name})::double precision[],
-                              (_args.{ymean_name})::double precision,
-                              1::double precision,
                               (_args.{total_rows_name})::integer,
                               (_args.{max_stepsize_name})::double precision,
                               (_args.{eta_name})::double precision,

@@ -74,7 +74,7 @@ class FistaState
     */
     static inline uint32_t arraySize (const uint32_t inDimension)
     {
-        return 21 + 5 * inDimension;
+        return 20 + 4 * inDimension;
     }
 
   protected:
@@ -89,23 +89,23 @@ class FistaState
         intercept_y.rebind(&mStorage[6]);
         coef.rebind(&mStorage[7], dimension);
         coef_y.rebind(&mStorage[7 + dimension], dimension);
-        xmean.rebind(&mStorage[7 + 2 * dimension], dimension);
-        ymean.rebind(&mStorage[7 + 3 * dimension]);
-        tk.rebind(&mStorage[8 + 3 * dimension]);
-        numRows.rebind(&mStorage[9 + 3 * dimension]);
-        gradient.rebind(&mStorage[10 + 3 * dimension], dimension);
-        max_stepsize.rebind(&mStorage[10 + 4 * dimension]);
-        eta.rebind(&mStorage[11 + 4 * dimension]);
-        fn.rebind(&mStorage[12 + 4 * dimension]);
-        Qfn.rebind(&mStorage[13 + 4 * dimension]);
-        stepsize.rebind(&mStorage[14 + 4 * dimension]);
-        b_coef.rebind(&mStorage[15 + 4 * dimension], dimension);
-        b_intercept.rebind(&mStorage[15 + 5 * dimension]);
-        use_active_set.rebind(&mStorage[16 + 5 * dimension]);
-        iter.rebind(&mStorage[17 + 5 * dimension]);
-        stepsize_sum.rebind(&mStorage[18 + 5 * dimension]);
-        gradient_intercept.rebind(&mStorage[19 + 5 * dimension]);
-        backtracking.rebind(&mStorage[20 + 5 * dimension]);
+        // xmean.rebind(&mStorage[7 + 2 * dimension], dimension);
+        // ymean.rebind(&mStorage[7 + 3 * dimension]);
+        tk.rebind(&mStorage[7 + 2 * dimension]);
+        numRows.rebind(&mStorage[8 + 2 * dimension]);
+        gradient.rebind(&mStorage[9 + 2 * dimension], dimension);
+        max_stepsize.rebind(&mStorage[9 + 3 * dimension]);
+        eta.rebind(&mStorage[10 + 3 * dimension]);
+        fn.rebind(&mStorage[11 + 3 * dimension]);
+        Qfn.rebind(&mStorage[12 + 3 * dimension]);
+        stepsize.rebind(&mStorage[13 + 3 * dimension]);
+        b_coef.rebind(&mStorage[14 + 3 * dimension], dimension);
+        b_intercept.rebind(&mStorage[14 + 4 * dimension]);
+        use_active_set.rebind(&mStorage[15 + 4 * dimension]);
+        iter.rebind(&mStorage[16 + 4 * dimension]);
+        stepsize_sum.rebind(&mStorage[17 + 4 * dimension]);
+        gradient_intercept.rebind(&mStorage[18 + 4 * dimension]);
+        backtracking.rebind(&mStorage[19 + 4 * dimension]);
     }
 
     Handle mStorage;
@@ -120,8 +120,8 @@ class FistaState
     typename HandleTraits<Handle>::ReferenceToDouble intercept_y;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap coef_y;
-    typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
-    typename HandleTraits<Handle>::ReferenceToDouble ymean;
+    // typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap xmean;
+    // typename HandleTraits<Handle>::ReferenceToDouble ymean;
     typename HandleTraits<Handle>::ReferenceToDouble tk;
     typename HandleTraits<Handle>::ReferenceToUInt64 numRows;
     typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap gradient;
