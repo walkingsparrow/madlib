@@ -25,6 +25,7 @@ class BinomialFista
     static void update_b_intercept (FistaState<MutableArrayHandle<double> >& state);
     static void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
                              double old_tk);
+    static void update_y_intercept_final (FistaState<MutableArrayHandle<double> >& state);
 
     static void merge_intercept (FistaState<MutableArrayHandle<double> >& state1,
                                  FistaState<ArrayHandle<double> >& state2);
@@ -32,6 +33,13 @@ class BinomialFista
     static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                          MappedColumnVector& x, double y);
 };
+
+// ------------------------------------------------------------------------
+
+inline void BinomialFista::update_y_intercept_final (FistaState<MutableArrayHandle<double> >& state)
+{
+    state.gradient_intercept = state.gradient_intercept / state.totalRows;
+}
 
 // ------------------------------------------------------------------------
 
@@ -88,7 +96,7 @@ inline void BinomialFista::normal_transition (FistaState<MutableArrayHandle<doub
             state.gradient(i) += x(i) * u;
 
         // update gradient
-        state.gradient_intercept += u / state.totalRows;
+        state.gradient_intercept += u;
     }
     else
         backtracking_transition(state, x, y);
@@ -114,7 +122,7 @@ inline void BinomialFista::active_transition (FistaState<MutableArrayHandle<doub
                 state.gradient(i) += x(i) * u;
 
         // always update intercept
-        state.gradient_intercept += u / state.totalRows;
+        state.gradient_intercept += u;
     }
     else
         backtracking_transition(state, x, y);

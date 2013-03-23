@@ -29,6 +29,8 @@ class GaussianFista
     static void update_y_intercept (FistaState<MutableArrayHandle<double> >& state,
                                     double old_tk);
 
+    static void update_y_intercept_final (FistaState<MutableArrayHandle<double> >& state);
+
     static void merge_intercept (FistaState<MutableArrayHandle<double> >& state1,
                                  FistaState<ArrayHandle<double> >& state2);
 
@@ -36,6 +38,13 @@ class GaussianFista
     static void backtracking_transition (FistaState<MutableArrayHandle<double> >& state,
                                          MappedColumnVector& x, double y);
 };
+
+// ------------------------------------------------------------------------
+
+inline void GaussianFista::update_y_intercept_final (FistaState<MutableArrayHandle<double> >& state)
+{
+    (void)state;
+}
 
 // ------------------------------------------------------------------------
 

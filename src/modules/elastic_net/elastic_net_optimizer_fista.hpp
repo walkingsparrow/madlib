@@ -202,6 +202,8 @@ AnyType Fista<Model>::fista_final (AnyType& args)
             if (state.coef_y(i) != 0)
                 state.gradient(i) += la * state.coef_y(i);
 
+        Model::update_y_intercept_final(state);
+
         //dev/ --------------------------------------------------------
         //state.stepsize = state.max_stepsize;
         
