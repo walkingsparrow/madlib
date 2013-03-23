@@ -3,7 +3,6 @@ import plpy
 import re
 import time
 import random
-import math
 
 ## ========================================================================
 

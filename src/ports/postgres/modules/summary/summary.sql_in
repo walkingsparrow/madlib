@@ -1,4 +1,4 @@
-/* ----------------------------------------------------------------------- *//** 
+/* ----------------------------------------------------------------------- *//**
  *
  * @file summary.sql_in
  *
@@ -25,24 +25,28 @@ CREATE TYPE MADLIB_SCHEMA.summary_result AS
     duration    FLOAT8
 );
 
+
+-----------------------------------------------------------------------
+-- Main function for summary
+-----------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
     source_table            TEXT,       -- source table name
     output_table            TEXT,       -- output table name
     target_cols             TEXT,       -- comma separated list of output cols
-    grouping_cols           TEXT,       -- comma separated names of grouping cols 
+    grouping_cols           TEXT,       -- comma separated names of grouping cols
     get_distinct            BOOLEAN,    -- Are distinct values required
     get_quartiles           BOOLEAN,    -- Are quartiles required
     ntile_array             FLOAT8[],   -- Array of quantiles to compute
     how_many_mfv            INTEGER,    -- How many most frequent values to compute?
-    get_estimates           BOOLEAN     -- Should we produce exact or estimated 
+    get_estimates           BOOLEAN     -- Should we produce exact or estimated
                                         --      values for distinct computation
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
     PythonFunctionBodyOnly(`summary', `summary')
     return summary.summary(
-        schema_madlib, tablename, outputtable, target_cols, grouping_cols,
+        schema_madlib, source_table, output_table, target_cols, grouping_cols,
         get_distinct, get_quartiles, ntile_array, how_many_mfv, get_estimates)
 $$ LANGUAGE plpythonu;
 
@@ -52,13 +56,13 @@ $$ LANGUAGE plpythonu;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT,
     grouping_cols           TEXT,
-    get_distinct            BOOLEAN,  
-    get_quartiles           BOOLEAN,  
-    ntile_array             FLOAT8[], 
+    get_distinct            BOOLEAN,
+    get_quartiles           BOOLEAN,
+    ntile_array             FLOAT8[],
     how_many_mfv            INTEGER
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
@@ -69,12 +73,12 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT,
     grouping_cols           TEXT,
-    get_distinct            BOOLEAN,  
-    get_quartiles           BOOLEAN,  
+    get_distinct            BOOLEAN,
+    get_quartiles           BOOLEAN,
     ntile_array             FLOAT8[]
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
@@ -85,11 +89,11 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT,
     grouping_cols           TEXT,
-    get_distinct            BOOLEAN,  
+    get_distinct            BOOLEAN,
     get_quartiles           BOOLEAN
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
@@ -100,8 +104,8 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT,
     grouping_cols           TEXT,
     get_distinct            BOOLEAN
@@ -114,8 +118,8 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT,
     grouping_cols           TEXT
 )
@@ -127,8 +131,8 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT, 
+    source_table            TEXT,
+    output_table            TEXT,
     target_cols             TEXT
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
@@ -139,11 +143,29 @@ $$ LANGUAGE sql STRICT;
 CREATE OR REPLACE FUNCTION
 MADLIB_SCHEMA.summary
 (
-    tablename               TEXT, 
-    outputtable             TEXT
+    source_table            TEXT,
+    output_table            TEXT
 )
 RETURNS MADLIB_SCHEMA.summary_result AS $$
     SELECT MADLIB_SCHEMA.summary(
         $1, $2, NULL, NULL, True, True, NULL, 10, True)
 $$ LANGUAGE sql STRICT;
+
 -----------------------------------------------------------------------
+-- Help functions
+-----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.summary(
+    input_message            TEXT
+)
+RETURNS TEXT AS $$
+PythonFunction(summary, summary, summary_help_message)
+$$ LANGUAGE plpythonu;
+
+/*
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.summary()
+-- RETURNS TEXT AS $$
+-- PythonFunction(summary, summary, summary_help_message)
+-- $$ LANGUAGE plpythonu;
+*/
+
+
