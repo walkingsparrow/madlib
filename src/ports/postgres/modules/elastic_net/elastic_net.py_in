@@ -184,6 +184,8 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         warmup_lambda_no - default is 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas   
                            is not NULL
+        warmup_tolerance - default is the same as tolerance. The value
+                           of tolerance used during warmup. 
         parallel         - default is True. Run the computation on
                            multiple segments or not.
 
@@ -213,8 +215,16 @@ def elastic_net_help(schema_madlib, family_or_optimizer = None, **kwargs):
         warmup_lambda_no - default is 15. How many lambda's are used in
                            warm-up, will be overridden if warmup_lambdas     
                            is not NULL
+        warmup_tolerance - default is the same as tolerance. The value
+                           of tolerance used during warmup. 
         use_active_set   - default is False. Whether to use active-set
                            method to speed up the computation.
+        activeset_tolerance - default is the same as tolerance. The
+                              value oftolerance used during active set
+                              calculation
+        random_stepsize - default is False. Whether add some randomness
+                          to the step size. Sometimes, this can speed
+                          up the calculation.
 
         When warmup is True and warmup_lambdas is NULL, warmup_lambda_no
         of lambda values will be automatically generated and used.

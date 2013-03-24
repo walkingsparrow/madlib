@@ -101,6 +101,8 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
             Model::initialize(state, args);
             
             state.stepsize = state.max_stepsize;
+
+            state.random_stepsize = args[12].getAs<int>();
         }
 
         if (state.backtracking == 0)
@@ -223,23 +225,23 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         Model::update_y_intercept_final(state);
 
         //dev/ --------------------------------------------------------
-        //state.stepsize = state.max_stepsize;
-        
         // How to adaptively update stepsize
         // set the initial value for backtracking stepsize
-        
-        double stepsize_avg;
-        if (state.iter == 0) stepsize_avg = 0;
-        else stepsize_avg = state.stepsize_sum / state.iter;
+        if (state.random_stepsize == 1)
+        {
+            double stepsize_avg;
+            if (state.iter == 0) stepsize_avg = 0;
+            else stepsize_avg = state.stepsize_sum / state.iter;
 
-        double p = 1. / (1 + exp(0.5 * (log(state.stepsize/state.max_stepsize) - stepsize_avg) / log(state.eta)));
-        double r = drand48();
+            double p = 1. / (1 + exp(0.5 * (log(state.stepsize/state.max_stepsize) - stepsize_avg) / log(state.eta)));
+            double r = drand48();
 
-        // there is a non-zero probability to increase stepsize
-        if (r < p)
-            state.stepsize = state.stepsize * state.eta;
+            // there is a non-zero probability to increase stepsize
+            if (r < p)
+                state.stepsize = state.stepsize * state.eta;
 
-        if (state.is_active == 0) state.stepsize = state.stepsize * state.eta;
+            //if (state.is_active == 0) state.stepsize = state.stepsize * state.eta;
+        }
         
         //dev/ -------------------------------------------------------- 
         
@@ -286,9 +288,11 @@ AnyType Fista<Model>::fista_final (AnyType& args)
 
             //dev/ --------------------------------------------------------
             // how to adaptively update stepsize
-            state.stepsize_sum += log(state.stepsize) - log(state.max_stepsize);
-            state.iter++;
-
+            if (state.random_stepsize == 1)
+            {
+                state.stepsize_sum += log(state.stepsize) - log(state.max_stepsize);
+                state.iter++;
+            }
             // std::ofstream of;
             // of.open("/Users/qianh1/workspace/tests/feature_ElasticNet/stepsize.txt", std::ios::app);
             // of << "Proceed, stepsize = " << state.stepsize << std::endl;

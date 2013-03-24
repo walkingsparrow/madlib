@@ -625,7 +625,8 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_fista_transition (
     max_stepsize        DOUBLE PRECISION,
     eta                 DOUBLE PRECISION,
     use_active_set      INTEGER,
-    is_active           INTEGER
+    is_active           INTEGER,
+    random_stepsize     INTEGER
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'gaussian_fista_transition'
 LANGUAGE C IMMUTABLE;
@@ -652,17 +653,18 @@ LANGUAGE C IMMUTABLE STRICT;
  * @brief Perform one iteration step of FISTA for linear models
  */
 CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
-    /* ind_var      */  DOUBLE PRECISION[],
-    /* dep_var      */  DOUBLE PRECISION,
-    /* pre_state    */  DOUBLE PRECISION[],
-    /* lambda       */  DOUBLE PRECISION,
-    /* alpha        */  DOUBLE PRECISION,
-    /* dimension    */  INTEGER,
-    /* total_rows   */  INTEGER,
-    /* max_stepsize */  DOUBLE PRECISION,
-    /* eta          */  DOUBLE PRECISION,
-    /* use_active_set */INTEGER,
-    /* is_active */     INTEGER
+    /* ind_var      */      DOUBLE PRECISION[],
+    /* dep_var      */      DOUBLE PRECISION,
+    /* pre_state    */      DOUBLE PRECISION[],
+    /* lambda       */      DOUBLE PRECISION,
+    /* alpha        */      DOUBLE PRECISION,
+    /* dimension    */      INTEGER,
+    /* total_rows   */      INTEGER,
+    /* max_stepsize */      DOUBLE PRECISION,
+    /* eta          */      DOUBLE PRECISION,
+    /* use_active_set */    INTEGER,
+    /* is_active */         INTEGER,
+    /* random_stepsize */   INTEGER
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
@@ -804,7 +806,8 @@ CREATE FUNCTION MADLIB_SCHEMA.__binomial_fista_transition (
     max_stepsize        DOUBLE PRECISION,
     eta                 DOUBLE PRECISION,
     use_active_set      INTEGER,
-    is_active           INTEGER
+    is_active           INTEGER,
+    random_stepsize     INTEGER
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'binomial_fista_transition'
 LANGUAGE C IMMUTABLE;
@@ -831,17 +834,18 @@ LANGUAGE C IMMUTABLE STRICT;
  * @brief Perform one iteration step of FISTA for linear models
  */
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_fista_step(
-    /* ind_var      */  DOUBLE PRECISION[],
-    /* dep_var      */  BOOLEAN,
-    /* pre_state    */  DOUBLE PRECISION[],
-    /* lambda       */  DOUBLE PRECISION,
-    /* alpha        */  DOUBLE PRECISION,
-    /* dimension    */  INTEGER,
-    /* total_rows   */  INTEGER,
-    /* max_stepsize */  DOUBLE PRECISION,
-    /* eta          */  DOUBLE PRECISION,
-    /* use_active_set */INTEGER,
-    /* is_active */     INTEGER
+    /* ind_var      */      DOUBLE PRECISION[],
+    /* dep_var      */      BOOLEAN,
+    /* pre_state    */      DOUBLE PRECISION[],
+    /* lambda       */      DOUBLE PRECISION,
+    /* alpha        */      DOUBLE PRECISION,
+    /* dimension    */      INTEGER,
+    /* total_rows   */      INTEGER,
+    /* max_stepsize */      DOUBLE PRECISION,
+    /* eta          */      DOUBLE PRECISION,
+    /* use_active_set */    INTEGER,
+    /* is_active */         INTEGER,
+    /* random_stepsize */   INTEGER
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__binomial_fista_transition,

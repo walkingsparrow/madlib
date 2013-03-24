@@ -23,12 +23,13 @@ mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
 
-def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
+def __igd_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib):
     """
     Parse IGD parameters.
     """
     allowed_params = set(["stepsize", "warmup", "warmup_lambdas",
-                          "warmup_lambda_no", "threshold", "parallel"])
+                          "warmup_lambda_no",
+                          "threshold", "parallel", "warmup_tolerance"])
     name_value = dict()
     # default values
     name_value["parallel"] = True 
@@ -37,6 +38,7 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
     name_value["warmup_lambdas"] = None
     name_value["warmup_lambda_no"] = 15
     name_value["threshold"] = 1e-10
+    name_value["warmup_tolerance"] = tolerance
 
     warmup_lambdas = None
     warmup_lambda_no = None
@@ -68,6 +70,12 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
                 name_value["stepsize"] = float(param_value)
             except:
                 plpy.error("Elastic Net error: stepsize must be a float number!")
+
+        if param_name == "warmup_tolerance":
+            try:
+                name_value["warmup_tolerance"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: warmup_tolerance must be a float number!")
 
         if param_name == "warmup":
             if param_value in ["true", "t", "yes", "y"]:
@@ -111,6 +119,9 @@ def __igd_params_parser(optimizer_params, lambda_value, schema_madlib):
     # validate the parameters
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")
+
+    if name_value["warmup_tolerance"] <= 0:
+        plpy.error("Elastic Net error: warmup_tolerance must be positive!")
     
     if (name_value["warmup"] and name_value["warmup_lambdas"] is None and
         name_value["warmup_lambda_no"] < 1):
@@ -286,7 +297,8 @@ def __elastic_net_igd_train_compute(schema_madlib, func_step_aggregate,
                                 col_dep_var, tbl_result,
                                 dimension, row_num, lambda_value, alpha, normalization,
                                 max_iter, tolerance, outstr_array,
-                                __igd_params_parser(optimizer_params, lambda_value, schema_madlib))
+                                __igd_params_parser(optimizer_params, lambda_value,
+                                                    tolerance, schema_madlib))
 
     # use normalized data or not
     if normalization:
@@ -333,6 +345,8 @@ def __elastic_net_igd_train_compute(schema_madlib, func_step_aggregate,
                                   args["col_ind_var_new"], args["col_dep_var_new"],
                                   True,
                                   max_iter = args["max_iter"],
+                                  tolerance = args["tolerance"],
+                                  warmup_tolerance = args["warmup_tolerance"],
                                   warm_no = args["warm_no"],
                                   parallel = args["parallel"],
                                   col_ind_var_new = args["col_ind_var_new"],
@@ -434,13 +448,18 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
                       from {rel_source} as _src, {rel_args} as _args
                       """)
 
+            if it.kwargs["lambda_count"] < it.kwargs["warm_no"]:
+                it.kwargs["use_tolerance"] = it.kwargs["warmup_tolerance"]
+            else:
+                it.kwargs["use_tolerance"] = it.kwargs["tolerance"]
+
             if it.test("""
                        {iteration} > _args.{max_iter_name} or
                        {schema_madlib}.{func_state_diff}(
                             (select _state from {rel_state}
                                 where _iteration = {iteration} - 1),
                             (select _state from {rel_state}
-                                where _iteration = {iteration})) < _args.{tolerance_name}
+                                where _iteration = {iteration})) < {use_tolerance}
                        """):
                 if (it.iteration < it.kwargs["max_iter"] and
                     it.kwargs["lambda_count"] < it.kwargs["warm_no"]):

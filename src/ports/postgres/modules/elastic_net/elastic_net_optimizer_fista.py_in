@@ -26,12 +26,13 @@ mad_vec = version_wrapper.select_vecfunc()
 
 ## ========================================================================
 
-def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
+def __fista_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib):
     """
     Parse fista parameters.
     """
     allowed_params = set(["max_stepsize", "eta", "warmup", "warmup_lambdas",
-                          "warmup_lambda_no", "use_active_set"])
+                          "warmup_lambda_no", "use_active_set", "random_stepsize",
+                          "activeset_tolerance", "warmup_tolerance"])
     name_value = dict()
     # default values
     name_value["max_stepsize"] = 2.
@@ -40,6 +41,9 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     name_value["warmup"] = False
     name_value["warmup_lambdas"] = None
     name_value["warmup_lambda_no"] = 15
+    name_value["random_stepsize"] = 0 # use random stepsize
+    name_value["activeset_tolerance"] = tolerance
+    name_value["warmup_tolerance"] = tolerance
 
     warmup_lambdas = None
     warmup_lambda_no = None
@@ -66,6 +70,18 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
                 """.format(param_name = param_name,
                            schema_madlib = schema_madlib))
 
+        if param_name == "activeset_tolerance":
+            try:
+                name_value["activeset_tolerance"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: activeset_tolerance must be a float number!")
+
+        if param_name == "warmup_tolerance":
+            try:
+                name_value["warmup_tolerance"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: warmup_tolerance must be a float number!")
+
         if param_name == "max_stepsize":
             try:
                 name_value["max_stepsize"] = float(param_value)
@@ -77,6 +93,14 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
                 name_value["eta"] = float(param_value)
             except:
                 plpy.error("Elastic Net error: eta must be a float number!")
+
+        if param_name == "random_stepsize":
+            if param_value in ["true", "t", "yes", "y"]:
+                name_value["random_stepsize"] = 1
+            elif param_value in ["false", "f", "no", "n"]:
+                name_value["random_stepsize"] = 0
+            else:
+                plpy.error("Elastic Net error: Do you need to add some randomness to step size (True/False or yes/no) ?")
 
         if param_name == "warmup":
             if param_value in ["true", "t", "yes", "y"]:
@@ -120,6 +144,12 @@ def __fista_params_parser(optimizer_params, lambda_value, schema_madlib):
     if (name_value["warmup"] and name_value["warmup_lambdas"] is None and
         name_value["warmup_lambda_no"] < 1):
         plpy.error("Elastic Net error: Number of warm-up lambdas must be a positive integer!")
+
+    if name_value["activeset_tolerance"] <= 0:
+        plpy.error("Elastic Net error: activeset_tolerance must be positive!")
+
+    if name_value["warmup_tolerance"] <= 0:
+        plpy.error("Elastic Net error: warmup_tolerance must be positive!")
 
     return name_value
     
@@ -295,7 +325,9 @@ def __elastic_net_fista_train_compute (schema_madlib, func_step_aggregate,
                                   alpha, normalization,
                                   max_iter, tolerance, outstr_array,
                                   __fista_params_parser(optimizer_params,
-                                                        lambda_value, schema_madlib))
+                                                        lambda_value,
+                                                        tolerance,
+                                                        schema_madlib))
 
     # use normalized data or not
     if normalization:
@@ -339,8 +371,12 @@ def __elastic_net_fista_train_compute (schema_madlib, func_step_aggregate,
                                     args["col_ind_var_new"],
                                     args["col_dep_var_new"],
                                     start_iter = 0,
+                                    tolerance = args["tolerance"],
+                                    activeset_tolerance = args["activeset_tolerance"],
+                                    warmup_tolerance = args["warmup_tolerance"],
                                     max_iter = args["max_iter"],
                                     warm_no = args["warm_no"],
+                                    random_stepsize = args["random_stepsize"],
                                     use_active_set = args["use_active_set"],
                                     dimension_name = args["dimension_name"],
                                     lambda_name = args["lambda_name"],
@@ -420,10 +456,18 @@ def __compute_fista(schema_madlib, func_step_aggregate, func_state_diff,
                               (_args.{max_stepsize_name})::double precision,
                               (_args.{eta_name})::double precision,
                               (_args.{activeset_name})::integer,
-                              {is_active}::integer
+                              {is_active}::integer,
+                              {random_stepsize}::integer
                           )
                       from {rel_source} as _src, {rel_args} as _args
                       """)
+
+            if it.kwargs["is_active"] == 1:
+                it.kwargs["use_tolerance"] = it.kwargs["activeset_tolerance"]
+            elif it.kwargs["lambda_count"] < it.kwargs["warm_no"]:
+                it.kwargs["use_tolerance"] = it.kwargs["warmup_tolerance"]
+            else:
+                it.kwargs["use_tolerance"] = it.kwargs["tolerance"]
 
             if it.kwargs["use_active_set"] == 1:
                 if state_size is None:
@@ -450,7 +494,7 @@ def __compute_fista(schema_madlib, func_step_aggregate, func_state_diff,
                         (select _state from {rel_state}
                             where _iteration = {iteration} - 1),
                         (select _state from {rel_state}
-                            where _iteration = {iteration})) < _args.{tolerance_name}
+                            where _iteration = {iteration})) < {use_tolerance}
                     """):
                     if it.iteration < it.kwargs["max_iter"]:
                         if it.kwargs["is_active"] == 0:
