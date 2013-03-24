@@ -360,6 +360,21 @@ BEGIN
         NULL);
 END;
 $$ LANGUAGE plpgsql VOLATILE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.elastic_net_train (
+    tbl_source          TEXT,
+    tbl_result          TEXT,
+    col_ind_var         TEXT,
+    col_dep_var         TEXT,
+    regress_family      TEXT,
+    alpha               DOUBLE PRECISION,
+    lambda_value        DOUBLE PRECISION
+) RETURNS VOID AS $$
+BEGIN
+    PERFORM MADLIB_SCHEMA.elastic_net_train($1, $2, $3, $4, $5, $6, $7, True);
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 ------------------------------------------------------------------------
 
 /**

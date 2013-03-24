@@ -180,15 +180,15 @@ AnyType Igd<Model>::igd_state_diff (AnyType& args)
     for (uint32_t i = 0; i < n; i++)
     {
         diff = std::abs(state1.coef(i) - state2.coef(i));
-        tmp = std::abs(state1.coef(i));
-        if (tmp > 1) diff /= tmp;
+        tmp = std::abs(state2.coef(i));
+        if (tmp != 0) diff /= tmp;
         diff_sum += diff;
     }
 
     // deal with intercept
     diff = std::abs(state1.intercept - state2.intercept);
-    tmp = std::abs(state1.intercept);
-    if (tmp > 1) diff /= tmp;
+    tmp = std::abs(state2.intercept);
+    if (tmp != 0) diff /= tmp;
     diff_sum += diff;
 
     return diff_sum / (n + 1);

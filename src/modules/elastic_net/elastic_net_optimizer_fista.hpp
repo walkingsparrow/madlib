@@ -117,7 +117,18 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
 
         // lambda is changing if warm-up is used
         // so needs to update it everytime
-        state.lambda = lambda;
+        if (state.lambda != lambda)
+        {
+            // restore initial conditions
+            state.lambda = lambda;
+            state.tk = 1;
+            state.stepsize = state.max_stepsize;
+            state.stepsize_sum = 0;
+            state.iter = 0;
+            state.backtracking = 0;
+            state.coef_y = state.coef;
+            state.intercept_y = state.intercept;
+        }
 
         state.numRows = 0; // resetting
 
@@ -194,6 +205,14 @@ AnyType Fista<Model>::fista_final (AnyType& args)
     // Aggregates that haven't seen any data just return Null
     if (state.numRows == 0) return Null();
 
+    // std::ofstream of;
+    // of.open("/Users/qianh1/workspace/tests/feature_ElasticNet/stepsize.txt", std::ios::app);
+    // of << "stepsize = " << state.stepsize
+    //    << ", backtracking = " << state.backtracking
+    //    << ", is_active = " << state.is_active
+    //    << std::endl;
+    // of.close();
+    
     if (state.backtracking == 0) 
     {
         state.gradient = state.gradient / state.totalRows;
@@ -220,10 +239,13 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         // there is a non-zero probability to increase stepsize
         if (r < p)
             state.stepsize = state.stepsize * state.eta;
+
+        if (state.is_active == 0) state.stepsize = state.stepsize * state.eta;
         
         //dev/ -------------------------------------------------------- 
         
         double effective_lambda = state.lambda * state.alpha * state.stepsize;
+        //if (state.is_active == 1) effective_lambda *= 1.1;
         proxy(state.coef_y, state.gradient, state.b_coef, 
               state.stepsize, effective_lambda);
         Model::update_b_intercept(state);
@@ -243,9 +265,9 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         ColumnVector r = state.b_coef - state.coef_y;
         double extra_Q = sparse_dot(r, state.gradient) + 0.5 * sparse_dot(r, r) / state.stepsize;
         if (state.gradient_intercept != 0)
-            extra_Q += (-1 + 0.5) * state.gradient_intercept * state.gradient_intercept * state.stepsize;
+            extra_Q += - 0.5 * state.gradient_intercept * state.gradient_intercept * state.stepsize;
 
-        if (state.fn <= state.Qfn + extra_Q) { // use last backtracking coef
+        if (state.fn < state.Qfn + extra_Q) { // use last backtracking coef
             // update tk
             double old_tk = state.tk;
             state.tk = 0.5 * (1 + sqrt(1 + 4 * old_tk * old_tk));
@@ -270,7 +292,7 @@ AnyType Fista<Model>::fista_final (AnyType& args)
 
             // std::ofstream of;
             // of.open("/Users/qianh1/workspace/tests/feature_ElasticNet/stepsize.txt", std::ios::app);
-            // of << state.stepsize << std::endl;
+            // of << "Proceed, stepsize = " << state.stepsize << std::endl;
             // of.close();
             //dev/ --------------------------------------------------------
         }
@@ -278,6 +300,7 @@ AnyType Fista<Model>::fista_final (AnyType& args)
         {
             state.stepsize = state.stepsize / state.eta;
             double effective_lambda = state.lambda * state.alpha * state.stepsize;
+            //if (state.is_active == 1) effective_lambda *= 1.1;
             proxy(state.coef_y, state.gradient, state.b_coef, 
                   state.stepsize, effective_lambda);
             Model::update_b_intercept(state);
@@ -310,15 +333,15 @@ AnyType Fista<Model>::fista_state_diff (AnyType& args)
     for (uint32_t i = 0; i < n; i++)
     {
         diff = std::abs(state1.coef(i) - state2.coef(i));
-        tmp = std::abs(state1.coef(i));
-        if (tmp > 1) diff /= tmp;
+        tmp = std::abs(state2.coef(i));
+        if (tmp != 0) diff /= tmp;
         diff_sum += diff;
     }
 
     // deal with intercept
     diff = std::abs(state1.intercept - state2.intercept);
-    tmp = std::abs(state1.intercept);
-    if (tmp > 1) diff /= tmp;
+    tmp = std::abs(state2.intercept);
+    if (tmp != 0) diff /= tmp;
     diff_sum += diff;
     
     return diff_sum / (n + 1);

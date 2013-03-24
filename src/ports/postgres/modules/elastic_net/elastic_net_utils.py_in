@@ -100,22 +100,23 @@ def __generate_warmup_lambda_sequence (tbl_used, col_ind_var, col_dep_var,
     if num_steps == 1:
         return [lambda_value]
     
-    mean_y = plpy.execute("select avg({col_dep_var}) from {tbl_used}".format(
-        col_dep_var = col_dep_var, tbl_used = tbl_used))[0]["avg"]
-    xy = [0] * dimension
-    for i in range(1,dimension+1):
-        xy[i-1] = plpy.execute("""
-                             select abs(sum({col_ind_var}[{i}] * ({col_dep_var} - {mean_y})))
-                             from {tbl_used}
-                             """.format(col_ind_var = col_ind_var,
-                                        col_dep_var = col_dep_var,
-                                        mean_y = mean_y,
-                                        tbl_used = tbl_used,
-                                        i = i))[0]["abs"]
-    max_sq = max(sq)
-    epsilon = 0.001
-    effective_alpha = alpha + (1 - alpha) * epsilon
-    largest = (max(xy)/ float(row_num) + epsilon * max_sq) / effective_alpha
+    # mean_y = plpy.execute("select avg({col_dep_var}) from {tbl_used}".format(
+    #     col_dep_var = col_dep_var, tbl_used = tbl_used))[0]["avg"]
+    # xy = [0] * dimension
+    # for i in range(1,dimension+1):
+    #     xy[i-1] = plpy.execute("""
+    #                          select abs(sum({col_ind_var}[{i}] * ({col_dep_var} - {mean_y})))
+    #                          from {tbl_used}
+    #                          """.format(col_ind_var = col_ind_var,
+    #                                     col_dep_var = col_dep_var,
+    #                                     mean_y = mean_y,
+    #                                     tbl_used = tbl_used,
+    #                                     i = i))[0]["abs"]
+    # max_sq = max(sq)
+    # epsilon = 0.001
+    # effective_alpha = alpha + (1 - alpha) * epsilon
+    # largest = (max(xy)/ float(row_num) + epsilon * max_sq) / effective_alpha
+    largest = 1e5
     if lambda_value == 0.:
         smallest = 0.001 * largest
     else:
