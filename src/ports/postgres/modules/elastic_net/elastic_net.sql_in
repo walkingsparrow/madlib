@@ -568,7 +568,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step(
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step_single_seg (
@@ -587,7 +587,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step_single_seg (
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
     -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --
@@ -604,7 +604,8 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__gaussian_igd_result (
     in_state        DOUBLE PRECISION[],
     feature_sq      DOUBLE PRECISION[],
-    threshold       DOUBLE PRECISION
+    threshold       DOUBLE PRECISION,
+    tolerance       DOUBLE PRECISION
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
 'MODULE_PATHNAME', '__gaussian_igd_result'
 LANGUAGE C IMMUTABLE STRICT;
@@ -670,7 +671,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_fista_step(
     SFunc = MADLIB_SCHEMA.__gaussian_fista_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_fista_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_fista_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --
@@ -749,7 +750,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step(
     SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
@@ -768,7 +769,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
     SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
     -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --
@@ -785,7 +786,8 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__binomial_igd_result (
     in_state        DOUBLE PRECISION[],
     feature_sq      DOUBLE PRECISION[],
-    threshold       DOUBLE PRECISION
+    threshold       DOUBLE PRECISION,
+    tolerance       DOUBLE PRECISION
 ) RETURNS MADLIB_SCHEMA.__elastic_net_result AS
 'MODULE_PATHNAME', '__binomial_igd_result'
 LANGUAGE C IMMUTABLE STRICT;
@@ -851,7 +853,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_fista_step(
     SFunc = MADLIB_SCHEMA.__binomial_fista_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_fista_merge,')
     FinalFunc = MADLIB_SCHEMA.__binomial_fista_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --

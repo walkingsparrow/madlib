@@ -33,7 +33,7 @@ def __elastic_net_generate_result (optimizer, iteration_run, **args):
         result_func = "__gaussian_fista_result(_state)"
         tbl_state = "{tbl_fista_state}"
     elif optimizer == "igd":
-        result_func = "__gaussian_igd_result(_state, '{sq_str}'::double precision[], {threshold}::double precision)"
+        result_func = "__gaussian_igd_result(_state, '{sq_str}'::double precision[], {threshold}::double precision, {tolerance}::double precision)"
         tbl_state = "{tbl_igd_state}"
     
     result = plpy.execute(

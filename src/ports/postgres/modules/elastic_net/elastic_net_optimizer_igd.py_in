@@ -444,7 +444,8 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
                             (_args.{stepsize_name})::double precision,
                             (_args.{total_rows_name})::integer,
                             (_args.{xmean_name})::double precision[],
-                            (_args.{ymean_name})::double precision)
+                            (_args.{ymean_name})::double precision
+                      )
                       from {rel_source} as _src, {rel_args} as _args
                       """)
 

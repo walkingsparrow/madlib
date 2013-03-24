@@ -205,6 +205,7 @@ AnyType Igd<Model>::igd_result (AnyType& args)
     IgdState<MutableArrayHandle<double> > state = args[0];
     MappedColumnVector x2 = args[1].getAs<MappedColumnVector>();
     double threshold = args[2].getAs<double>();
+    double tolerance = args[3].getAs<double>();
 
     ColumnVector norm_coef(state.dimension);
     double avg = 0;
@@ -216,7 +217,7 @@ AnyType Igd<Model>::igd_result (AnyType& args)
     avg /= state.dimension;
 
     for (uint32_t i = 0; i < state.dimension; i++)
-        if (fabs(state.coef(i)/avg) < threshold)
+        if (fabs(norm_coef(i)/avg) < threshold || fabs(norm_coef(i)) < tolerance)
             state.coef(i) = 0;
         
     AnyType tuple;
