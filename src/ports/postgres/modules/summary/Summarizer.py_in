@@ -2,23 +2,6 @@ import plpy
 from utilities.validate_args import __is_tbl_exists
 from utilities.validate_args import __is_tbl_has_rows as _tbl_has_rows
 
-def _tbl_exists(table_name):
-    """
-    -- TEMPORARY --
-    Currently _is_tbl_exists is badly named since it returns True if the
-    table does *not* exist. This function remaps the function and should be
-    removed when the original function is changed.
-    """
-    return not __is_tbl_exists(table_name)
-
-def _tbl_empty(table_name):
-    """
-    -- TEMPORARY --
-    Remapping _tbl_has_rows to make it easier to read the code
-    """
-    return not _tbl_has_rows
-
-
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
                     target_cols , grouping_cols, distinctify,
@@ -37,14 +20,6 @@ class Summarizer:
         self.how_many_mfv = how_many_mfv
 
     def _get_columns(self):
-        try:
-            self._tableoid = plpy.execute("""
-              SELECT '{source_table}'::regclass::oid
-              """.format(source_table=self._source_table))[0]['oid']
-        except:
-            plpy.error("ERROR: table '{source_table}' \
-                            does not exist".format(source_table=self._source_table))
-
         self._columns = plpy.execute("""
               SELECT attname, typname, attnum
               FROM pg_attribute a join pg_type t on (a.atttypid=t.oid)
@@ -59,17 +34,35 @@ class Summarizer:
     # -----------------------------------------------------------------------
     # Argument validation functions
     # -----------------------------------------------------------------------
-    def _validate_all_parameters(self):
+    def _validate_table_names(self):
         """
-        Validate all parameters in the class
+            Validate the required arguments for the summary function
         """
-        self._validate_table_names()
-        self._validate_target_cols()
-        self._validate_grouping_cols()
-        self._validate_ntile_array()
-        if self.how_many_mfv < 0:
-            plpy.error("""Summary -- Invalid parameter: number of most frequent
-                            values should be positive""")
+        if (self._source_table is None or self._source_table.strip() == ''):
+            plpy.error("""
+                Summary -- Invalid parameter: Source table name should be a
+                non-empty string""")
+
+        if self._output_table is None or self._output_table.strip() == '':
+            plpy.error("""
+                Summary -- Invalid parameter: Output table name should be a
+                non-empty string""")
+        try:
+            self._tableoid = plpy.execute("""
+              SELECT '{source_table}'::regclass::oid
+              """.format(source_table=self._source_table))[0]['oid']
+        except:
+            plpy.error("""
+                Summary -- table '{source_table}' does not
+                exist""".format(source_table=self._source_table))
+
+        rowcount = plpy.execute("""
+            SELECT count(*) FROM {source_table}""".format(
+                source_table=self._source_table))[0]['count']
+        if rowcount == 0:
+            plpy.error("""
+                Summary -- table '{source_table}' is empty""".format(
+                source_table=self._source_table))
 
     def _validate_grouping_cols(self):
         non_exist_cols = []
@@ -77,8 +70,9 @@ class Summarizer:
             if col is not None and col not in self._column_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
-            plpy.error("Summary -- Non-existing paramter: column(s) {0} \
-                            do not exist".format(str(non_exist_cols)[1:-1]))
+            plpy.error("""
+                Summary -- Non-existing paramter: column(s) {0} do not
+                exist""".format(str(non_exist_cols)[1:-1]))
 
     def _validate_target_cols(self):
         non_exist_cols = []
@@ -88,41 +82,45 @@ class Summarizer:
             if col not in self._column_names:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
-            plpy.error("Summary -- Non-existing paramter: column(s) {0} \
-                            do not exist".format(str(non_exist_cols)[1:-1]))
-
-    def _validate_table_names(self):
-        """
-            Validate the required arguments for the summary function
-        """
-        if (self.source_table is None or self.source_table.strip() == ''):
-            plpy.error("Summary -- Invalid parameter: Source table name \
-                                            should be a non-empty string")
-
-        if not _tbl_exists(self.source_table):
-            plpy.error("Summary -- Invalid parameter: Unable to find source table")
-
-        if _tbl_empty(self.source_table):
-                plpy.error("Summary -- Invalid parameter: Source table is empty!")
-
-        if self._output_table is None or self._output_table.strip() == '':
-            plpy.error("Summary -- Invalid parameter: Output table name \
-                                        should be a non-empty string")
-
-        if not _tbl_exists(self._output_table):
-            plpy.error("Summary -- Invalid parameter: Ouput table already exists!")
-
-        if _tbl_empty(self._output_table):
-                plpy.error("Summary -- Invalid parameter: Output table is empty!")
-
+            plpy.error("""
+                Summary -- Non-existing paramter: column(s) {0} do not
+                exist""".format(str(non_exist_cols)[1:-1]))
 
     def _validate_ntile_array(self):
-        if self.ntile_array is not None:
-            for ntile in self.ntile_array:
+        if self._ntile_array is not None:
+            for ntile in self._ntile_array:
                 if ntile < 0 or ntile > 1.0:
-                    plpy.error( """Invalid parameter: values in ntile_array
-                                    should be in the range of [0.0, 1.0]""")
+                    plpy.error("""
+                        Invalid parameter: values in ntile_array should be in
+                        the range of [0.0, 1.0]""")
 
+    def _adjust_cols(self):
+        tcols = self._target_cols
+        if tcols is None:
+            tcols = self._column_names
+
+        # if #tcols == 1, then it should not appear in the grouping_cols
+        if len(tcols) == 1 and tcols[0] in self._grouping_cols:
+            self._grouping_cols.remove(tcols[0])
+
+        if self._target_cols is not None:
+            self._columns = filter(
+                lambda r: r['attname'] in self._target_cols, self._columns)
+
+    def _validate_paras(self):
+        """
+        Validate all parameters in the class
+        """
+        self._validate_table_names()
+        self._get_columns()
+        self._validate_target_cols()
+        self._validate_grouping_cols()
+        self._adjust_cols()
+        self._validate_ntile_array()
+        if self.how_many_mfv < 0:
+            plpy.error("""
+                Summary -- Invalid parameter: number of most frequent values
+                should be positive""")
     # ----- End of argument validation functions -----------------------------
 
     def _build_subquery(self, group_var):
@@ -211,10 +209,11 @@ class Summarizer:
          """.format(**args).format(schema_madlib=self._schema_madlib)
 
     def _build_query(self):
-        subquery = """  UNION ALL""".join([self._build_subquery(g)
-                                                for g in self._grouping_cols])
-        plpy.execute("DROP TABLE IF EXISTS {output_table};".format(
-                                            output_table=self._output_table))
+        subquery = """  UNION ALL""".join(
+            [self._build_subquery(g) for g in self._grouping_cols])
+        plpy.execute("""
+            DROP TABLE IF EXISTS {output_table};""".format(
+            output_table=self._output_table))
         query = """
             CREATE TABLE {output_table} AS
             SELECT
@@ -288,20 +287,7 @@ class Summarizer:
         """.format(subquery=subquery, output_table = self._output_table)
         return query
 
-    def _adjust_cols(self):
-        tcols = self._target_cols
-        if tcols is None:
-            tcols = self._column_names
-
-        # if #tcols == 1, then it should not appear in the grouping_cols
-        if len(tcols) == 1 and tcols[0] in self._grouping_cols:
-            self._grouping_cols.remove(tcols[0])
-
-        if self._target_cols is not None:
-            self._columns = filter(
-                lambda r: r['attname'] in self._target_cols, self._columns)
 
     def run(self):
-        self._get_columns()
-        self._adjust_cols()
+        self._validate_paras()
         plpy.execute(self._build_query())
