@@ -39,6 +39,7 @@ AnyType Igd<Model>::igd_transition (AnyType& args, const Allocator& inAllocator)
 {
     IgdState<MutableArrayHandle<double> > state = args[0];
     double lambda = args[4].getAs<double>();
+    double stepsize = args[7].getAs<double>();
 
     // initialize the state if working on the first tuple
     if (state.numRows == 0)
@@ -53,11 +54,12 @@ AnyType Igd<Model>::igd_transition (AnyType& args, const Allocator& inAllocator)
         {
             double alpha = args[5].getAs<double>();
             int dimension = args[6].getAs<int>();
-            double stepsize = args[7].getAs<double>();
+            
             int total_rows = args[8].getAs<int>();
 
             state.allocate(inAllocator, dimension);
-            state.stepsize = stepsize;
+            state.step_decay = args[11].getAs<double>();
+            state.stepsize = stepsize * exp(state.step_decay);
             state.alpha = alpha;
             state.totalRows = total_rows;
             state.xmean = args[9].getAs<MappedColumnVector>();
@@ -65,6 +67,7 @@ AnyType Igd<Model>::igd_transition (AnyType& args, const Allocator& inAllocator)
             // dual vector theta
             state.theta.setZero();
             state.p = 2 * log(state.dimension);
+            state.lambda = lambda;
             state.q = state.p / (state.p - 1);
             link_fn(state.theta, state.coef, state.p);
 
@@ -72,9 +75,19 @@ AnyType Igd<Model>::igd_transition (AnyType& args, const Allocator& inAllocator)
         }
          
         //state.loss = 0.;
-        state.lambda = lambda;
+
+        if (state.lambda != lambda)
+        {
+            state.lambda = lambda;
+            state.stepsize = stepsize * exp(state.step_decay);
+        }
+
+        // state.stepsize = state.stepsize / exp(state.step_decay);
+        
         state.numRows = 0; // resetting
     }
+
+    state.stepsize = state.stepsize / exp(state.step_decay);
     
     MappedColumnVector x = args[1].getAs<MappedColumnVector>();
     double y;
@@ -137,6 +150,9 @@ AnyType Igd<Model>::igd_merge (AnyType& args)
     // averaging depends on their original values
     state1.numRows += state2.numRows;
 
+    if (state1.stepsize > state2.stepsize)
+        state1.stepsize = state2.stepsize;
+
     return state1;
 }
 
@@ -154,7 +170,7 @@ AnyType Igd<Model>::igd_final (AnyType& args)
 
     // Aggregates that haven't seen any data just return Null.
     if (state.numRows == 0) return Null(); 
-
+    
     Model::update_intercept_final (state); // intercept is updated separately
     
     // generate new theta values

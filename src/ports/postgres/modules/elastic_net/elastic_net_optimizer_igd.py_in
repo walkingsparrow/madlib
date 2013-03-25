@@ -29,7 +29,8 @@ def __igd_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib
     """
     allowed_params = set(["stepsize", "warmup", "warmup_lambdas",
                           "warmup_lambda_no",
-                          "threshold", "parallel", "warmup_tolerance"])
+                          "threshold", "parallel", "warmup_tolerance",
+                          "step_decay"])
     name_value = dict()
     # default values
     name_value["parallel"] = True 
@@ -39,6 +40,7 @@ def __igd_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib
     name_value["warmup_lambda_no"] = 15
     name_value["threshold"] = 1e-10
     name_value["warmup_tolerance"] = tolerance
+    name_value["step_decay"] = 0
 
     warmup_lambdas = None
     warmup_lambda_no = None
@@ -64,6 +66,12 @@ def __igd_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib
                 to see the parameters for IGD algorithm.
                 """.format(param_name = param_name,
                            schema_madlib = schema_madlib))
+
+        if param_name == "step_decay":
+            try:
+                name_value["step_decay"] = float(param_value)
+            except:
+                plpy.error("Elastic Net error: Decay of step must be a float number!")
 
         if param_name == "stepsize":
             try:
@@ -117,6 +125,9 @@ def __igd_params_parser(optimizer_params, lambda_value, tolerance, schema_madlib
     
                 
     # validate the parameters
+    if name_value["step_decay"] < 0:
+        plpy.error("Elastic Net error: step_decay must be non-negative!")
+        
     if name_value["stepsize"] <= 0:
         plpy.error("Elastic Net error: step size must be positive!")
 
@@ -349,6 +360,7 @@ def __elastic_net_igd_train_compute(schema_madlib, func_step_aggregate,
                                   warmup_tolerance = args["warmup_tolerance"],
                                   warm_no = args["warm_no"],
                                   parallel = args["parallel"],
+                                  step_decay = args["step_decay"],
                                   col_ind_var_new = args["col_ind_var_new"],
                                   col_dep_var_new = args["col_dep_var_new"],
                                   dimension_name = args["dimension_name"],
@@ -428,7 +440,7 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
             it.kwargs["parallel_step_func"] = func_step_aggregate
         else:
             it.kwargs["parallel_step_func"] = func_step_aggregate + "_single_seg"
-        
+
         while True:
             # manually add the intercept term
             it.update("""
@@ -444,7 +456,8 @@ def __compute_igd(schema_madlib, func_step_aggregate, func_state_diff,
                             (_args.{stepsize_name})::double precision,
                             (_args.{total_rows_name})::integer,
                             (_args.{xmean_name})::double precision[],
-                            (_args.{ymean_name})::double precision
+                            (_args.{ymean_name})::double precision,
+                            {step_decay}::double precision
                       )
                       from {rel_source} as _src, {rel_args} as _args
                       """)

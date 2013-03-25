@@ -526,7 +526,8 @@ CREATE FUNCTION MADLIB_SCHEMA.__gaussian_igd_transition (
     stepsize            DOUBLE PRECISION,
     total_rows          INTEGER,
     xmean               DOUBLE PRECISION[],
-    ymean               DOUBLE PRECISION
+    ymean               DOUBLE PRECISION,
+    step_decay          DOUBLE PRECISION
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'gaussian_igd_transition'
 LANGUAGE C IMMUTABLE;
@@ -562,13 +563,14 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step(
     /* stepsize */          DOUBLE PRECISION,
     /* total_rows */        INTEGER,
     /* xmeans */            DOUBLE PRECISION[],
-    /* ymean */             DOUBLE PRECISION
+    /* ymean */             DOUBLE PRECISION,
+    /* step_decay */        DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step_single_seg (
@@ -581,13 +583,14 @@ CREATE AGGREGATE MADLIB_SCHEMA.__gaussian_igd_step_single_seg (
     /* stepsize */          DOUBLE PRECISION,
     /* total_rows */        INTEGER,
     /* xmeans */            DOUBLE PRECISION[],
-    /* ymean */             DOUBLE PRECISION
+    /* ymean */             DOUBLE PRECISION,
+    /* step_decay */        DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__gaussian_igd_transition,
     -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__gaussian_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__gaussian_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --
@@ -708,7 +711,8 @@ CREATE FUNCTION MADLIB_SCHEMA.__binomial_igd_transition (
     stepsize            DOUBLE PRECISION,
     total_rows          INTEGER,
     xmean               DOUBLE PRECISION[],
-    ymean               DOUBLE PRECISION
+    ymean               DOUBLE PRECISION,
+    step_decay          DOUBLE PRECISION
 ) RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME', 'binomial_igd_transition'
 LANGUAGE C IMMUTABLE;
@@ -744,13 +748,14 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step(
     /* stepsize */          DOUBLE PRECISION,
     /* total_rows */        INTEGER,
     /* xmeans */            DOUBLE PRECISION[],
-    /* ymean */             DOUBLE PRECISION
+    /* ymean */             DOUBLE PRECISION,
+    /* step_decay */        DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
     m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
@@ -763,13 +768,14 @@ CREATE AGGREGATE MADLIB_SCHEMA.__binomial_igd_step_single_seg (
     /* stepsize */          DOUBLE PRECISION,
     /* total_rows */        INTEGER,
     /* xmeans */            DOUBLE PRECISION[],
-    /* ymean */             DOUBLE PRECISION
+    /* ymean */             DOUBLE PRECISION,
+    /* step_decay */        DOUBLE PRECISION
 ) (
     SType = DOUBLE PRECISION[],
     SFunc = MADLIB_SCHEMA.__binomial_igd_transition,
     -- m4_ifdef(`GREENPLUM', `prefunc = MADLIB_SCHEMA.__binomial_igd_merge,')
     FinalFunc = MADLIB_SCHEMA.__binomial_igd_final,
-    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    InitCond = '{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 
 --

@@ -86,6 +86,7 @@ AnyType Fista<Model>::fista_transition (AnyType& args, const Allocator& inAlloca
             state.backtracking = 0; // the first iteration is always non-backtracking
             state.max_stepsize = args[8].getAs<double>();
             state.eta = args[9].getAs<double>();
+            state.lambda = lambda;
 
             //dev/ --------------------------------------------------------
             // how to adaptively update stepsize
