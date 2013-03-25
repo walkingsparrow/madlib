@@ -45,7 +45,7 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     if not get_distinct:
         distinctify = 'None'
     if not get_quartiles:
-        ntileify = 'None'    
+        ntileify = 'None'
 
     if not version_wrapper.is_gp422_and_up():
         # Currently not supporting percentiles in GPDB < 4.2
@@ -96,7 +96,7 @@ def _analyze_str_inputs(target_cols, grouping_cols):
 def summary_help_message(schema_madlib, message, **kwargs):
     """
     Given a help string, provide usage information
-    """   
+    """
     if message is not None and \
             message.lower() in ("usage", "usg", "use", "help", "?"):
         return """
@@ -146,39 +146,39 @@ def summary_help_message(schema_madlib, message, **kwargs):
         """.format(schema_madlib = schema_madlib)
     elif message is not None and message.lower() in ('example', 'examples'):
         return """
-            DROP TABLE IF EXISTS toy_golf; 
-            CREATE TABLE toy_golf(
-                id SERIAL, 
-                outlook text, 
-                temperature float8, 
-                humidity float8, 
-                windy text, 
-                class text) ; 
-            
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 85, 85, 'false', E'Don\\'t Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 80, 90, 'true', E'Don\\'t Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 83, 78, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 70, 96, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 68, 80, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 65, 70, 'true', E'Don\\'t Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 64, 65, 'true', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 72, 95, 'false', E'Don\\'t Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 69, 70, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 75, 80, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 75, 70, 'true', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 72, 90, 'true', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 81, 75, 'false', 'Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 71, 80, 'true', E'Don\\'t Play');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES(' ', 100, 100, 'true', ' ');
-            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('', 110, 100, 'true', '');
-            
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary');
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'windy');
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'windy,humidity');
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'id', 'windy');
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3]);
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL);
-            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL, False);
+            DROP TABLE IF EXISTS example_data;
+            CREATE TABLE example_data(
+                id SERIAL,
+                outlook text,
+                temperature float8,
+                humidity float8,
+                windy text,
+                class text) ;
+
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('sunny', 85, 85, 'false', E'Don\\'t Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('sunny', 80, 90, 'true', E'Don\\'t Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('overcast', 83, 78, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('rain', 70, 96, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('rain', 68, 80, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('rain', 65, 70, 'true', E'Don\\'t Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('overcast', 64, 65, 'true', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('sunny', 72, 95, 'false', E'Don\\'t Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('sunny', 69, 70, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('rain', 75, 80, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('sunny', 75, 70, 'true', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('overcast', 72, 90, 'true', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('overcast', 81, 75, 'false', 'Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('rain', 71, 80, 'true', E'Don\\'t Play');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES(' ', 100, 100, 'true', ' ');
+            INSERT INTO example_data(outlook, temperature, humidity, windy, class) VALUES('', 110, 100, 'true', '');
+
+            SELECT madlib.summary('example_data', 'example_data_output');
+            SELECT madlib.summary('example_data', 'example_data_output', 'windy');
+            SELECT madlib.summary('example_data', 'example_data_output', 'windy,humidity');
+            SELECT madlib.summary('example_data', 'example_data_output', 'id', 'windy');
+            SELECT madlib.summary('example_data', 'example_data_output', NULL, NULL, True, True, array[0.1, 0.2, 0.3]);
+            SELECT madlib.summary('example_data', 'example_data_output', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL);
+            SELECT madlib.summary('example_data', 'example_data_output', 'id', NULL, True, True, array[0.1, 0.2, 0.3], NULL, False);
          """
     else:
        return """

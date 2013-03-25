@@ -1,6 +1,4 @@
 import plpy
-from utilities.validate_args import __is_tbl_exists
-from utilities.validate_args import __is_tbl_has_rows as _tbl_has_rows
 
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
@@ -23,10 +21,11 @@ class Summarizer:
         self._columns = plpy.execute("""
               SELECT attname, typname, attnum
               FROM pg_attribute a join pg_type t on (a.atttypid=t.oid)
-              WHERE attrelid = {tableoid}::regclass and attnum > 0 and not attisdropped
+              WHERE attrelid = {tableoid}::regclass 
+                AND attnum > 0 
+                AND not attisdropped
               ORDER BY attnum
               """.format(tableoid=self._tableoid))
-
         self._column_names = []
         for col in self._columns:
             self._column_names.append(col['attname'])
@@ -43,18 +42,19 @@ class Summarizer:
                 Summary -- Invalid parameter: Source table name should be a
                 non-empty string""")
 
+        try:
+            self._tableoid = plpy.execute("""
+                SELECT '{source_table}'::regclass::oid
+                """.format(source_table=self._source_table))[0]['oid']
+        except:
+            plpy.error("""
+                Summary -- table '{source_table}' does not exist""".format(
+                                            source_table=self._source_table))
+
         if self._output_table is None or self._output_table.strip() == '':
             plpy.error("""
                 Summary -- Invalid parameter: Output table name should be a
                 non-empty string""")
-        try:
-            self._tableoid = plpy.execute("""
-              SELECT '{source_table}'::regclass::oid
-              """.format(source_table=self._source_table))[0]['oid']
-        except:
-            plpy.error("""
-                Summary -- table '{source_table}' does not
-                exist""".format(source_table=self._source_table))
 
         rowcount = plpy.execute("""
             SELECT count(*) FROM {source_table}""".format(
@@ -71,8 +71,8 @@ class Summarizer:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
             plpy.error("""
-                Summary -- Non-existing paramter: column(s) {0} do not
-                exist""".format(str(non_exist_cols)[1:-1]))
+                Summary -- Invalid paramter: column(s) {0} missing from source table
+                """.format(str(non_exist_cols)[1:-1]))
 
     def _validate_target_cols(self):
         non_exist_cols = []
@@ -83,16 +83,19 @@ class Summarizer:
                 non_exist_cols.append(col)
         if len(non_exist_cols) > 0:
             plpy.error("""
-                Summary -- Non-existing paramter: column(s) {0} do not
-                exist""".format(str(non_exist_cols)[1:-1]))
+                Summary -- Invalid paramter: column(s) {0} missing from source table
+                """.format(str(non_exist_cols)[1:-1]))
 
     def _validate_ntile_array(self):
-        if self._ntile_array is not None:
+        if not self._ntile_array is None:
+            if len(self._ntile_array) == 0:
+                plpy.error("""
+                    Summary -- Invalid parameter: ntile_array is empty.""")
             for ntile in self._ntile_array:
                 if ntile < 0 or ntile > 1.0:
                     plpy.error("""
-                        Invalid parameter: values in ntile_array should be in
-                        the range of [0.0, 1.0]""")
+                        Summary -- Invalid parameter: Values in ntile_array should be in
+                        the range [0.0, 1.0]""")
 
     def _adjust_cols(self):
         tcols = self._target_cols
@@ -119,8 +122,8 @@ class Summarizer:
         self._validate_ntile_array()
         if self.how_many_mfv < 0:
             plpy.error("""
-                Summary -- Invalid parameter: number of most frequent values
-                should be positive""")
+                Summary -- Invalid parameter: Number of most frequent values
+                required should be positive""")
     # ----- End of argument validation functions -----------------------------
 
     def _build_subquery(self, group_var):
@@ -146,10 +149,13 @@ class Summarizer:
             args['distinct_columns'] = ','.join(["count(distinct %s)" % c['attname'] for c in cols])
         else:
             args['distinct_columns'] = ','.join(["NULL" for c in cols])
-        #args['missing_columns'] = ','.join(["count(%s) filter (where %s is null)" % (c['attname'],c['attname']) for c in cols])
-        #args['blank_columns'] = ','.join(["count(%s) filter (where %s similar to E'^\\\\W*$')" % (c['attname'],c['attname']) for c in cols])
-        args['missing_columns'] = ','.join(["sum(case when %s is null then 1 else 0 end)" % (c['attname']) for c in cols])
-        args['blank_columns'] = ','.join(["sum(case when %s similar to E'\\\\W*' then 1 else 0 end)" % (c['attname']) if c['typname'] in ('varchar','bpchar','text') else 'NULL' for c in cols])
+        args['missing_columns'] = ','.join(["sum(case when %s is null \
+                                                      then 1 else 0 end)"%(
+                                                   c['attname']) for c in cols])
+        args['blank_columns'] = ','.join(["sum(case when {0} similar to E'\\\\W*' \
+                                           then 1 else 0 end)".format(c['attname']) \
+                                                    if c['typname'] in ('varchar','bpchar','text','character varying') 
+                                                    else 'NULL' for c in cols])
 
         def numeric_type(operator, datatype):
             if datatype['typname'] in ('int2','int4','int8','float4','float8','numeric'):
