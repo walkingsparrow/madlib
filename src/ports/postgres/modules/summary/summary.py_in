@@ -31,30 +31,27 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
         @param get_estimates        Should the summmary information be estimated or exact?
 
     """
-    if version_wrapper.is_pg():
-        plpy.notice("This function is currently not supported by PostgreSQL.")
-        return None
+    #if version_wrapper.is_pg():
+    #    plpy.notice("This function is currently not supported by PostgreSQL.")
+    #    return None
 
-    # distinctify can be one of the following values: 'Estimated', 'Exact', and
-    # 'None'.
+    # 'Estimated', 'Exact', and ''None'
     distinctify = 'Exact'
+    ntileify = 'Exact'
     if get_estimates:
         distinctify = 'Estimated'
-
-    # ntileify can take one of the following values: 'Estimated', 'Exact', and
-    # 'None', but currently "Estimated" is not supported.
-    ntileify = 'Exact'
+        #ntileify = 'Estimated' # curretnly not supported
 
     if not get_distinct:
         distinctify = 'None'
-
     if not get_quartiles:
-        ntileify = 'None'    ## XXX: Confirm if this is the right behavior.
-                             ##     Quartiles are to be outputed independent of
-                             ##     the percentile array
+        ntileify = 'None'    
 
     if not version_wrapper.is_gp422_and_up():
         # Currently not supporting percentiles in GPDB < 4.2
+        ntileify = 'None'
+
+    if version_wrapper.is_pg():
         ntileify = 'None'
 
     # convert comma delimited string input to a list of column names
@@ -133,7 +130,7 @@ def summary_help_message(schema_madlib, message, **kwargs):
             - RowCount          : Number of rows for the target column
             - DistinctValues    : Number of distinct values in the target column
             - MissingValues     : Number of missing values in the target column
-----------  - BlankValues: number of blank values (blanks are defined by the regular expression '^\w*$')
+            - BlankValues: number of blank values (blanks are defined by the regular expression '^\w*$')
             - FractionMissing   : Percentage of total rows that are missing. Will be expressed as a decimal (e.g. 0.3)
             - FractionBlank     : Percentage of total rows that are blank. Will be expressed as a decimal (e.g. 0.3)
             - Mean              : Mean value of target column (if target is numeric, else NULL)
@@ -147,8 +144,44 @@ def summary_help_message(schema_madlib, message, **kwargs):
             - MostFrequentValues: Most frequent values
             - MFVFrequencies    : Frequency of the most frequent values
         """.format(schema_madlib = schema_madlib)
+    elif message is not None and message.lower() in ('example', 'examples'):
+        return """
+            DROP TABLE IF EXISTS toy_golf; 
+            CREATE TABLE toy_golf(
+                id SERIAL, 
+                outlook text, 
+                temperature float8, 
+                humidity float8, 
+                windy text, 
+                class text) ; 
+            
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 85, 85, 'false', E'Don\\'t Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 80, 90, 'true', E'Don\\'t Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 83, 78, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 70, 96, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 68, 80, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 65, 70, 'true', E'Don\\'t Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 64, 65, 'true', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 72, 95, 'false', E'Don\\'t Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 69, 70, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 75, 80, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('sunny', 75, 70, 'true', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 72, 90, 'true', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('overcast', 81, 75, 'false', 'Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('rain', 71, 80, 'true', E'Don\\'t Play');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES(' ', 100, 100, 'true', ' ');
+            INSERT INTO toy_golf(outlook, temperature, humidity, windy, class) VALUES('', 110, 100, 'true', '');
+            
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary');
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'windy');
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'windy,humidity');
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', 'id', 'windy');
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3]);
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL);
+            SELECT madlib.summary('toy_golf', 'toy_golf_summary', NULL, NULL, True, True, array[0.1, 0.2, 0.3], NULL, False);
+         """
     else:
-            return """
+       return """
             'summary' is a generic function used to produce summary statistics
             of any data table.  The function invokes particular 'methods' from
             the MADlib library to provide an overview of the data.

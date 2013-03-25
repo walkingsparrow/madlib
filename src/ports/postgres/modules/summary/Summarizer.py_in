@@ -148,7 +148,10 @@ class Summarizer:
             args['distinct_columns'] = ','.join(["count(distinct %s)" % c['attname'] for c in cols])
         else:
             args['distinct_columns'] = ','.join(["NULL" for c in cols])
-        args['missing_columns'] = ','.join(["count(%s) filter (where %s is null)" % (c['attname'],c['attname']) for c in cols])
+        #args['missing_columns'] = ','.join(["count(%s) filter (where %s is null)" % (c['attname'],c['attname']) for c in cols])
+        #args['blank_columns'] = ','.join(["count(%s) filter (where %s similar to E'^\\\\W*$')" % (c['attname'],c['attname']) for c in cols])
+        args['missing_columns'] = ','.join(["sum(case when %s is null then 1 else 0 end)" % (c['attname']) for c in cols])
+        args['blank_columns'] = ','.join(["sum(case when %s similar to E'\\\\W*' then 1 else 0 end)" % (c['attname']) if c['typname'] in ('varchar','bpchar','text') else 'NULL' for c in cols])
 
         def numeric_type(operator, datatype):
             if datatype['typname'] in ('int2','int4','int8','float4','float8','numeric'):
@@ -197,6 +200,7 @@ class Summarizer:
                     array[{var_columns}]::float8[] as variance,
                     array[{distinct_columns}]::bigint[] as distinct_values,
                     array[{missing_columns}]::bigint[] as missing_values,
+                    array[{blank_columns}]::bigint[] as blank_values,
                     array[{min_columns}]::float8[] as min,
                     array[{q1_columns}]::float8[] as first_quartile,
                     array[{q2_columns}]::float8[] as median,
@@ -222,8 +226,10 @@ class Summarizer:
                     rowcount,
                     distinct_values,
                     missing_values,
+                    blank_values,
                     distinct_values::float8 / rowcount as fraction_distinct_values,
                     missing_values::float8 / rowcount as fraction_missing_values,
+                    blank_values::float8 / rowcount as fraction_blank_values,
                     mean,
                     variance,
                     min,
@@ -243,8 +249,10 @@ class Summarizer:
                     rowcount,
                     distinct_values,
                     missing_values,
+                    blank_values,
                     distinct_values::float8 / rowcount as fraction_distinct_values,
                     missing_values::float8 / rowcount as fraction_missing_values,
+                    blank_values::float8 / rowcount as fraction_blank_values,
                     mean,
                     variance,
                     min,
@@ -264,6 +272,7 @@ class Summarizer:
                         rowcount,
                         unnest(distinct_values) as distinct_values,
                         unnest(missing_values) as missing_values,
+                        unnest(blank_values) as blank_values,
                         unnest(mean) as mean,
                         unnest(variance) as variance,
                         unnest(min) as min,
