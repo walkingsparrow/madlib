@@ -35,27 +35,20 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     #    plpy.notice("This function is currently not supported by PostgreSQL.")
     #    return None
 
-    # 'Estimated', 'Exact', and ''None'
-    distinctify = 'Exact'
-    ntileify = 'Exact'
-    quartileify = 'Exact'
+    # 'Estimated', 'Exact', 'None' 
+    distinctify = 'Estimated'
+    xtileify = 'Exact'          # 'Estimated' not supported currently      
 
-    if get_estimates:
-        distinctify = 'Estimated'
-        #ntileify = 'Estimated' # curretnly not supported
+    if not get_estimates:
+        distinctify = 'Exact'
+        #xtileify = 'Exact'
 
     if not get_distinct:
         distinctify = 'None'
-    
-    if not get_quartiles:
-        quartileify = 'None'
 
-    if not version_wrapper.is_gp422_and_up():
-        # Currently not supporting percentiles in GPDB < 4.2
-        ntileify = 'None'
-
-    if version_wrapper.is_pg():
-        ntileify = 'None'
+    if not version_wrapper.is_gp422_and_up() or version_wrapper.is_pg():
+        # Currently not supporting percentiles in GPDB < 4.2 and PostgreSQL
+        xtileify = 'None'
 
     # convert comma delimited string input to a list of column names
     (target_cols, grouping_cols) = _analyze_str_inputs(target_cols, grouping_cols)
@@ -63,7 +56,7 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     start = time()
     summarizer = Summarizer(
         schema_madlib, source_table, output_table, target_cols, grouping_cols,
-        distinctify, quartileify, ntileify, ntile_array)
+        distinctify, get_quartiles, xtileify, ntile_array)
     summarizer.run()
     end = time()
 

@@ -2,21 +2,21 @@ import plpy
 
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
-                    target_cols , grouping_cols, distinctify, quartileify, 
-                    ntileify, ntile_array=None, how_many_mfv=10):
+                    target_cols , grouping_cols, distinctify, get_quartiles, 
+                    xtileify = 'Exact', ntile_array = None, how_many_mfv = 10):
         self._schema_madlib = schema_madlib
         self._source_table = source_table
         self._output_table = output_table
         self._grouping_cols = grouping_cols
         self._target_cols = target_cols
         self._distinctify = distinctify
-        self._quartileify = quartileify
-        self._ntileify = ntileify
+        self._get_quartiles = get_quartiles
+        self._xtileify = xtileify
         self._ntile_array = ntile_array
+        self.how_many_mfv = how_many_mfv
         self._tableoid = None
         self._columns = None
         self._column_names = None
-        self.how_many_mfv = how_many_mfv
 
     def _get_columns(self):
         self._columns = plpy.execute("""
@@ -169,27 +169,12 @@ class Summarizer:
             if c['typname'] in ('varchar','bpchar','text'):
                 return "%s(length(%s))" % (minmax, c['attname'])
             return "NULL"
-
-        def quar_type(quartile, c):
-            """
-
-                @param quartile Integer in (0, 1, 2, 3, 4)
-                @param c        Column name 
-            """
-            if quartile not in (0, 1, 2, 3, 4):
-                return "NULL"
-            if self._quartileify is 'Exact':
-                if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
-                    return "percentile_cont(%s) WITHIN GROUP (ORDER BY %s)" % (str(quartile / 4), c['attname'])
-            if self._quartileify is 'Estimated':
-                return "NULL"  # NOT YET IMPLEMENTED
-            return "NULL"   # returns Null if self._quartileify is None
         
-        def quant_type(ntile, c):
-            if self._ntileify is 'Exact':
+        def xtile_type(xtile, c):
+            if self._xtileify is 'Exact':
                 if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
-                    return "percentile_cont(%s) WITHIN GROUP (ORDER BY %s)" % (ntile, c['attname'])
-            if self._ntileify is 'Estimated':
+                    return "percentile_cont(%s) WITHIN GROUP (ORDER BY %s)" % (xtile, c['attname'])
+            if self._xtileify is 'Estimated':
                 return "NULL"  # NOT YET IMPLEMENTED
             return "NULL"
 
@@ -197,18 +182,17 @@ class Summarizer:
         args['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
         args['min_columns'] = ','.join([minmax_type('min',c) for c in cols])
         
-        args['q1_columns'] = ','.join([quar_type(1, c) for c in cols])
-        args['q2_columns'] = ','.join([quar_type(2, c) for c in cols])
-        args['q3_columns'] = ','.join([quar_type(3, c) for c in cols])
+        args['q1_columns'] = ','.join([xtile_type(0.25, c) if self._get_quartiles else 'NULL' for c in cols])
+        args['q2_columns'] = ','.join([xtile_type(0.50, c) for c in cols])
+        args['q3_columns'] = ','.join([xtile_type(0.75, c) if self._get_quartiles else 'NULL' for c in cols])
 
         args['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
-
 
         args['ntile_columns'] = "array_to_string(array[NULL], ',')"
         if self._ntile_array is not None:
             args['ntile_columns'] = ",".join([
                 "array_to_string(array[" +
-                ",".join([quant_type(ntile, c) for ntile in self._ntile_array])
+                ",".join([xtile_type(xtile, c) for xtile in self._ntile_array])
                 + "], ',')" for c in cols])
 
         return """
@@ -233,37 +217,10 @@ class Summarizer:
                 FROM {source_table}{group_expr}
          """.format(**args).format(schema_madlib=self._schema_madlib)
 
-    def _build_query(self):
+    def _build_inner_query(self):
         subquery = """  UNION ALL""".join(
             [self._build_subquery(g) for g in self._grouping_cols])
-        plpy.execute("""
-            DROP TABLE IF EXISTS {output_table};""".format(
-            output_table=self._output_table))
         query = """
-            CREATE TABLE {output_table} AS
-            SELECT
-                    group_by,
-                    group_by_value,
-                    target_column,
-                    datatype,
-                    colnum,
-                    rowcount,
-                    distinct_values,
-                    missing_values,
-                    blank_values,
-                    distinct_values::float8 / rowcount as fraction_distinct_values,
-                    missing_values::float8 / rowcount as fraction_missing_values,
-                    blank_values::float8 / rowcount as fraction_blank_values,
-                    mean,
-                    variance,
-                    min,
-                    first_quartile,
-                    median,
-                    third_quartile,
-                    ntiles::float8[],
-                    max
-            FROM
-            (
                 SELECT
                     group_by,
                     group_by_value,
@@ -307,12 +264,73 @@ class Summarizer:
                         unnest(max) as max
                     FROM ({subquery}) q1
                 ) q2
-            ) q3
-            m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
-        """.format(subquery=subquery, output_table = self._output_table)
+        """.format(subquery=subquery)
         return query
 
+    def _build_query(self):
+        query = self._build_inner_query()
+        distinct_values = '' 
+        distinct_values_ratio = '' 
+        if self._distinctify != 'None':
+            distinct_values = 'distinct_values,' 
+            distinct_values_ratio = """
+                distinct_values::float8 / rowcount as fraction_distinct_values,
+            """
+        first_quartile = ''
+        third_quartile = ''
+        if self._get_quartiles and self._xtileify != 'None':
+            first_quartile = 'first_quartile,'
+            third_quartile = 'third_quartile,'
+        ntiles = ''
+        if self._ntile_array is not None and self._xtileify != 'None':
+            ntiles = 'ntiles::float8[],'
+        median = ''
+        if self._xtileify != 'None':
+            median = 'median,'
+
+        final_query = """
+            CREATE TABLE {output_table} AS
+            SELECT
+                    group_by,
+                    group_by_value,
+                    target_column,
+                    datatype,
+                    colnum,
+                    rowcount,
+                    {distinct_values}
+                    missing_values,
+                    blank_values,
+                    {distinct_values_ratio}
+                    missing_values::float8 / rowcount as fraction_missing_values,
+                    blank_values::float8 / rowcount as fraction_blank_values,
+                    mean,
+                    variance,
+                    min,
+                    {first_quartile}
+                    {median}
+                    {third_quartile}
+                    {ntiles}
+                    max
+            FROM
+            (
+                    {query}
+            
+            ) q3
+            m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
+        """
+        return final_query.format(
+            output_table=self._output_table, 
+            query=query,
+            distinct_values=distinct_values,
+            distinct_values_ratio=distinct_values_ratio,
+            first_quartile=first_quartile, 
+            median=median,
+            third_quartile=third_quartile,
+            ntiles=ntiles)
 
     def run(self):
         self._validate_paras()
+        plpy.execute("""
+            DROP TABLE IF EXISTS {output_table};""".format(
+            output_table=self._output_table))
         plpy.execute(self._build_query())
