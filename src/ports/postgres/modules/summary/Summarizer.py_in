@@ -2,7 +2,7 @@ import plpy
 
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
-                    target_cols , grouping_cols, distinctify,
+                    target_cols , grouping_cols, distinctify, quartileify, 
                     ntileify, ntile_array=None, how_many_mfv=10):
         self._schema_madlib = schema_madlib
         self._source_table = source_table
@@ -10,6 +10,7 @@ class Summarizer:
         self._grouping_cols = grouping_cols
         self._target_cols = target_cols
         self._distinctify = distinctify
+        self._quartileify = quartileify
         self._ntileify = ntileify
         self._ntile_array = ntile_array
         self._tableoid = None
@@ -169,6 +170,21 @@ class Summarizer:
                 return "%s(length(%s))" % (minmax, c['attname'])
             return "NULL"
 
+        def quar_type(quartile, c):
+            """
+
+                @param quartile Integer in (0, 1, 2, 3, 4)
+                @param c        Column name 
+            """
+            if quartile not in (0, 1, 2, 3, 4):
+                return "NULL"
+            if self._quartileify is 'Exact':
+                if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
+                    return "percentile_cont(%s) WITHIN GROUP (ORDER BY %s)" % (str(quartile / 4), c['attname'])
+            if self._quartileify is 'Estimated':
+                return "NULL"  # NOT YET IMPLEMENTED
+            return "NULL"   # returns Null if self._quartileify is None
+        
         def quant_type(ntile, c):
             if self._ntileify is 'Exact':
                 if c['typname'] in ('int2','int4','int8','float4','float8','numeric'):
@@ -180,10 +196,13 @@ class Summarizer:
         args['mean_columns'] = ','.join([numeric_type('avg', c) for c in cols])
         args['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
         args['min_columns'] = ','.join([minmax_type('min',c) for c in cols])
-        args['q1_columns'] = ','.join([quant_type('0.25',c) for c in cols])
-        args['q2_columns'] = ','.join([quant_type('0.50',c) for c in cols])
-        args['q3_columns'] = ','.join([quant_type('0.75',c) for c in cols])
+        
+        args['q1_columns'] = ','.join([quar_type(1, c) for c in cols])
+        args['q2_columns'] = ','.join([quar_type(2, c) for c in cols])
+        args['q3_columns'] = ','.join([quar_type(3, c) for c in cols])
+
         args['max_columns'] = ','.join([minmax_type('max',c) for c in cols])
+
 
         args['ntile_columns'] = "array_to_string(array[NULL], ',')"
         if self._ntile_array is not None:

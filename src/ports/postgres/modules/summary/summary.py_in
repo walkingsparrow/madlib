@@ -38,14 +38,17 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     # 'Estimated', 'Exact', and ''None'
     distinctify = 'Exact'
     ntileify = 'Exact'
+    quartileify = 'Exact'
+
     if get_estimates:
         distinctify = 'Estimated'
         #ntileify = 'Estimated' # curretnly not supported
 
     if not get_distinct:
         distinctify = 'None'
+    
     if not get_quartiles:
-        ntileify = 'None'
+        quartileify = 'None'
 
     if not version_wrapper.is_gp422_and_up():
         # Currently not supporting percentiles in GPDB < 4.2
@@ -60,7 +63,7 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     start = time()
     summarizer = Summarizer(
         schema_madlib, source_table, output_table, target_cols, grouping_cols,
-        distinctify, ntileify, ntile_array)
+        distinctify, quartileify, ntileify, ntile_array)
     summarizer.run()
     end = time()
 
@@ -130,7 +133,7 @@ def summary_help_message(schema_madlib, message, **kwargs):
             - RowCount          : Number of rows for the target column
             - DistinctValues    : Number of distinct values in the target column
             - MissingValues     : Number of missing values in the target column
-            - BlankValues: number of blank values (blanks are defined by the regular expression '^\w*$')
+            - BlankValues       : Number of blank values (blanks are defined by the regular expression '^\w*$')
             - FractionMissing   : Percentage of total rows that are missing. Will be expressed as a decimal (e.g. 0.3)
             - FractionBlank     : Percentage of total rows that are blank. Will be expressed as a decimal (e.g. 0.3)
             - Mean              : Mean value of target column (if target is numeric, else NULL)
@@ -189,7 +192,7 @@ def summary_help_message(schema_madlib, message, **kwargs):
             For an overview on usage, run:
             SELECT {schema_madlib}.summary('usage');
             -------
-            For extensive examples, run:
-            SELECT {schema_madlib}.summary('examples')
+            For an example, run:
+            SELECT {schema_madlib}.summary('example')
             """.format(schema_madlib = schema_madlib)
 
