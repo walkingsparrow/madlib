@@ -197,8 +197,9 @@ def __elastic_net_validate_args(tbl_source, col_ind_var, col_dep_var,
                                 normalization, max_iter, tolerance):
     if (tbl_source is None or col_ind_var is None or col_dep_var is None
         or tbl_result is None or lambda_value is None or alpha is None
-        or normalization is None):
-        plpy.error("Elastic Net error: You have unsupported NULL value(s) in the arguments!")
+        or normalization is None or len(tbl_source) == 0 or len(col_ind_var) == 0
+        or len(col_dep_var) == 0 or len(tbl_result) == 0):
+        plpy.error("Elastic Net error: You have unsupported NULL/empty value(s) in the arguments!")
     
     # if not __is_tbl_exists(tbl_source):
     #     plpy.error("Elastic Net error: Data table " + tbl_source + " does not exist!")
