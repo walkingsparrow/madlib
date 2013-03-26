@@ -60,10 +60,10 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     summarizer.run()
     end = time()
 
-    count = plpy.execute(
+    row_count = plpy.execute(
         "SELECT count(*) FROM {output_table}".format(
             output_table = output_table))[0]['count']
-    return (output_table, count, end - start)
+    return (output_table, row_count, end - start)
 
 # -----------------------------------------------------------------------
 # Input parameter checks and edits
@@ -117,28 +117,29 @@ def summary_help_message(schema_madlib, message, **kwargs):
             get_estimates           BOOLEAN     -- Should we produce exact or estimated values for distincts
         )                                       --      (Default: True)
         -----------------------------------------------------------------------
-        Ouput table will be in following format:
-            - GroupByColumn     : Group-by column names (NULL if none provided)
-            - GroupByValue      : Values of the Group-by column (NULL if no grouping)
-            - TargetColumn      : Targeted column values for which summary is requested
-            - TargetColumnNumber: Physical column number for the target column, as described in pg_attribute
-            - DataType          : Data type of target column. Standard GPDB descriptors will be displayed
-            - RowCount          : Number of rows for the target column
-            - DistinctValues    : Number of distinct values in the target column
-            - MissingValues     : Number of missing values in the target column
-            - BlankValues       : Number of blank values (blanks are defined by the regular expression '^\w*$')
-            - FractionMissing   : Percentage of total rows that are missing. Will be expressed as a decimal (e.g. 0.3)
-            - FractionBlank     : Percentage of total rows that are blank. Will be expressed as a decimal (e.g. 0.3)
-            - Mean              : Mean value of target column (if target is numeric, else NULL)
-            - Median            : Median value of target column (if target is numeric, else NULL)
-            - Min               : Min value of target column (for strings this is the length of the shortest string)
-            - Max               : Max value of target column (for strings this is the length of the longest string)
-            - Variance          : Variance of target columns (if target is numeric, else NULL for strings)
-            - Quartile-1        : First quartile (25th percentile, only for numeric columns)
-            - Quartile-3        : Third quartile (25th percentile, only for numeric columns)
-            - QuantileArray     : Percentile values corresponding to ntile_array
-            - MostFrequentValues: Most frequent values
-            - MFVFrequencies    : Frequency of the most frequent values
+        Ouput table will be in following format 
+        (presence of some columns depends on the arguments):
+            - group_by_column       : Group-by column names (NULL if none provided)
+            - group_by_value        : Values of the Group-by column (NULL if no grouping)
+            - target_column         : Targeted column values for which summary is requested
+            - column_number         : Physical column number for the target column, as described in pg_attribute
+            - data_type             : Data type of target column. Standard GPDB descriptors will be displayed
+            - row_count             : Number of rows for the target column
+            - distinct_values       : Number of distinct values in the target column
+            - missing_values        : Number of missing values in the target column
+            - blank_values          : Number of blank values (blanks are defined by the regular expression '^\w*$')
+            - fraction_missing      : Percentage of total rows that are missing. Will be expressed as a decimal (e.g. 0.3)
+            - fraction_blank        : Percentage of total rows that are blank. Will be expressed as a decimal (e.g. 0.3)
+            - mean                  : Mean value of target column (if target is numeric, else NULL)
+            - variance              : Variance of target columns (if target is numeric, else NULL for strings)
+            - min                   : Min value of target column (for strings this is the length of the shortest string)
+            - max                   : Max value of target column (for strings this is the length of the longest string)
+            - first_quartile        : First quartile (25th percentile, only for numeric columns)
+            - median                : Median value of target column (if target is numeric, else NULL)
+            - third_quartile        : Third quartile (25th percentile, only for numeric columns)
+            - quantile_array        : Percentile values corresponding to ntile_array
+            - most_frequent_values  : Most frequent values
+            - mfv_frequencies       : Frequency of the most frequent values
         """.format(schema_madlib = schema_madlib)
     elif message is not None and message.lower() in ('example', 'examples'):
         return """

@@ -155,8 +155,8 @@ class Summarizer:
                                                    c['attname']) for c in cols])
         args['blank_columns'] = ','.join(["sum(case when {0} similar to E'\\\\W*' \
                                            then 1 else 0 end)".format(c['attname']) \
-                                                    if c['typname'] in ('varchar','bpchar','text','character varying') 
-                                                    else 'NULL' for c in cols])
+                                           if c['typname'] in ('varchar','bpchar','text','character varying') 
+                                              else 'NULL' for c in cols])
 
         def numeric_type(operator, datatype):
             if datatype['typname'] in ('int2','int4','int8','float4','float8','numeric'):
@@ -270,47 +270,52 @@ class Summarizer:
     def _build_query(self):
         query = self._build_inner_query()
         distinct_values = '' 
-        distinct_values_ratio = '' 
         if self._distinctify != 'None':
             distinct_values = 'distinct_values,' 
-            distinct_values_ratio = """
-                distinct_values::float8 / rowcount as fraction_distinct_values,
-            """
+
         first_quartile = ''
+        median = ''
         third_quartile = ''
+        max_value = 'max'
         if self._get_quartiles and self._xtileify != 'None':
+            # max_value needs a comma since there is output after it
+            max_value += ','
             first_quartile = 'first_quartile,'
-            third_quartile = 'third_quartile,'
+            median = 'median,'
+            third_quartile = 'third_quartile'
+        
         ntiles = ''
         if self._ntile_array is not None and self._xtileify != 'None':
-            ntiles = 'ntiles::float8[],'
-        median = ''
-        if self._xtileify != 'None':
-            median = 'median,'
+            if self._get_quartiles and self._xtileify != 'None':
+                # third_quartile needs a comma since there is output after it
+                third_quartile += ','                
+            else:
+                # comma for max_value wasn't added previously
+                max_value += ','
+            ntiles = 'ntiles::float8[] as quantile_array'
 
         final_query = """
             CREATE TABLE {output_table} AS
             SELECT
-                    group_by,
-                    group_by_value,
-                    target_column,
-                    datatype,
-                    colnum,
-                    rowcount,
+                    group_by as group_by,
+                    group_by_value as group_by_value,
+                    target_column as target_column,
+                    colnum as column_number,
+                    datatype as data_type,
+                    rowcount as row_count,
                     {distinct_values}
-                    missing_values,
-                    blank_values,
-                    {distinct_values_ratio}
-                    missing_values::float8 / rowcount as fraction_missing_values,
-                    blank_values::float8 / rowcount as fraction_blank_values,
+                    missing_values as missing_values,
+                    blank_values as blank_values,
+                    (missing_values::float8 / rowcount) as fraction_missing,
+                    (blank_values::float8 / rowcount) as fraction_blank,
                     mean,
                     variance,
                     min,
+                    {max_value}
                     {first_quartile}
                     {median}
                     {third_quartile}
                     {ntiles}
-                    max
             FROM
             (
                     {query}
@@ -322,7 +327,7 @@ class Summarizer:
             output_table=self._output_table, 
             query=query,
             distinct_values=distinct_values,
-            distinct_values_ratio=distinct_values_ratio,
+            max_value=max_value,
             first_quartile=first_quartile, 
             median=median,
             third_quartile=third_quartile,
