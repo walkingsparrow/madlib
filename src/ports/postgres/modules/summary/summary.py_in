@@ -94,7 +94,7 @@ def summary_help_message(schema_madlib, message, **kwargs):
     Given a help string, provide usage information
     """
     if message is not None and \
-            message.lower() in ("usage", "usg", "use", "help", "?"):
+            message.lower() in ("usage", "help", "?"):
         return """
         Usage:
         -----------------------------------------------------------------------
@@ -134,9 +134,9 @@ def summary_help_message(schema_madlib, message, **kwargs):
             - variance              : Variance of target columns (if target is numeric, else NULL for strings)
             - min                   : Min value of target column (for strings this is the length of the shortest string)
             - max                   : Max value of target column (for strings this is the length of the longest string)
-            - first_quartile        : First quartile (25th percentile, only for numeric columns)
-            - median                : Median value of target column (if target is numeric, else NULL)
-            - third_quartile        : Third quartile (25th percentile, only for numeric columns)
+            - first_quartile        : First quartile (25th percentile, valid only for numeric columns)
+            - median                : Median value of target column (valid only for numeric columns)
+            - third_quartile        : Third quartile (75th percentile, valid only for numeric columns)
             - quantile_array        : Percentile values corresponding to ntile_array
             - most_frequent_values  : Most frequent values
             - mfv_frequencies       : Frequency of the most frequent values
