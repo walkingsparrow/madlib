@@ -13,10 +13,11 @@ class Summarizer:
         self._get_quartiles = get_quartiles
         self._xtileify = xtileify
         self._ntile_array = ntile_array
-        self.how_many_mfv = how_many_mfv
+        self._how_many_mfv = how_many_mfv
         self._tableoid = None
         self._columns = None
         self._column_names = None
+        self._delimiter = '__m.a.d.l.i.b_*&!^%^!&*_m.a.d.l.i.b__'
 
     def _get_columns(self):
         self._columns = plpy.execute("""
@@ -121,7 +122,7 @@ class Summarizer:
         self._validate_grouping_cols()
         self._adjust_cols()
         self._validate_ntile_array()
-        if self.how_many_mfv < 0:
+        if self._how_many_mfv < 0:
             plpy.error("""
                 Summary -- Invalid parameter: Number of most frequent values
                 required should be positive""")
@@ -194,6 +195,12 @@ class Summarizer:
                 "array_to_string(array[" +
                 ",".join([xtile_type(xtile, c) for xtile in self._ntile_array])
                 + "], ',')" for c in cols])
+        args['mfv'] = ','.join(
+            ["array_to_string({schema_madlib}.mfvsketch_quick_histogram({column},{topk}),'{delimiter}')".format(
+                schema_madlib=self._schema_madlib, 
+                column=c['attname'],
+                topk=self._how_many_mfv,
+                delimiter=self._delimiter) for c in cols])
 
         return """
                 SELECT
@@ -213,7 +220,8 @@ class Summarizer:
                     array[{q2_columns}]::float8[] as median,
                     array[{q3_columns}]::float8[] as third_quartile,
                     array[{ntile_columns}]::text[] as ntiles,
-                    array[{max_columns}]::float8[] as max
+                    array[{max_columns}]::float8[] as max,
+                    array[{mfv}]::text[][] as mfv
                 FROM {source_table}{group_expr}
          """.format(**args).format(schema_madlib=self._schema_madlib)
 
@@ -241,7 +249,8 @@ class Summarizer:
                     median,
                     third_quartile,
                     ntiles,
-                    max
+                    max,
+                    {schema_madlib}._summary_get_kv_arrays(mfv) as mfv
                 FROM
                 (
                     SELECT
@@ -261,10 +270,11 @@ class Summarizer:
                         unnest(median) as median,
                         unnest(third_quartile) as third_quartile,
                         string_to_array(unnest(ntiles), ',') as ntiles,
-                        unnest(max) as max
+                        unnest(max) as max,
+                        string_to_array(unnest(mfv), '{delimiter}') as mfv
                     FROM ({subquery}) q1
                 ) q2
-        """.format(subquery=subquery)
+        """.format(schema_madlib=self._schema_madlib, subquery=subquery, delimiter=self._delimiter)
         return query
 
     def _build_query(self):
@@ -276,23 +286,14 @@ class Summarizer:
         first_quartile = ''
         median = ''
         third_quartile = ''
-        max_value = 'max'
         if self._get_quartiles and self._xtileify != 'None':
-            # max_value needs a comma since there is output after it
-            max_value += ','
             first_quartile = 'first_quartile,'
             median = 'median,'
-            third_quartile = 'third_quartile'
+            third_quartile = 'third_quartile,'
         
         ntiles = ''
         if self._ntile_array is not None and self._xtileify != 'None':
-            if self._get_quartiles and self._xtileify != 'None':
-                # third_quartile needs a comma since there is output after it
-                third_quartile += ','                
-            else:
-                # comma for max_value wasn't added previously
-                max_value += ','
-            ntiles = 'ntiles::float8[] as quantile_array'
+            ntiles = 'ntiles::float8[] as quantile_array,'
 
         final_query = """
             CREATE TABLE {output_table} AS
@@ -311,11 +312,13 @@ class Summarizer:
                     mean,
                     variance,
                     min,
-                    {max_value}
+                    max,
                     {first_quartile}
                     {median}
                     {third_quartile}
                     {ntiles}
+                    (mfv).keys as mfv_value,
+                    (mfv).vals as mfv_frequency
             FROM
             (
                     {query}
@@ -327,7 +330,6 @@ class Summarizer:
             output_table=self._output_table, 
             query=query,
             distinct_values=distinct_values,
-            max_value=max_value,
             first_quartile=first_quartile, 
             median=median,
             third_quartile=third_quartile,
@@ -338,4 +340,5 @@ class Summarizer:
         plpy.execute("""
             DROP TABLE IF EXISTS {output_table};""".format(
             output_table=self._output_table))
+        plpy.info(self._build_query())
         plpy.execute(self._build_query())

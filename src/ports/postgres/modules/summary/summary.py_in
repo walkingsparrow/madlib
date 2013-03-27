@@ -56,7 +56,7 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     start = time()
     summarizer = Summarizer(
         schema_madlib, source_table, output_table, target_cols, grouping_cols,
-        distinctify, get_quartiles, xtileify, ntile_array)
+        distinctify, get_quartiles, xtileify, ntile_array, how_many_mfv)
     summarizer.run()
     end = time()
 
@@ -64,6 +64,16 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
         "SELECT count(*) FROM {output_table}".format(
             output_table = output_table))[0]['count']
     return (output_table, row_count, end - start)
+
+# -----------------------------------------------------------------------
+# Get keys/values from a <key,value> array
+# -----------------------------------------------------------------------
+def _get_kv_arrays(schema_madlib, text_array):
+    if text_array is None:
+        return None
+    return (
+        [text_array[i] for i in range(0, len(text_array), 2)], 
+        [text_array[i] for i in range(1, len(text_array), 2)])
 
 # -----------------------------------------------------------------------
 # Input parameter checks and edits

@@ -262,5 +262,18 @@ PythonFunctionBodyOnly(`summary', `summary')
     return summary.summary_help_message(schema_madlib, None)
 $$ LANGUAGE plpythonu;
 
-
-
+-----------------------------------------------------------------------
+-- Workaround for unnest a n-d array to a set of (n-1)-d array 
+-----------------------------------------------------------------------
+DROP TYPE IF EXISTS MADLIB_SCHEMA._key_value_arrays;
+CREATE TYPE MADLIB_SCHEMA._key_value_arrays AS(
+    keys    TEXT[],
+    vals    TEXT[]
+);
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA._summary_get_kv_arrays(
+    text_array   TEXT[]
+)
+RETURNS MADLIB_SCHEMA._key_value_arrays AS $$
+PythonFunctionBodyOnly(`summary', `summary')
+    return summary._get_kv_arrays(schema_madlib, text_array)
+$$ LANGUAGE plpythonu;
