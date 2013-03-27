@@ -18,6 +18,7 @@ class Summarizer:
         self._columns = None
         self._column_names = None
         self._delimiter = '__m.a.d.l.i.b_*&!^%^!&*_m.a.d.l.i.b__'
+        self._temp_output_table = '__' + output_table
 
     def _get_columns(self):
         self._columns = plpy.execute("""
@@ -196,7 +197,7 @@ class Summarizer:
                 ",".join([xtile_type(xtile, c) for xtile in self._ntile_array])
                 + "], ',')" for c in cols])
         args['mfv'] = ','.join(
-            ["array_to_string({schema_madlib}.mfvsketch_quick_histogram({column},{topk}),'{delimiter}')".format(
+            ["array_to_string({schema_madlib}.mfvsketch_top_histogram({column},{topk}),'{delimiter}')".format(
                 schema_madlib=self._schema_madlib, 
                 column=c['attname'],
                 topk=self._how_many_mfv,
@@ -250,7 +251,8 @@ class Summarizer:
                     third_quartile,
                     ntiles,
                     max,
-                    {schema_madlib}._summary_get_kv_arrays(mfv) as mfv
+                    --{schema_madlib}._summary_get_kv_arrays(mfv) as mfv
+                    mfv
                 FROM
                 (
                     SELECT
@@ -296,7 +298,9 @@ class Summarizer:
             ntiles = 'ntiles::float8[] as quantile_array,'
 
         final_query = """
-            CREATE TABLE {output_table} AS
+            DROP TABLE IF EXISTS {output_table};
+            CREATE TEMP TABLE {output_table} AS
+            --CREATE TABLE {output_table} AS
             SELECT
                     group_by as group_by,
                     group_by_value as group_by_value,
@@ -317,8 +321,9 @@ class Summarizer:
                     {median}
                     {third_quartile}
                     {ntiles}
-                    (mfv).keys as mfv_value,
-                    (mfv).vals as mfv_frequency
+                    --(mfv).keys as mfv_value,
+                    --(mfv).vals as mfv_frequency
+                    mfv
             FROM
             (
                     {query}
@@ -327,7 +332,8 @@ class Summarizer:
             m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
         """
         return final_query.format(
-            output_table=self._output_table, 
+            #output_table=self._output_table, 
+            output_table=self._temp_output_table, 
             query=query,
             distinct_values=distinct_values,
             first_quartile=first_quartile, 
@@ -335,10 +341,46 @@ class Summarizer:
             third_quartile=third_quartile,
             ntiles=ntiles)
 
+    def _post_proc(self):
+        cols = plpy.execute("""
+              SELECT attname FROM pg_attribute 
+              WHERE attrelid = '{outputtable}'::regclass::oid 
+                AND attnum > 0 AND not attisdropped
+              ORDER BY attnum
+              """.format(outputtable=self._temp_output_table))
+        col_names = []
+        for col in cols:
+            if col['attname'] != 'mfv':
+                col_names.append(col['attname'])
+        col_names = ",".join(col_names)
+
+        query = """
+            DROP TABLE IF EXISTS {output_table};
+            CREATE TABLE {output_table} AS
+            SELECT 
+                {col_names},
+                (mfv).keys as mfv_value,
+                (mfv).vals  as mfv_frequency
+            FROM
+            (
+                SELECT
+                    {col_names},
+                    {schema_madlib}._summary_get_kv_arrays(mfv) as mfv
+                FROM
+                    {temp_output_table}
+            )t1 
+            m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
+            """.format(
+                output_table=self._output_table,
+                col_names=col_names,
+                schema_madlib=self._schema_madlib,
+                temp_output_table=self._temp_output_table)
+        plpy.execute(query)
+
     def run(self):
         self._validate_paras()
-        plpy.execute("""
-            DROP TABLE IF EXISTS {output_table};""".format(
-            output_table=self._output_table))
-        plpy.info(self._build_query())
+        #plpy.execute("""
+        #    DROP TABLE IF EXISTS {output_table};""".format(
+        #    output_table=self._output_table))
         plpy.execute(self._build_query())
+        self._post_proc()
