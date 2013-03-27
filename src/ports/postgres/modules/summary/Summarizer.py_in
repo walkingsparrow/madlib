@@ -1,4 +1,5 @@
 import plpy
+from utilities.utilities import __unique_string as _unique_string
 
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
@@ -18,7 +19,7 @@ class Summarizer:
         self._columns = None
         self._column_names = None
         self._delimiter = '__m.a.d.l.i.b_*&!^%^!&*_m.a.d.l.i.b__'
-        self._temp_output_table = '__' + output_table
+        self._temp_output_table = _unique_string() 
 
     def _get_columns(self):
         self._columns = plpy.execute("""
@@ -379,8 +380,5 @@ class Summarizer:
 
     def run(self):
         self._validate_paras()
-        #plpy.execute("""
-        #    DROP TABLE IF EXISTS {output_table};""".format(
-        #    output_table=self._output_table))
         plpy.execute(self._build_query())
         self._post_proc()
