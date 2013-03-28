@@ -35,9 +35,9 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
     #    plpy.notice("This function is currently not supported by PostgreSQL.")
     #    return None
 
-    # 'Estimated', 'Exact', 'None' 
+    # 'Estimated', 'Exact', None
     distinctify = 'Estimated'
-    xtileify = 'Exact'          # 'Estimated' not supported currently      
+    xtileify = 'Exact'          # 'Estimated' not supported at present      
     get_mfv_quick = True
 
     if not get_estimates:
@@ -46,11 +46,11 @@ def summary(schema_madlib, source_table, output_table, target_cols, grouping_col
         get_mfv_quick = False
 
     if not get_distinct:
-        distinctify = 'None'
+        distinctify = 'Skip'
 
     if not version_wrapper.is_gp422_and_up() or version_wrapper.is_pg():
         # Currently not supporting percentiles in GPDB < 4.2 and PostgreSQL
-        xtileify = 'None'
+        xtileify = 'Skip'
 
     # convert comma delimited string input to a list of column names
     (target_cols, grouping_cols) = _analyze_str_inputs(target_cols, grouping_cols)

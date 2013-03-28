@@ -217,8 +217,7 @@ class Summarizer:
                 + "], ',')" for c in cols])
         args['mfv_value'] = ','.join([mfv_type(False, c) for c in cols])
         args['mfv_count'] = ','.join([mfv_type(True, c) for c in cols])
-
-        return """
+        subquery = """
                 SELECT
                     {group_var}::text as group_by,
                     {group_value}::text as group_by_value,
@@ -241,6 +240,8 @@ class Summarizer:
                     array[{mfv_count}]::text[] as mfv_count
                 FROM {source_table}{group_expr}
          """.format(**args).format(schema_madlib=self._schema_madlib)
+        plpy.info(subquery)
+        return subquery
 
     def _build_inner_query(self):
         subquery = """  UNION ALL""".join(
@@ -299,19 +300,19 @@ class Summarizer:
     def _build_query(self):
         query = self._build_inner_query()
         distinct_values = '' 
-        if self._distinctify != 'None':
+        if self._distinctify != 'Skip':
             distinct_values = 'distinct_values,' 
 
         first_quartile = ''
         median = ''
         third_quartile = ''
-        if self._get_quartiles and self._xtileify != 'None':
+        if self._get_quartiles and self._xtileify != 'Skip':
             first_quartile = 'first_quartile,'
             median = 'median,'
             third_quartile = 'third_quartile,'
         
         ntiles = ''
-        if self._ntile_array is not None and self._xtileify != 'None':
+        if self._ntile_array is not None and self._xtileify != 'Skip':
             ntiles = 'ntiles::float8[] as quantile_array,'
 
         final_query = """

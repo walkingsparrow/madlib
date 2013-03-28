@@ -15,7 +15,9 @@ m4_include(`SQLCommon.m4')
 
 @about
 
-'summary' is a generic function used to produce summary statistics of any data table.  The function invokes particular 'methods' from the MADlib library to provide an overview of the data.
+'summary' is a generic function used to produce summary statistics of any data 
+table.  The function invokes particular 'methods' from the MADlib library to 
+provide an overview of the data. 
 
 @usage
 The summary function can be invoked in the following way:
@@ -42,9 +44,18 @@ SELECT MADLIB_SCHEMA.summary
 -----------------------------------------------------------------------
 @endverbatim
 
-****  Currently, estimated values are only implemented for the distinct values 
-computation. Further, most frequent values is only present as a placeholder and 
-will be implemented in a future release. ****
+Note:
+- Currently, estimated values are only implemented for the distinct values 
+computation. 
+- The '<em>get_estimates</em>' parameter controls computation for two statistics
+    - If '<em>get_estimates</em>' is True then the distinct value computation is
+        estimated. Further, the most frequent values computation is computed using 
+        a "quick and dirty" method that does parallel aggregation in GPDB
+        at the expense of missing some of the most frequent values.
+    - If '<em>get_estimates</em>' is False then the distinct values are computed
+     in a slow but exact method. The most frequent values are computed using a
+     faithful implementation that preserves the approximation guarantees of 
+     the Cormode/Muthukrishnan method (more information in \ref grp_mfvsketch) 
 
 
 The output of the function is a composite type containing: 
@@ -52,9 +63,9 @@ The output of the function is a composite type containing:
     row_count               INT4,       -- Number of rows in the output table
     duration                FLOAT8      -- Time taken (in seconds) to compute the summary 
 
-The summary stastics are stored in the 'output_table' relation provided as 
-argument. The relation 'output_table' can contain the following table 
-(presence of some columns depends on the argument )
+The summary stastics are stored in the 'output_table' relation provided in the 
+arguments. The relation 'output_table' can contain the following table 
+(presence of some columns depends on the argument values)
 -----------------------------------------------------------------------
     - group_by_column       : Group-by column names (NULL if none provided)
     - group_by_value        : Values of the Group-by column (NULL if no grouping)
@@ -83,6 +94,13 @@ The output can be obtained as
 @verbatim
 sql> SELECT * FROM 'output_table';
 @endverbatim
+
+The usage information can be obtained at any time directly from the
+function using
+@verbatim
+sql> SELECT summary('usage');
+@endverbatim
+
 */
 
 DROP TYPE IF EXISTS MADLIB_SCHEMA.summary_result;
