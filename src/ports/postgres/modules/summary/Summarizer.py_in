@@ -1,10 +1,10 @@
 import plpy
-from utilities.utilities import __unique_string as _unique_string
 
 class Summarizer:
     def __init__(self, schema_madlib, source_table, output_table,
-                    target_cols , grouping_cols, distinctify, get_quartiles, 
-                    xtileify = 'Exact', ntile_array = None, how_many_mfv = 10):
+                    target_cols, grouping_cols, distinctify, get_quartiles, 
+                    xtileify = 'Exact', ntile_array = None, how_many_mfv = 10,
+                    get_mfv_quick = False):
         self._schema_madlib = schema_madlib
         self._source_table = source_table
         self._output_table = output_table
@@ -15,11 +15,11 @@ class Summarizer:
         self._xtileify = xtileify
         self._ntile_array = ntile_array
         self._how_many_mfv = how_many_mfv
+        self._get_mfv_quick = get_mfv_quick
         self._tableoid = None
         self._columns = None
         self._column_names = None
-        self._delimiter = '__m.a.d.l.i.b_*&!^%^!&*_m.a.d.l.i.b__'
-        self._temp_output_table = _unique_string() 
+        self._delimiter = '_.*.&.!.!.&.*_'
 
     def _get_columns(self):
         self._columns = plpy.execute("""
@@ -124,7 +124,7 @@ class Summarizer:
         self._validate_grouping_cols()
         self._adjust_cols()
         self._validate_ntile_array()
-        if self._how_many_mfv < 0:
+        if self._how_many_mfv is None or self._how_many_mfv <= 0:
             plpy.error("""
                 Summary -- Invalid parameter: Number of most frequent values
                 required should be positive""")
@@ -181,6 +181,24 @@ class Summarizer:
                 return "NULL"  # NOT YET IMPLEMENTED
             return "NULL"
 
+        def mfv_type(get_count, c):
+            slice = '0:0'
+            if get_count:
+                slice = '1:1'
+            mfv_method = 'mfvsketch_top_histogram'
+            if self._get_mfv_quick:
+                mfv_method = 'mfvsketch_quick_histogram'
+
+            return  """ 
+                        array_to_string(({schema_madlib}.{mfv_method}({column},{topk}))[0:{topk}-1][{slice}], '{delimiter}')
+                    """.format(
+                        schema_madlib=self._schema_madlib, 
+                        mfv_method=mfv_method,
+                        column=c['attname'],
+                        topk=self._how_many_mfv,
+                        slice=slice,
+                        delimiter=self._delimiter)
+
         args['mean_columns'] = ','.join([numeric_type('avg', c) for c in cols])
         args['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
         args['min_columns'] = ','.join([minmax_type('min',c) for c in cols])
@@ -197,12 +215,8 @@ class Summarizer:
                 "array_to_string(array[" +
                 ",".join([xtile_type(xtile, c) for xtile in self._ntile_array])
                 + "], ',')" for c in cols])
-        args['mfv'] = ','.join(
-            ["array_to_string({schema_madlib}.mfvsketch_top_histogram({column},{topk}),'{delimiter}')".format(
-                schema_madlib=self._schema_madlib, 
-                column=c['attname'],
-                topk=self._how_many_mfv,
-                delimiter=self._delimiter) for c in cols])
+        args['mfv_value'] = ','.join([mfv_type(False, c) for c in cols])
+        args['mfv_count'] = ','.join([mfv_type(True, c) for c in cols])
 
         return """
                 SELECT
@@ -223,7 +237,8 @@ class Summarizer:
                     array[{q3_columns}]::float8[] as third_quartile,
                     array[{ntile_columns}]::text[] as ntiles,
                     array[{max_columns}]::float8[] as max,
-                    array[{mfv}]::text[][] as mfv
+                    array[{mfv_value}]::text[] as mfv_value,
+                    array[{mfv_count}]::text[] as mfv_count
                 FROM {source_table}{group_expr}
          """.format(**args).format(schema_madlib=self._schema_madlib)
 
@@ -252,8 +267,8 @@ class Summarizer:
                     third_quartile,
                     ntiles,
                     max,
-                    --{schema_madlib}._summary_get_kv_arrays(mfv) as mfv
-                    mfv
+                    mfv_value,
+                    mfv_count
                 FROM
                 (
                     SELECT
@@ -274,7 +289,8 @@ class Summarizer:
                         unnest(third_quartile) as third_quartile,
                         string_to_array(unnest(ntiles), ',') as ntiles,
                         unnest(max) as max,
-                        string_to_array(unnest(mfv), '{delimiter}') as mfv
+                        string_to_array(unnest(mfv_value), '{delimiter}') as mfv_value,
+                        string_to_array(unnest(mfv_count), '{delimiter}') as mfv_count
                     FROM ({subquery}) q1
                 ) q2
         """.format(schema_madlib=self._schema_madlib, subquery=subquery, delimiter=self._delimiter)
@@ -299,9 +315,7 @@ class Summarizer:
             ntiles = 'ntiles::float8[] as quantile_array,'
 
         final_query = """
-            DROP TABLE IF EXISTS {output_table};
-            CREATE TEMP TABLE {output_table} AS
-            --CREATE TABLE {output_table} AS
+            CREATE TABLE {output_table} AS
             SELECT
                     group_by as group_by,
                     group_by_value as group_by_value,
@@ -322,9 +336,8 @@ class Summarizer:
                     {median}
                     {third_quartile}
                     {ntiles}
-                    --(mfv).keys as mfv_value,
-                    --(mfv).vals as mfv_frequency
-                    mfv
+                    mfv_value as most_frequent_values,
+                    mfv_count::bigint[] as mfv_frequencies
             FROM
             (
                     {query}
@@ -333,8 +346,7 @@ class Summarizer:
             m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
         """
         return final_query.format(
-            #output_table=self._output_table, 
-            output_table=self._temp_output_table, 
+            output_table=self._output_table, 
             query=query,
             distinct_values=distinct_values,
             first_quartile=first_quartile, 
@@ -342,43 +354,8 @@ class Summarizer:
             third_quartile=third_quartile,
             ntiles=ntiles)
 
-    def _post_proc(self):
-        cols = plpy.execute("""
-              SELECT attname FROM pg_attribute 
-              WHERE attrelid = '{outputtable}'::regclass::oid 
-                AND attnum > 0 AND not attisdropped
-              ORDER BY attnum
-              """.format(outputtable=self._temp_output_table))
-        col_names = []
-        for col in cols:
-            if col['attname'] != 'mfv':
-                col_names.append(col['attname'])
-        col_names = ",".join(col_names)
-
-        query = """
-            DROP TABLE IF EXISTS {output_table};
-            CREATE TABLE {output_table} AS
-            SELECT 
-                {col_names},
-                (mfv).keys as mfv_value,
-                (mfv).vals  as mfv_frequency
-            FROM
-            (
-                SELECT
-                    {col_names},
-                    {schema_madlib}._summary_get_kv_arrays(mfv) as mfv
-                FROM
-                    {temp_output_table}
-            )t1 
-            m4_ifdef(`__GREENPLUM__', `DISTRIBUTED BY (group_by)')
-            """.format(
-                output_table=self._output_table,
-                col_names=col_names,
-                schema_madlib=self._schema_madlib,
-                temp_output_table=self._temp_output_table)
-        plpy.execute(query)
-
     def run(self):
         self._validate_paras()
+        plpy.execute('DROP TABLE IF EXISTS {output_table}'.format(
+            output_table=self._output_table))
         plpy.execute(self._build_query())
-        self._post_proc()
