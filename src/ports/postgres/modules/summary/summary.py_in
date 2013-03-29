@@ -75,12 +75,11 @@ def _analyze_str_inputs(target_cols, grouping_cols):
     """
     Analyze target_col and grouping_cols string input and convert them to a list
     """
-    if target_cols is None or target_cols.strip() == '':
+    if not target_cols or target_cols.strip() in ('', '*'):
         target_cols = None
     else:
         target_cols = target_cols.replace(' ', '').split(',')
-
-    if grouping_cols is None or grouping_cols.strip() == '':
+    if not grouping_cols or grouping_cols.strip() == '':
         # We make grouping_cols a list with None as an element
         # since we always want to return summary for complete table
         grouping_cols = [None]
@@ -117,7 +116,8 @@ def summary_help_message(schema_madlib, message, **kwargs):
                                                 --      (Default: NULL - Quantile array is not included in result)
             how_many_mfv            INTEGER,    -- How many most-frequent-values (MFVs) to compute?
                                                 --      (Default: 10)
-            get_estimates           BOOLEAN     -- Should we produce exact or estimated values for distincts and MFVs
+            get_estimates           BOOLEAN     -- Should we produce an estimated 
+                                                -- (as opposed to an exact but slow) value for distincts and MFVs?
         )                                       --      (Default: True)
         -----------------------------------------------------------------------
         Ouput table will be in following format 

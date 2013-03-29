@@ -21,18 +21,20 @@ class Summarizer:
         self._column_names = None
         self._delimiter = '_.*.&.!.!.&.*_'
 
-    def _get_columns(self):
-        self._columns = plpy.execute("""
-              SELECT attname, typname, attnum
-              FROM pg_attribute a join pg_type t on (a.atttypid=t.oid)
-              WHERE attrelid = {tableoid}::regclass
-                AND attnum > 0
-                AND not attisdropped
-              ORDER BY attnum
-              """.format(tableoid=self._tableoid))
-        self._column_names = []
-        for col in self._columns:
-            self._column_names.append(col['attname'])
+    def _populate_columns(self):
+        self._columns = plpy.execute( """
+                                        SELECT attname, typname, attnum
+                                        FROM    pg_attribute a 
+                                                    JOIN 
+                                                pg_type t 
+                                                ON (a.atttypid=t.oid)
+                                        WHERE attrelid = {tableoid}::regclass
+                                        AND attnum > 0
+                                        AND not attisdropped
+                                        ORDER BY attnum
+                                      """.format(tableoid=self._tableoid)
+                                    )
+        self._column_names = [col['attname'] for col in self._columns]
 
 # -----------------------------------------------------------------------
 # Argument validation functions
@@ -101,20 +103,23 @@ class Summarizer:
                         Summary -- Invalid parameter: Values in ntile_array
                         should be in the range [0.0, 1.0]""")
 
-    def _adjust_cols(self):      
-        if not self._target_cols:
-            self._columns = self._target_cols
+    def _adjust_cols(self):
+        if self._target_cols:
+            self._columns = filter(lambda r: r['attname'] 
+                                        in self._target_cols, self._columns)
+            self._column_names = [col['attname'] for col in self._columns]
         # if #cols == 1, then it should not appear in the grouping_cols
-        if len(self._columns) == 1 and \
-                self._columns[0] in self._grouping_cols:
-            self._grouping_cols.remove(self._columns[0])
+        if len(self._column_names) == 1 and \
+                self._column_names[0] in self._grouping_cols:
+            self._grouping_cols.remove(self._column_names[0])
+
 
     def _validate_paras(self):
         """
         Validate all parameters in the class
         """
         self._validate_table_names()
-        self._get_columns()
+        self._populate_columns()
         self._validate_target_cols()
         self._validate_grouping_cols()
         self._adjust_cols()
@@ -180,22 +185,19 @@ class Summarizer:
             return "NULL"
 
         def mfv_type(get_count, c):
-            slice = '0:0'
-            if get_count:
-                slice = '1:1'
-            mfv_method = 'mfvsketch_top_histogram'
-            if self._get_mfv_quick:
-                mfv_method = 'mfvsketch_quick_histogram'
-
-            return  """array_to_string(({schema_madlib}.{mfv_method}(
-                        {column},{topk}))[0:{topk}-1][{slice}], '{delimiter}')
-                    """.format(
-                        schema_madlib=self._schema_madlib,
-                        mfv_method=mfv_method,
-                        column=c['attname'],
-                        topk=self._how_many_mfv,
-                        slice=slice,
-                        delimiter=self._delimiter)
+            slicing = ('0:0', '1:1')[get_count]
+            mfv_method = ('mfvsketch_top_histogram', 
+                            'mfvsketch_quick_histogram')[self._get_mfv_quick]
+            return  """
+                    array_to_string(({schema_madlib}.{mfv_method}(
+                                {column},{topk}))[0:{topk}-1][{slice}], 
+                                '{delimiter}')""".format(
+                                            schema_madlib=self._schema_madlib,
+                                            mfv_method=mfv_method,
+                                            column=c['attname'],
+                                            topk=self._how_many_mfv,
+                                            slice=slicing,
+                                            delimiter=self._delimiter)
         # ------ End of Helper sub-functions  ------
         args['mean_columns'] = ','.join([numeric_type('avg', c) for c in cols])
         args['var_columns'] = ','.join([numeric_type('variance',c) for c in cols])
